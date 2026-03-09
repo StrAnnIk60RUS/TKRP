@@ -8,6 +8,10 @@ from typing import Optional, Dict, Any, Tuple, List, Union
 
 import requests
 from bs4 import BeautifulSoup
+from dotenv import load_dotenv
+
+# Загружаем единый .env из корня проекта
+load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
 
 
 @dataclass
