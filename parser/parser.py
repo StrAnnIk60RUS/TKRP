@@ -841,295 +841,101 @@ def _extract_vk_data_from_scripts(soup: BeautifulSoup) -> Tuple[Optional[str], L
 
 
 def parse_vk_account(url: str, headers: Optional[Dict[str, str]] = None) -> List[VKPost]:
-    """Parse posts from VK account / group using VK API (preferred) with HTML/Selenium fallback."""
+    """Parse posts from VK account / group using VK API only (без Selenium)."""
     if not url.startswith("http"):
         url = "https://" + url
 
     screen_name = url.split("/")[-1].split("?")[0]
 
-    # --- VK API (preferred path) ---
-    # Сервисный токен должен передаваться через переменную окружения VK_API_TOKEN
+    # --- VK API (только API, без Selenium) ---
     api_token = os.getenv("VK_API_TOKEN", "")
-    if api_token:
-        api_url = "https://api.vk.com/method/wall.get"
-        params = {
-            "domain": screen_name,
-            "count": 100,
-            "access_token": api_token,
-            "v": "5.131"
-        }
-        try:
-            resp = requests.get(api_url, params=params, timeout=30)
-            if resp.ok:
-                data = resp.json()
-                if "error" in data:
-                    err = data["error"]
-                    print(f"VK API error for '{screen_name}': {err.get('error_msg', 'unknown error')}")
-                elif "response" in data and "items" in data["response"]:
-                    posts: List[VKPost] = []
-                    account_name = screen_name
+    if not api_token:
+        raise VKParserError(
+            "VK_API_TOKEN не установлен в переменных окружения. "
+            "Парсинг VK настроен только через VK API, Selenium не используется."
+        )
 
-                    for item in data["response"]["items"]:
-                        post_text = item.get("text", "")
-                        if not post_text:
-                            continue
+    api_url = "https://api.vk.com/method/wall.get"
+    params = {
+        "domain": screen_name,
+        "count": 100,
+        "access_token": api_token,
+        "v": "5.131",
+    }
 
-                        post_date = item.get("date", 0)
-                        if post_date:
-                            dt = datetime.fromtimestamp(post_date)
-                            post_date_str = dt.strftime("%Y-%m-%d %H:%M:%S")
-                        else:
-                            post_date_str = None
-
-                        likes_count = None
-                        if "likes" in item and isinstance(item["likes"], dict):
-                            likes_count = item["likes"].get("count", 0)
-
-                        comments_count = None
-                        if "comments" in item and isinstance(item["comments"], dict):
-                            comments_count = item["comments"].get("count", 0)
-
-                        reposts_count = None
-                        if "reposts" in item and isinstance(item["reposts"], dict):
-                            reposts_count = item["reposts"].get("count", 0)
-
-                        views_count = None
-                        if "views" in item and isinstance(item["views"], dict):
-                            views_count = item["views"].get("count", None)
-
-                        attachments = item.get("attachments") if isinstance(item.get("attachments"), list) else None
-
-                        owner_id = item.get("owner_id", 0)
-                        post_id = item.get("id", 0)
-                        post_url = f"https://vk.com/{screen_name}?w=wall{owner_id}_{post_id}"
-
-                        posts.append(
-                            VKPost(
-                                url=post_url,
-                                account_name=account_name,
-                                text=post_text,
-                                likes=likes_count if likes_count else None,
-                                comments=comments_count if comments_count else None,
-                                reposts=reposts_count if reposts_count else None,
-                                datetime=post_date_str,
-                                views=views_count,
-                                attachments=attachments,
-                            )
-                        )
-
-                    if posts:
-                        print(f"Fetched {len(posts)} VK posts via API for '{screen_name}'.")
-                        return posts
-        except Exception as e:
-            print(f"VK API request failed for '{screen_name}': {e}")
-    
     try:
-        from selenium import webdriver
-        from selenium.webdriver.chrome.options import Options
-        from selenium.webdriver.chrome.service import Service
-        from selenium.webdriver.support.ui import WebDriverWait
-        from selenium.webdriver.support import expected_conditions as EC
-        from selenium.webdriver.common.by import By
-        import time
-        
-        print("Using Selenium to load VK page...")
-        
-        chrome_options = Options()
-        chrome_options.add_argument("--headless=new")
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--disable-dev-shm-usage")
-        chrome_options.add_argument("--disable-gpu")
-        chrome_options.add_argument("--window-size=1920,1080")
-        chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-        
-        driver = webdriver.Chrome(options=chrome_options)
-        
-        try:
-            if headers and "Cookie" in headers:
-                driver.get("https://vk.com")
-                time.sleep(2)
-                cookies_list = []
-                for cookie_pair in headers["Cookie"].split("; "):
-                    if "=" in cookie_pair:
-                        name, value = cookie_pair.split("=", 1)
-                        cookies_list.append({"name": name, "value": value, "domain": ".vk.com"})
-                
-                for cookie in cookies_list:
-                    try:
-                        driver.add_cookie(cookie)
-                    except:
-                        pass
-            
-            driver.get(url)
-            time.sleep(10)
-            
-            try:
-                WebDriverWait(driver, 30).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, '[data-testid="post"]'))
-                )
-            except:
-                pass
-            
-            for _ in range(15):
-                driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-                time.sleep(2)
-            
-            time.sleep(10)
-            html = driver.page_source
-            
-            try:
-                with open("vk_debug_selenium.html", "w", encoding="utf-8") as f:
-                    f.write(html)
-            except:
-                pass
-            
-            driver.quit()
-            
-            soup = BeautifulSoup(html, "html.parser")
-        except Exception as e:
-            try:
-                driver.quit()
-            except:
-                pass
-            raise VKParserError(f"Ошибка Selenium: {e}")
-    
-    except ImportError:
-        print("Selenium is not installed. Falling back to simple HTML parsing...")
-        print("For better results install: pip install selenium")
-        
-        use_mobile = headers is None or "Cookie" not in headers
-        if use_mobile and "m.vk.com" not in url and "vk.com" in url:
-            url = url.replace("vk.com", "m.vk.com")
-        
-        html = fetch_vk_page_html(url, headers=headers)
-        
-        try:
-            with open("vk_debug.html", "w", encoding="utf-8") as f:
-                f.write(html)
-        except:
-            pass
-        
-        soup = BeautifulSoup(html, "html.parser")
-    
-    account_name = None
-    name_elem = soup.find("h1", class_=re.compile(r"page_name|group_name|profile_name|pageName|groupName|profileName"))
-    if name_elem:
-        account_name = name_elem.get_text(strip=True)
-    
-    if not account_name:
-        name_elem = soup.find("title")
-        if name_elem:
-            title = name_elem.get_text(strip=True)
-            if "|" in title:
-                account_name = title.split("|")[0].strip()
+        resp = requests.get(api_url, params=params, timeout=30)
+        if not resp.ok:
+            raise VKParserError(f"VK API HTTP error for '{screen_name}': {resp.status_code}")
+
+        data = resp.json()
+        if "error" in data:
+            err = data["error"]
+            raise VKParserError(
+                f"VK API error for '{screen_name}': {err.get('error_msg', 'unknown error')}"
+            )
+
+        if "response" not in data or "items" not in data["response"]:
+            raise VKParserError(f"VK API unexpected response format for '{screen_name}'")
+
+        items = data["response"]["items"]
+        posts: List[VKPost] = []
+        account_name = screen_name
+
+        for item in items:
+            post_text = item.get("text", "")
+            if not post_text:
+                continue
+
+            post_date = item.get("date", 0)
+            if post_date:
+                dt = datetime.fromtimestamp(post_date)
+                post_date_str = dt.strftime("%Y-%m-%d %H:%M:%S")
             else:
-                account_name = title
-    
-    posts = []
-    base_url = url.replace("m.vk.com", "vk.com").rstrip("/")
-    
-    json_account_name, posts_data = _extract_vk_data_from_scripts(soup)
-    if json_account_name:
-        account_name = json_account_name
-    
-    if posts_data:
-        for item in posts_data:
-            try:
-                post_text = item.get("text", "")
-                if not post_text:
-                    continue
-                
-                post_date = item.get("date", "")
-                if post_date and isinstance(post_date, (int, float)):
-                    try:
-                        dt = datetime.fromtimestamp(post_date)
-                        post_date = dt.strftime("%Y-%m-%d %H:%M:%S")
-                    except:
-                        post_date = str(post_date)
-                
-                likes_count = None
-                if "likes" in item:
-                    if isinstance(item["likes"], dict):
-                        likes_count = item["likes"].get("count", 0)
-                    elif isinstance(item["likes"], (int, float)):
-                        likes_count = item["likes"]
-                
-                post_id = item.get("id") or item.get("post_id", "")
-                owner_id = item.get("owner_id", "")
-                
-                if owner_id and post_id:
-                    post_url = f"{base_url}?w=wall{owner_id}_{post_id}"
-                else:
-                    post_url = base_url
-                
-                comments_count = None
-                if "comments" in item:
-                    if isinstance(item["comments"], dict):
-                        comments_count = item["comments"].get("count", 0)
-                    elif isinstance(item["comments"], (int, float)):
-                        comments_count = item["comments"]
-                
-                reposts_count = None
-                if "reposts" in item:
-                    if isinstance(item["reposts"], dict):
-                        reposts_count = item["reposts"].get("count", 0)
-                    elif isinstance(item["reposts"], (int, float)):
-                        reposts_count = item["reposts"]
-                
-                posts.append(VKPost(
+                post_date_str = None
+
+            likes_count = None
+            if "likes" in item and isinstance(item["likes"], dict):
+                likes_count = item["likes"].get("count", 0)
+
+            comments_count = None
+            if "comments" in item and isinstance(item["comments"], dict):
+                comments_count = item["comments"].get("count", 0)
+
+            reposts_count = None
+            if "reposts" in item and isinstance(item["reposts"], dict):
+                reposts_count = item["reposts"].get("count", 0)
+
+            views_count = None
+            if "views" in item and isinstance(item["views"], dict):
+                views_count = item["views"].get("count", None)
+
+            attachments = item.get("attachments") if isinstance(item.get("attachments"), list) else None
+
+            owner_id = item.get("owner_id", 0)
+            post_id = item.get("id", 0)
+            post_url = f"https://vk.com/{screen_name}?w=wall{owner_id}_{post_id}"
+
+            posts.append(
+                VKPost(
                     url=post_url,
-                    account_name=account_name or "Unknown",
+                    account_name=account_name,
                     text=post_text,
                     likes=likes_count if likes_count else None,
                     comments=comments_count if comments_count else None,
                     reposts=reposts_count if reposts_count else None,
-                    datetime=post_date if post_date else None,
-                ))
-            except Exception:
-                continue
-    
-    if not posts:
-        post_elements = soup.find_all("div", attrs={"data-testid": "post"})
-        
-        if not post_elements:
-            post_elements = soup.find_all("div", attrs={"data-post-id": re.compile(r".+")})
-        
-        if not post_elements:
-            post_elements = soup.find_all("div", id=re.compile(r"post|wall_post|post-"))
-        
-        if not post_elements:
-            post_elements = soup.find_all("div", class_=re.compile(r"post|wall_post|Post|wall_item"))
-        
-        for post_elem in post_elements:
-            post = parse_vk_post_element(post_elem, account_name or "Unknown", base_url)
-            if post and post.text and post.text.strip() and len(post.text.strip()) > 10:
-                posts.append(post)
-        
+                    datetime=post_date_str,
+                    views=views_count,
+                    attachments=attachments,
+                )
+            )
+
         if not posts:
-            all_articles = soup.find_all("article")
-            for article in all_articles:
-                post = parse_vk_post_element(article, account_name or "Unknown", base_url)
-                if post and post.text and post.text.strip() and len(post.text.strip()) > 10:
-                    posts.append(post)
-        
-        if not posts:
-            all_divs = soup.find_all("div")
-            for div in all_divs:
-                div_id = div.get("id", "")
-                div_testid = div.get("data-testid", "")
-                div_class = " ".join(div.get("class", []))
-                if "post" in div_testid.lower() or any(keyword in div_id.lower() or keyword in div_class.lower() 
-                       for keyword in ["post", "wall", "item", "feed"]):
-                    post = parse_vk_post_element(div, account_name or "Unknown", base_url)
-                    if post and post.text and post.text.strip() and len(post.text.strip()) > 10:
-                        posts.append(post)
-    
-    seen_texts = set()
-    unique_posts = []
-    for post in posts:
-        if post.text and post.text not in seen_texts:
-            seen_texts.add(post.text)
-            unique_posts.append(post)
-    
-    return unique_posts
+            raise VKParserError(f"VK API returned no posts for '{screen_name}'")
+
+        print(f"Fetched {len(posts)} VK posts via API for '{screen_name}'.")
+        return posts
+
+    except requests.RequestException as e:
+        raise VKParserError(f"VK API request failed for '{screen_name}': {e}")
 
