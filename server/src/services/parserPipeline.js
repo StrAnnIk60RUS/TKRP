@@ -27,8 +27,7 @@ function mapPostsToCompetitorsData(url, posts) {
         has_photo: false,
         has_video: false,
         has_link: false,
-        has_document: false,
-        attachment_types: []
+        has_document: false
       };
     }
 
@@ -47,8 +46,7 @@ function mapPostsToCompetitorsData(url, posts) {
       has_photo: types.includes('photo'),
       has_video: types.includes('video'),
       has_link: types.includes('link'),
-      has_document: types.includes('doc') || types.includes('document'),
-      attachment_types: types
+      has_document: types.includes('doc') || types.includes('document')
     };
   };
 
@@ -66,8 +64,6 @@ function mapPostsToCompetitorsData(url, posts) {
         platform,
         follower_count: null,
         posts: posts.map((p, index) => ({
-          post_id: p.url || `post_${index + 1}`,
-          url: p.url || null,
           content: p.text || '',
           datetime: p.datetime || null,
           metrics: {
@@ -122,7 +118,16 @@ async function runPythonParser(url) {
   return { exitCode, stdout, stderr };
 }
 
-export async function parseAndEnrichByUrl(url) {
+function applyPostsLimit(allPosts, limit) {
+  if (!Array.isArray(allPosts)) return [];
+  if (!allPosts.length) return [];
+  if (typeof limit !== 'number' || !Number.isFinite(limit) || limit <= 0) {
+    return allPosts;
+  }
+  return allPosts.slice(0, limit);
+}
+
+export async function parseAndEnrichByUrl(url, limit) {
   const runResult = await runPythonParser(url);
 
   if (runResult.exitCode !== 0) {
@@ -139,7 +144,8 @@ export async function parseAndEnrichByUrl(url) {
     return {
       success: false,
       pipeline: 'parse_and_enrich',
-      error: 'Python-скрипт завершился без файла posts.json (парсер не сохранил результат). Проверьте настройки парсера и доступ к VK.',
+      error:
+        'Python-скрипт завершился без файла posts.json (парсер не сохранил результат). Проверьте настройки парсера и доступ к VK.',
       parser_stdout: runResult.stdout,
       parser_stderr: runResult.stderr
     };
@@ -165,16 +171,15 @@ export async function parseAndEnrichByUrl(url) {
     return {
       success: false,
       pipeline: 'parse_and_enrich',
-      error: 'Парсер не вернул ни одного поста (posts пуст). Возможно, требуется авторизация или обновление cookies.',
+      error:
+        'Парсер не вернул ни одного поста (posts пуст). Возможно, требуется авторизация или обновление cookies.',
       parser_stdout: runResult.stdout,
       parser_stderr: runResult.stderr,
       raw_parser_output: parsed
     };
   }
 
-  // Временное ограничение объема: берем только четверть постов
-  const quarterCount = Math.max(1, Math.ceil(allPosts.length / 4));
-  const posts = allPosts.slice(0, quarterCount);
+  const posts = applyPostsLimit(allPosts, limit);
 
   const competitorsData = mapPostsToCompetitorsData(url, posts);
   const enrichmentResult = await enrichCompetitorsData(competitorsData);
@@ -189,7 +194,7 @@ export async function parseAndEnrichByUrl(url) {
   };
 }
 
-export async function parseOnlyByUrl(url) {
+export async function parseOnlyByUrl(url, limit) {
   const runResult = await runPythonParser(url);
 
   if (runResult.exitCode !== 0) {
@@ -206,7 +211,8 @@ export async function parseOnlyByUrl(url) {
     return {
       success: false,
       pipeline: 'parse_only',
-      error: 'Python-скрипт завершился без файла posts.json (парсер не сохранил результат). Проверьте настройки парсера и доступ к VK.',
+      error:
+        'Python-скрипт завершился без файла posts.json (парсер не сохранил результат). Проверьте настройки парсера и доступ к VK.',
       parser_stdout: runResult.stdout,
       parser_stderr: runResult.stderr
     };
@@ -232,15 +238,15 @@ export async function parseOnlyByUrl(url) {
     return {
       success: false,
       pipeline: 'parse_only',
-      error: 'Парсер не вернул ни одного поста (posts пуст). Возможно, требуется авторизация или обновление cookies.',
+      error:
+        'Парсер не вернул ни одного поста (posts пуст). Возможно, требуется авторизация или обновление cookies.',
       parser_stdout: runResult.stdout,
       parser_stderr: runResult.stderr,
       raw_parser_output: parsed
     };
   }
 
-  const quarterCount = Math.max(1, Math.ceil(allPosts.length / 4));
-  const posts = allPosts.slice(0, quarterCount);
+  const posts = applyPostsLimit(allPosts, limit);
 
   const competitorsData = mapPostsToCompetitorsData(url, posts);
 

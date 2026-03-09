@@ -6,7 +6,7 @@ const router = Router();
 
 router.post('/parse', async (req, res) => {
   try {
-    const { url } = req.body;
+    const { url, limit } = req.body;
 
     if (!url || typeof url !== 'string') {
       return res.status(400).json({
@@ -15,8 +15,14 @@ router.post('/parse', async (req, res) => {
       });
     }
 
-    console.log(`[${new Date().toISOString()}] Запуск parse-only для URL: ${url}`);
-    const result = await parseOnlyByUrl(url);
+    console.log(
+      `[${new Date().toISOString()}] Запуск parse-only для URL: ${url} (лимит постов: ${
+        typeof limit === 'number' ? limit : 'all'
+      })`
+    );
+    const numericLimit =
+      typeof limit === 'number' && Number.isFinite(limit) && limit > 0 ? limit : null;
+    const result = await parseOnlyByUrl(url, numericLimit);
 
     return res.json(result);
   } catch (error) {

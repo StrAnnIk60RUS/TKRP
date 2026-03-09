@@ -13,6 +13,9 @@ export function useCompetitorsPipeline(addToast) {
   const [isEnrichmentServerAvailable, setIsEnrichmentServerAvailable] = useState(null);
   const [competitorUrls, setCompetitorUrls] = useState(['']);
   const [isParsingFromUrls, setIsParsingFromUrls] = useState(false);
+  // Лимит количества постов, которые будут забирать парсер для каждого конкурента.
+  // Значение 'all' означает парсинг всех доступных постов.
+  const [postsLimit, setPostsLimit] = useState('10');
 
   useEffect(() => {
     checkEnrichmentServer().then((available) => {
@@ -22,41 +25,6 @@ export function useCompetitorsPipeline(addToast) {
       }
     });
   }, []);
-
-  const handleCompetitorsFileUpload = (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    if (!file.name.endsWith('.json')) {
-      addToast('Файл должен быть в формате JSON', 'error');
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const data = JSON.parse(e.target.result);
-
-        if (!data.competitors || !Array.isArray(data.competitors)) {
-          addToast('Неверная структура файла. Ожидается поле "competitors" (массив)', 'error');
-          return;
-        }
-
-        setCompetitorsData(data);
-        setCompetitorsFileName(file.name);
-        addToast(`Данные конкурентов загружены: ${data.competitors.length} конкурентов`, 'success');
-      } catch (error) {
-        console.error('Ошибка парсинга JSON:', error);
-        addToast('Ошибка чтения JSON файла. Проверьте формат файла', 'error');
-      }
-    };
-
-    reader.onerror = () => {
-      addToast('Ошибка чтения файла', 'error');
-    };
-
-    reader.readAsText(file);
-  };
 
   const handleRemoveCompetitorsData = () => {
     setCompetitorsData(null);
@@ -203,6 +171,10 @@ export function useCompetitorsPipeline(addToast) {
     setCompetitorUrls((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const handlePostsLimitChange = (value) => {
+    setPostsLimit(value);
+  };
+
   const handleParseCompetitorsFromUrls = async () => {
     const urls = competitorUrls.map((u) => u.trim()).filter((u) => u.length > 0);
 
@@ -222,9 +194,13 @@ export function useCompetitorsPipeline(addToast) {
     const successfulResults = [];
     const failedUrls = [];
 
+    // Преобразуем выбранный лимит в числовое значение или "без ограничения"
+    const numericLimit =
+      postsLimit === 'all' ? null : Number.isNaN(Number(postsLimit)) ? null : Number(postsLimit);
+
     for (const url of urls) {
       try {
-        const result = await parseCompetitorByUrl(url);
+        const result = await parseCompetitorByUrl(url, numericLimit);
         if (result?.success && result?.competitors_data?.competitors) {
           successfulResults.push(result.competitors_data);
         } else {
@@ -308,14 +284,15 @@ export function useCompetitorsPipeline(addToast) {
     competitorsFileName,
     isEnrichmentServerAvailable,
     competitorUrls,
+    postsLimit,
     isParsingFromUrls,
     isEnriching,
-    handleCompetitorsFileUpload,
     handleRemoveCompetitorsData,
     handleEnrichCompetitorsData,
     handleCompetitorUrlChange,
     handleAddCompetitorUrl,
     handleRemoveCompetitorUrl,
+    handlePostsLimitChange,
     handleParseCompetitorsFromUrls,
     clearCompetitors,
     canEnrich

@@ -157,14 +157,15 @@ const ProjectForm = () => {
     competitorsFileName,
     isEnrichmentServerAvailable,
     competitorUrls,
+    postsLimit,
     isParsingFromUrls,
     isEnriching,
-    handleCompetitorsFileUpload,
     handleRemoveCompetitorsData,
     handleEnrichCompetitorsData,
     handleCompetitorUrlChange,
     handleAddCompetitorUrl,
     handleRemoveCompetitorUrl,
+    handlePostsLimitChange,
     handleParseCompetitorsFromUrls,
     clearCompetitors,
     canEnrich
@@ -664,6 +665,7 @@ const ProjectForm = () => {
           competitorUrls={competitorUrls}
           competitorsData={competitorsData}
           competitorsFileName={competitorsFileName}
+          postsLimit={postsLimit}
           isParsingFromUrls={isParsingFromUrls}
           isEnriching={isEnriching}
           isProcessing={isProcessing}
@@ -672,8 +674,8 @@ const ProjectForm = () => {
           onUrlChange={handleCompetitorUrlChange}
           onAddUrl={handleAddCompetitorUrl}
           onRemoveUrl={handleRemoveCompetitorUrl}
+          onPostsLimitChange={handlePostsLimitChange}
           onParseFromUrls={handleParseCompetitorsFromUrls}
-          onFileUpload={handleCompetitorsFileUpload}
           onEnrichUploaded={handleEnrichCompetitorsData}
           onRemoveData={handleRemoveCompetitorsData}
         />

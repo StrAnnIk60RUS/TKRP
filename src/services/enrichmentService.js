@@ -73,16 +73,17 @@ export async function checkEnrichmentServer() {
 /**
  * Только парсинг конкурента по URL через backend (без вызова LLM)
  * @param {string} url - ссылка на профиль/пост конкурента
+ * @param {number|null} limit - максимальное количество постов (null или undefined = все посты)
  * @returns {Promise<Object>} - результат parse-only
  */
-export async function parseCompetitorByUrl(url) {
+export async function parseCompetitorByUrl(url, limit) {
   try {
     const response = await fetch(`${API_URL}/api/parse`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ url })
+      body: JSON.stringify({ url, limit })
     });
 
     if (!response.ok) {

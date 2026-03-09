@@ -4,6 +4,7 @@ const CompetitorsStep = ({
   competitorUrls,
   competitorsData,
   competitorsFileName,
+  postsLimit,
   isParsingFromUrls,
   isEnriching,
   isProcessing,
@@ -12,8 +13,8 @@ const CompetitorsStep = ({
   onUrlChange,
   onAddUrl,
   onRemoveUrl,
+  onPostsLimitChange,
   onParseFromUrls,
-  onFileUpload,
   onEnrichUploaded,
   onRemoveData
 }) => {
@@ -58,7 +59,30 @@ const CompetitorsStep = ({
               )}
             </div>
           ))}
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px',
+                minWidth: '220px'
+              }}
+            >
+              <span style={{ color: '#e2e8f0', fontSize: '0.8rem' }}>Сколько постов парсить</span>
+              <select
+                className="form-select"
+                value={postsLimit}
+                onChange={(e) => onPostsLimitChange(e.target.value)}
+                disabled={isParsingFromUrls || isEnriching || isProcessing}
+                style={{ fontSize: '0.85rem' }}
+              >
+                <option value="1">1 пост</option>
+                <option value="10">10 постов</option>
+                <option value="50">50 постов</option>
+                <option value="100">100 постов</option>
+                <option value="all">Все посты</option>
+              </select>
+            </div>
             <button
               type="button"
               className="action-btn"
@@ -91,84 +115,58 @@ const CompetitorsStep = ({
           </div>
         </div>
 
-        <div
-          style={{
-            width: '100%',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '8px',
-            marginTop: '16px',
-            borderTop: '1px solid rgba(148, 163, 184, 0.4)',
-            paddingTop: '12px'
-          }}
-        >
-          <span style={{ color: '#e2e8f0', fontSize: '0.85rem' }}>
-            Шаг 1 (альтернатива). Загрузите уже спарсенные данные конкурентов в формате JSON.
-          </span>
+        {competitorsData && (
           <div
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '12px',
               width: '100%',
+              display: 'flex',
+              flexDirection: 'row',
+              gap: '12px',
+              marginTop: '16px',
+              borderTop: '1px solid rgba(148, 163, 184, 0.4)',
+              paddingTop: '12px',
+              alignItems: 'center',
               flexWrap: 'wrap'
             }}
           >
-            <label className="action-btn" style={{ cursor: 'pointer', margin: 0, display: 'inline-block' }}>
-              <input type="file" accept=".json" onChange={onFileUpload} style={{ display: 'none' }} />
-              <span style={{ position: 'relative', zIndex: 2 }}>Загрузить JSON с данными конкурентов</span>
-            </label>
-            {competitorsData && (
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '12px',
-                  flex: 1,
-                  flexWrap: 'wrap'
-                }}
-              >
-                <span style={{ color: '#ffffff', fontSize: '0.9rem' }}>
-                  ✓ {competitorsFileName} ({competitorsData.competitors?.length || 0} конкурентов)
-                  {competitorsData.competitors?.[0]?.posts?.[0]?.content_category && (
-                    <span style={{ color: '#4ade80', marginLeft: '8px' }}>• Обогащено</span>
-                  )}
-                </span>
-                <button
-                  type="button"
-                  className="action-btn"
-                  onClick={onEnrichUploaded}
-                  disabled={isEnriching || isProcessing || !canEnrich}
-                  style={{
-                    padding: '6px 12px',
-                    fontSize: '0.85rem',
-                    backgroundColor: isEnrichmentServerAvailable === false ? '#666' : '#3b82f6',
-                    opacity: isEnriching || !canEnrich ? 0.6 : 1,
-                    cursor: isEnriching || !canEnrich ? 'not-allowed' : 'pointer'
-                  }}
-                  title={
-                    isEnrichmentServerAvailable === false
-                      ? 'Сервер обогащения недоступен'
-                      : !canEnrich
-                      ? 'Сначала выполните успешный парсинг конкурентов'
-                      : 'Обогатить данные через DeepSeek'
-                  }
-                >
-                  {isEnriching ? 'ОБОГАЩЕНИЕ...' : '🤖 Обогатить'}
-                </button>
-                <button
-                  type="button"
-                  className="action-btn danger"
-                  onClick={onRemoveData}
-                  disabled={isEnriching || isProcessing}
-                  style={{ padding: '6px 12px', fontSize: '0.85rem' }}
-                >
-                  Удалить
-                </button>
-              </div>
-            )}
+            <span style={{ color: '#ffffff', fontSize: '0.9rem' }}>
+              ✓ Данные конкурентов получены из парсера
+              {competitorsFileName && ` (${competitorsFileName})`}
+              {` — ${competitorsData.competitors?.length || 0} конкурентов`}
+            </span>
+            <button
+              type="button"
+              className="action-btn"
+              onClick={onEnrichUploaded}
+              disabled={isEnriching || isProcessing || !canEnrich}
+              style={{
+                padding: '6px 12px',
+                fontSize: '0.85rem',
+                backgroundColor: isEnrichmentServerAvailable === false ? '#666' : '#3b82f6',
+                opacity: isEnriching || !canEnrich ? 0.6 : 1,
+                cursor: isEnriching || !canEnrich ? 'not-allowed' : 'pointer'
+              }}
+              title={
+                isEnrichmentServerAvailable === false
+                  ? 'Сервер обогащения недоступен'
+                  : !canEnrich
+                  ? 'Сначала выполните успешный парсинг конкурентов'
+                  : 'Обогатить данные через DeepSeek'
+              }
+            >
+              {isEnriching ? 'ОБОГАЩЕНИЕ...' : '🤖 Обогатить'}
+            </button>
+            <button
+              type="button"
+              className="action-btn danger"
+              onClick={onRemoveData}
+              disabled={isEnriching || isProcessing}
+              style={{ padding: '6px 12px', fontSize: '0.85rem' }}
+            >
+              Очистить конкурентов
+            </button>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
