@@ -1,0 +1,25 @@
+{
+  "name": "it-project-promotion-app",
+  "version": "1.0.0",
+  "description": "Веб-приложение для автоматизации продвижения IT-проектов",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"npm:dev:vite\" \"npm:dev:server\"",
+    "dev:vite": "vite",
+    "dev:server": "cd server && npm run dev",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^7.13.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@vitejs/plugin-react": "^4.2.0",
+    "concurrently": "^9.2.1",
+    "vite": "^5.0.0"
+  }
+}

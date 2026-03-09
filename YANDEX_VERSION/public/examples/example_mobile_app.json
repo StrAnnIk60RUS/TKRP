@@ -1,0 +1,43 @@
+{
+  "producer_info": {
+    "name": "Студия Мобильных Решений",
+    "activity_specification": "Разработка мобильных приложений для iOS и Android, специализация на приложениях для здоровья и фитнеса"
+  },
+  "it_project_info": {
+    "name": "FitTracker Mobile",
+    "description": "Мобильное приложение для отслеживания тренировок, питания и прогресса в фитнесе. Интеграция с носимыми устройствами (Apple Watch, Fitbit, Garmin).",
+    "goals": "Привлечение 100,000 активных пользователей за первый год, достижение 4.5+ рейтинга в App Store и Google Play, монетизация через премиум-подписку",
+    "features": "Трекинг тренировок с видео-инструкциями, подсчет калорий с базой из 50,000 продуктов, синхронизация с фитнес-браслетами, социальные функции (челленджи, друзья), персональные планы тренировок на основе ИИ",
+    "benefits": "Удобный интерфейс, мотивация через геймификацию, научный подход к тренировкам, поддержка сообщества, доступность для всех уровней подготовки"
+  },
+  "consumer_profile": {
+    "category": "B2C",
+    "demographics": "Мужчины и женщины 18-40 лет, средний класс, активный образ жизни, интерес к здоровью и фитнесу, использование смартфонов и фитнес-браслетов",
+    "purchase_goal": "Улучшение физической формы, контроль веса, мотивация к тренировкам, отслеживание прогресса, участие в сообществе единомышленников",
+    "lifestyle": "Активные пользователи Instagram и TikTok, следят за фитнес-блогерами, посещают спортзалы или занимаются дома, ценят удобство и визуальную привлекательность"
+  },
+  "content_plan_info": {
+    "timeline": {
+      "start_date": "2026-03-15",
+      "end_date": "2026-06-15"
+    },
+    "publication_frequency": "daily",
+    "min_publications": 60,
+    "key_dates": "8 марта - Международный женский день (контент про женский фитнес)\n1 апреля - День смеха\n1 мая - День труда (мотивационный контент)\n9 мая - День Победы\n1 июня - День защиты детей (семейный фитнес)",
+    "total_budget": 150000,
+    "max_cost_per_publication": 5000,
+    "content_formats": ["image", "video", "combined"],
+    "video_requirements": "Вертикальные видео для Stories и Reels, длительность 15-60 секунд. Динамичный монтаж, яркая графика, демонстрация упражнений, до/после результаты пользователей. Музыка должна быть энергичной.",
+    "platforms": ["instagram", "vk", "telegram"]
+  },
+  "ontology": {
+    "classes": "Mobile_App, Fitness_App, User, Workout, Nutrition, Progress, Challenge, Social_Feature",
+    "subclasses": "iOS_App, Android_App, Cardio_Workout, Strength_Workout, Meal_Plan, Progress_Photo, Weekly_Challenge, Friend_Connection",
+    "attributes": "app_version, download_count, rating, review_count, workout_duration, calories_burned, exercise_type, difficulty_level, equipment_needed",
+    "relationships": "hasWorkout, tracksProgress, includesNutrition, participatesInChallenge, connectsWithFriend, usesWearable, generatesReport"
+  },
+  "metadata": {
+    "created_at": "2026-02-23T10:30:00.000Z",
+    "version": "1.0"
+  }
+}

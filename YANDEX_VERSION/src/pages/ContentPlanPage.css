@@ -1,0 +1,281 @@
+.content-plan-page {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.loading-state,
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  text-align: center;
+}
+
+.spinner {
+  width: 50px;
+  height: 50px;
+  border: 4px solid #e2e8f0;
+  border-top-color: #1a1a2e;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 20px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.empty-state h2 {
+  font-size: 1.8rem;
+  color: #1a1a2e;
+  margin-bottom: 12px;
+}
+
+.empty-state p {
+  color: #2d2d44;
+  margin-bottom: 24px;
+}
+
+.page-header {
+  margin-bottom: 32px;
+  padding-bottom: 24px;
+  border-bottom: 2px solid #1a1a2e;
+}
+
+.header-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.header-actions h1 {
+  font-size: 2rem;
+  font-weight: 800;
+  color: #1a1a2e;
+  letter-spacing: -0.5px;
+  margin: 0;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 12px;
+}
+
+.primary-btn,
+.secondary-btn {
+  padding: 12px 24px;
+  border: 3px solid #1a1a2e;
+  border-radius: 0;
+  font-size: 1rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  position: relative;
+}
+
+.primary-btn > *,
+.secondary-btn > * {
+  color: inherit !important;
+  position: relative;
+  z-index: 10;
+}
+
+.primary-btn {
+  background: #1a1a2e;
+  color: #ffffff;
+  box-shadow: 4px 4px 0 0 #ff6b9d;
+}
+
+.primary-btn:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 0 #ff6b9d;
+}
+
+.secondary-btn {
+  background: #ffffff;
+  color: #1a1a2e;
+  box-shadow: 4px 4px 0 0 #cbd5e0;
+}
+
+.secondary-btn:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 0 #cbd5e0;
+}
+
+.page-subtitle {
+  font-size: 1rem;
+  color: #2d2d44;
+  line-height: 1.6;
+  font-weight: 500;
+}
+
+.content-plan-content {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.plan-section {
+  background: #ffffff;
+  padding: 32px;
+  border: 2px solid #1a1a2e;
+  box-shadow: 4px 4px 0 0 #1a1a2e;
+}
+
+.section-title {
+  font-size: 1.6rem;
+  color: #1a1a2e;
+  margin-bottom: 24px;
+  font-weight: 800;
+  border-left: 6px solid #ff6b9d;
+  padding-left: 20px;
+}
+
+.ontology-view {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 24px;
+}
+
+.ontology-item h3 {
+  font-size: 1.2rem;
+  color: #1a1a2e;
+  margin-bottom: 12px;
+  font-weight: 700;
+}
+
+.ontology-item ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.ontology-item li {
+  padding: 8px 12px;
+  background: #fafbfc;
+  border: 1px solid #e2e8f0;
+  margin-bottom: 8px;
+  color: #2d2d44;
+}
+
+.platform-block {
+  margin-bottom: 32px;
+  padding: 24px;
+  background: #fafbfc;
+  border: 2px solid #1a1a2e;
+}
+
+.platform-name {
+  font-size: 1.4rem;
+  color: #1a1a2e;
+  margin-bottom: 20px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.posts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.post-card {
+  background: #ffffff;
+  padding: 20px;
+  border: 2px solid #1a1a2e;
+  box-shadow: 2px 2px 0 0 #1a1a2e;
+}
+
+.post-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.post-date {
+  font-weight: 600;
+  color: #1a1a2e;
+}
+
+.post-category {
+  background: #1a1a2e;
+  color: #ffffff;
+  padding: 4px 12px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.post-content {
+  color: #2d2d44;
+  line-height: 1.6;
+  margin-bottom: 12px;
+}
+
+.post-metrics {
+  display: flex;
+  gap: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #e2e8f0;
+  font-size: 0.9rem;
+  color: #2d2d44;
+  font-weight: 600;
+}
+
+.no-posts {
+  color: #718096;
+  font-style: italic;
+  text-align: center;
+  padding: 20px;
+}
+
+.analysis-view {
+  background: #fafbfc;
+  padding: 20px;
+  border: 1px solid #e2e8f0;
+  overflow-x: auto;
+}
+
+.analysis-view pre {
+  margin: 0;
+  font-family: 'Courier New', monospace;
+  font-size: 0.9rem;
+  color: #1a1a2e;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+@media (max-width: 768px) {
+  .header-actions {
+    flex-direction: column;
+  }
+
+  .action-buttons {
+    width: 100%;
+  }
+
+  .primary-btn,
+  .secondary-btn {
+    flex: 1;
+  }
+
+  .ontology-view {
+    grid-template-columns: 1fr;
+  }
+
+  .post-metrics {
+    flex-direction: column;
+    gap: 8px;
+  }
+}

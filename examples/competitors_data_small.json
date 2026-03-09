@@ -1,0 +1,119 @@
+{
+  "parsing_metadata": {
+    "parsed_at": "2026-02-25T10:00:00Z",
+    "competitors_count": 1,
+    "total_posts": 4,
+    "platforms": [
+      "linkedin"
+    ],
+    "date_range": {
+      "start": "2025-11-01",
+      "end": "2026-02-25"
+    },
+    "parser_version": "1.0",
+    "note": "Тестовые сырые данные от парсера. Поля content_category, tone, category и content_strategy будут добавлены после обработки LLM. engagement_rate вычисляется локально на сервере."
+  },
+  "competitors": [
+    {
+      "competitor_id": "competitor_analyticshub",
+      "name": "AnalyticsHub",
+      "platform": "linkedin",
+      "follower_count": 20806,
+      "posts": [
+        {
+          "post_id": "competitor_analyticshub_linkedin_001",
+          "content": "Кейс: Как AnalyticsHub помог компании увеличить эффективность на 47% за 7 месяца.\n\nРезультаты:\n✅ Сокращение времени на 41%\n✅ Рост точности на 20%\n✅ ROI составил 235%\n\nПодробнее в комментариях 👇\n\n#КейсСтади #БизнесАналитика #AnalyticsHub",
+          "post_type": "video",
+          "publication_date": "2025-11-11T15:30:00.000Z",
+          "metrics": {
+            "likes": 297,
+            "views": 6738,
+            "comments": 31,
+            "shares": 17
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика",
+            "#Бизнес",
+            "#КейсСтади"
+          ],
+          "mentions": [],
+          "length": 237,
+          "has_media": true,
+          "media_type": "video",
+          "url": "https://linkedin.com/competitor_analyticshub/posts/1"
+        },
+        {
+          "post_id": "competitor_analyticshub_linkedin_002",
+          "content": "Приглашаем на вебинар \"Как внедрить бизнес-аналитики\"\n\n📅 4 марта, 16:00 МСК\n👨‍💼 Спикер: Мария Сидорова\n\nРегистрация: [ссылка]\n\n#Вебинар #Обучение #БизнесАналитика",
+          "post_type": "text_with_image",
+          "publication_date": "2026-01-18T15:45:00.000Z",
+          "metrics": {
+            "likes": 162,
+            "views": 4818,
+            "comments": 41,
+            "shares": 25
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика",
+            "#Бизнес"
+          ],
+          "mentions": [],
+          "length": 165,
+          "has_media": true,
+          "media_type": "image",
+          "url": "https://linkedin.com/competitor_analyticshub/posts/2"
+        },
+        {
+          "post_id": "competitor_analyticshub_linkedin_003",
+          "content": "6 способов улучшить качество бизнес-решений:\n\n1. Внедряйте стратегии\n2. Автоматизируйте стратегии\n3. Автоматизируйте данные\n4. Анализируйте стратегии\n\nКаждый из этих пунктов может значительно повысить эффективность.\n\n#Экспертиза #БизнесАналитика #Советы",
+          "post_type": "text_with_image",
+          "publication_date": "2025-12-03T11:00:00.000Z",
+          "metrics": {
+            "likes": 117,
+            "views": 4747,
+            "comments": 37,
+            "shares": 15
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика",
+            "#Бизнес",
+            "#КейсСтади"
+          ],
+          "mentions": [],
+          "length": 253,
+          "has_media": true,
+          "media_type": "image",
+          "url": "https://linkedin.com/competitor_analyticshub/posts/3"
+        },
+        {
+          "post_id": "competitor_analyticshub_linkedin_004",
+          "content": "🎯 Опрос: Какой инструмент в вашей аналитике?\n\nА) Сложная визуализация\nБ) Данные в разных системах\nВ) Дорогие инструменты\n\nНапишите свой вариант в комментариях! 👇\n\n#Опрос #БизнесАналитика #Интерактив",
+          "post_type": "text_with_image",
+          "publication_date": "2025-12-03T09:00:00.000Z",
+          "metrics": {
+            "likes": 447,
+            "views": 11220,
+            "comments": 80,
+            "shares": 19
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика"
+          ],
+          "mentions": [],
+          "length": 200,
+          "has_media": true,
+          "media_type": "image",
+          "url": "https://linkedin.com/competitor_analyticshub/posts/4"
+        }
+      ]
+    }
+  ]
+}

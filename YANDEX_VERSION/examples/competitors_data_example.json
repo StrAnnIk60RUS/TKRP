@@ -1,0 +1,381 @@
+{
+  "parsing_metadata": {
+    "parsed_at": "2026-02-25T10:00:00Z",
+    "competitors_count": 4,
+    "total_posts": 127,
+    "platforms": ["linkedin", "vk", "telegram"],
+    "date_range": {
+      "start": "2025-12-01",
+      "end": "2026-02-20"
+    },
+    "parser_version": "1.0"
+  },
+  "competitors": [
+    {
+      "competitor_id": "competitor_analyticshub",
+      "name": "AnalyticsHub",
+      "description": "Платформа для бизнес-аналитики с фокусом на визуализацию данных",
+      "platform": "linkedin",
+      "category": "B2B",
+      "follower_count": 12500,
+      "posts": [
+        {
+          "post_id": "ah_linkedin_001",
+          "content": "Как мы помогли компании X увеличить эффективность аналитики на 45% за 3 месяца.\n\nКомпания X внедрила AnalyticsHub в ноябре 2025 года. За этот период:\n✅ Время на подготовку отчетов сократилось с 6 часов до 1.5 часов\n✅ Точность прогнозов выросла на 35%\n✅ ROI составил 220%\n\nКлючевые факторы успеха:\n1. Автоматизация рутинных процессов\n2. Интеграция с существующими системами\n3. Обучение команды работе с платформой\n\nПодробный разбор кейса в комментариях 👇\n\n#БизнесАналитика #КейсСтади #DataScience #ROI",
+          "post_type": "text_with_image",
+          "publication_date": "2026-02-15T09:00:00",
+          "metrics": {
+            "likes": 234,
+            "views": 8500,
+            "comments": 42,
+            "shares": 18,
+            "engagement_rate": 0.034,
+            "click_through_rate": 0.012
+          },
+          "hashtags": ["#БизнесАналитика", "#КейсСтади", "#DataScience", "#ROI"],
+          "mentions": [],
+          "content_category": "case_study",
+          "tone": "профессиональный",
+          "length": 487,
+          "has_media": true,
+          "media_type": "image"
+        },
+        {
+          "post_id": "ah_linkedin_002",
+          "content": "5 способов улучшить качество бизнес-решений с помощью аналитики:\n\n1. Автоматизируйте сбор данных из всех источников\n2. Используйте визуализацию для быстрого понимания трендов\n3. Внедряйте прогнозирование на основе исторических данных\n4. Анализируйте данные в реальном времени\n5. Делитесь инсайтами с командой через интерактивные дашборды\n\nКаждый из этих пунктов может значительно повысить эффективность вашей работы. Начните с автоматизации - это даст быстрый результат.\n\n#БизнесАналитика #Экспертиза #DataScience #Продуктивность",
+          "post_type": "text",
+          "publication_date": "2026-02-12T14:00:00",
+          "metrics": {
+            "likes": 187,
+            "views": 6200,
+            "comments": 28,
+            "shares": 12,
+            "engagement_rate": 0.037,
+            "click_through_rate": 0.008
+          },
+          "hashtags": ["#БизнесАналитика", "#Экспертиза", "#DataScience", "#Продуктивность"],
+          "mentions": [],
+          "content_category": "expert_opinion",
+          "tone": "экспертный",
+          "length": 342,
+          "has_media": false,
+          "media_type": null
+        },
+        {
+          "post_id": "ah_linkedin_003",
+          "content": "Новое обновление AnalyticsHub: теперь с поддержкой машинного обучения!\n\nМы добавили:\n🤖 Автоматическое прогнозирование трендов\n📊 Умные рекомендации на основе ваших данных\n🔍 Детекция аномалий в реальном времени\n\nПопробуйте бесплатно 14 дней → [ссылка]\n\n#Обновление #ML #БизнесАналитика #Новости",
+          "post_type": "text_with_image",
+          "publication_date": "2026-02-08T10:00:00",
+          "metrics": {
+            "likes": 156,
+            "views": 4800,
+            "comments": 19,
+            "shares": 8,
+            "engagement_rate": 0.038,
+            "click_through_rate": 0.015
+          },
+          "hashtags": ["#Обновление", "#ML", "#БизнесАналитика", "#Новости"],
+          "mentions": [],
+          "content_category": "product_update",
+          "tone": "информативный",
+          "length": 198,
+          "has_media": true,
+          "media_type": "image"
+        },
+        {
+          "post_id": "ah_linkedin_004",
+          "content": "Приглашаем на вебинар 'Как внедрить бизнес-аналитику в вашу компанию за 30 дней'\n\n📅 15 марта, 15:00 МСК\n👨‍💼 Спикер: Иван Петров, CEO AnalyticsHub\n\nТемы:\n• Пошаговый план внедрения\n• Типичные ошибки и как их избежать\n• Реальные кейсы наших клиентов\n• Q&A сессия\n\nРегистрация: [ссылка]\n\n#Вебинар #БизнесАналитика #Обучение",
+          "post_type": "text",
+          "publication_date": "2026-02-05T11:00:00",
+          "metrics": {
+            "likes": 203,
+            "views": 7200,
+            "comments": 35,
+            "shares": 15,
+            "engagement_rate": 0.036,
+            "click_through_rate": 0.022
+          },
+          "hashtags": ["#Вебинар", "#БизнесАналитика", "#Обучение"],
+          "mentions": [],
+          "content_category": "event",
+          "tone": "приглашающий",
+          "length": 267,
+          "has_media": false,
+          "media_type": null
+        }
+      ],
+      "content_strategy": {
+        "posting_frequency": "3-4 раза в неделю",
+        "content_types": ["text", "text_with_image", "video"],
+        "themes": ["case_study", "expert_opinion", "product_updates", "events"],
+        "optimal_posting_times": ["09:00", "14:00", "18:00"],
+        "average_engagement_rate": 0.036,
+        "most_successful_category": "case_study"
+      }
+    },
+    {
+      "competitor_id": "competitor_datavision",
+      "name": "DataVision",
+      "description": "Корпоративные решения для визуализации и анализа больших данных",
+      "platform": "linkedin",
+      "category": "B2B",
+      "follower_count": 9800,
+      "posts": [
+        {
+          "post_id": "dv_linkedin_001",
+          "content": "Кейс: Как DataVision помог финансовой компании сократить время на анализ отчетности на 70%\n\nПроблема: Команда из 5 аналитиков тратила 20 часов в неделю на подготовку еженедельных отчетов.\n\nРешение: Внедрение DataVision с автоматизацией процессов сбора и обработки данных.\n\nРезультат:\n⏱️ Время сократилось до 6 часов в неделю\n💰 Экономия: 280 000 руб/месяц\n📈 Точность данных выросла на 25%\n\nПолный кейс: [ссылка]\n\n#КейсСтади #Финансы #Автоматизация #DataVision",
+          "post_type": "text_with_image",
+          "publication_date": "2026-02-18T09:30:00",
+          "metrics": {
+            "likes": 198,
+            "views": 7800,
+            "comments": 31,
+            "shares": 14,
+            "engagement_rate": 0.031,
+            "click_through_rate": 0.011
+          },
+          "hashtags": ["#КейсСтади", "#Финансы", "#Автоматизация", "#DataVision"],
+          "mentions": [],
+          "content_category": "case_study",
+          "tone": "профессиональный",
+          "length": 412,
+          "has_media": true,
+          "media_type": "image"
+        },
+        {
+          "post_id": "dv_linkedin_002",
+          "content": "Топ-3 ошибки при внедрении бизнес-аналитики (и как их избежать):\n\n1. ❌ Отсутствие четкой цели\n   ✅ Решение: Определите конкретные метрики, которые хотите улучшить\n\n2. ❌ Игнорирование потребностей пользователей\n   ✅ Решение: Проведите интервью с конечными пользователями перед внедрением\n\n3. ❌ Недостаточное обучение команды\n   ✅ Решение: Организуйте обучение и создайте базу знаний\n\nИзбегая этих ошибок, вы значительно повысите шансы на успешное внедрение.\n\n#БизнесАналитика #Советы #Внедрение #DataVision",
+          "post_type": "text",
+          "publication_date": "2026-02-14T13:00:00",
+          "metrics": {
+            "likes": 165,
+            "views": 5500,
+            "comments": 24,
+            "shares": 9,
+            "engagement_rate": 0.036,
+            "click_through_rate": 0.007
+          },
+          "hashtags": ["#БизнесАналитика", "#Советы", "#Внедрение", "#DataVision"],
+          "mentions": [],
+          "content_category": "educational",
+          "tone": "советующий",
+          "length": 389,
+          "has_media": false,
+          "media_type": null
+        },
+        {
+          "post_id": "dv_linkedin_003",
+          "content": "Новинка: DataVision теперь интегрируется с SAP, Oracle и Microsoft Dynamics!\n\nЭто означает:\n🔗 Единая точка доступа ко всем вашим данным\n📊 Автоматическая синхронизация в реальном времени\n⚡ Мгновенная визуализация без ручной обработки\n\nУзнайте больше: [ссылка]\n\n#Интеграция #ERP #БизнесАналитика #DataVision",
+          "post_type": "text_with_image",
+          "publication_date": "2026-02-10T10:00:00",
+          "metrics": {
+            "likes": 142,
+            "views": 4200,
+            "comments": 16,
+            "shares": 7,
+            "engagement_rate": 0.039,
+            "click_through_rate": 0.013
+          },
+          "hashtags": ["#Интеграция", "#ERP", "#БизнесАналитика", "#DataVision"],
+          "mentions": [],
+          "content_category": "product_update",
+          "tone": "информативный",
+          "length": 201,
+          "has_media": true,
+          "media_type": "image"
+        }
+      ],
+      "content_strategy": {
+        "posting_frequency": "2-3 раза в неделю",
+        "content_types": ["text", "text_with_image"],
+        "themes": ["case_study", "educational", "product_updates"],
+        "optimal_posting_times": ["09:30", "13:00"],
+        "average_engagement_rate": 0.035,
+        "most_successful_category": "case_study"
+      }
+    },
+    {
+      "competitor_id": "competitor_insightpro",
+      "name": "InsightPro",
+      "description": "AI-платформа для прогнозирования и оптимизации бизнес-процессов",
+      "platform": "vk",
+      "category": "B2B",
+      "follower_count": 15200,
+      "posts": [
+        {
+          "post_id": "ip_vk_001",
+          "content": "Привет! 👋\n\nМы запускаем InsightPro - AI-платформу для бизнес-аналитики!\n\nЧто умеет:\n✅ Автоматическая аналитика\n✅ Прогнозирование трендов\n✅ Интерактивные дашборды\n✅ Интеграция с популярными системами\n\nПопробуйте бесплатно 14 дней! Ссылка в описании 👇\n\n#Аналитика #AI #Бизнес #Стартап",
+          "post_type": "text_with_image",
+          "publication_date": "2026-02-20T12:00:00",
+          "metrics": {
+            "likes": 312,
+            "views": 8500,
+            "comments": 45,
+            "shares": 22,
+            "engagement_rate": 0.045,
+            "click_through_rate": 0.018
+          },
+          "hashtags": ["#Аналитика", "#AI", "#Бизнес", "#Стартап"],
+          "mentions": [],
+          "content_category": "product_introduction",
+          "tone": "дружелюбный",
+          "length": 198,
+          "has_media": true,
+          "media_type": "image"
+        },
+        {
+          "post_id": "ip_vk_002",
+          "content": "Кейс: Как InsightPro помог компании увеличить прибыль на 30%\n\nКомпания Y использовала нашу платформу для оптимизации закупок. За 4 месяца:\n\n📈 Снижение затрат на закупки на 15%\n💰 Увеличение прибыли на 30%\n⏱️ Экономия времени на планировании на 50%\n\nХотите узнать подробности? Пишите в личку! 💬\n\n#Кейс #Бизнес #Аналитика #Успех",
+          "post_type": "text",
+          "publication_date": "2026-02-16T18:00:00",
+          "metrics": {
+            "likes": 278,
+            "views": 7200,
+            "comments": 38,
+            "shares": 19,
+            "engagement_rate": 0.047,
+            "click_through_rate": 0.012
+          },
+          "hashtags": ["#Кейс", "#Бизнес", "#Аналитика", "#Успех"],
+          "mentions": [],
+          "content_category": "case_study",
+          "tone": "дружелюбный",
+          "length": 234,
+          "has_media": false,
+          "media_type": null
+        },
+        {
+          "post_id": "ip_vk_003",
+          "content": "🎯 Опрос: Какая главная проблема в вашей аналитике?\n\nА) Недостаточно данных\nБ) Данные в разных системах\nВ) Долгая обработка\nГ) Сложная визуализация\n\nНапишите свой вариант в комментариях! Самые интересные ответы разберем в следующем посте 👇\n\n#Опрос #Аналитика #Бизнес",
+          "post_type": "text",
+          "publication_date": "2026-02-13T15:00:00",
+          "metrics": {
+            "likes": 445,
+            "views": 11200,
+            "comments": 89,
+            "shares": 31,
+            "engagement_rate": 0.051,
+            "click_through_rate": 0.005
+          },
+          "hashtags": ["#Опрос", "#Аналитика", "#Бизнес"],
+          "mentions": [],
+          "content_category": "interactive",
+          "tone": "интерактивный",
+          "length": 156,
+          "has_media": false,
+          "media_type": null
+        },
+        {
+          "post_id": "ip_vk_004",
+          "content": "Новое обновление InsightPro 2.0! 🚀\n\nЧто нового:\n✨ Улучшенный AI-алгоритм прогнозирования\n📊 Новые типы графиков и визуализаций\n🔔 Уведомления о важных изменениях в данных\n⚡ Ускоренная обработка больших объемов\n\nОбновление бесплатное для всех пользователей!\n\n#Обновление #AI #Аналитика #InsightPro",
+          "post_type": "text_with_image",
+          "publication_date": "2026-02-11T11:00:00",
+          "metrics": {
+            "likes": 234,
+            "views": 6800,
+            "comments": 28,
+            "shares": 12,
+            "engagement_rate": 0.041,
+            "click_through_rate": 0.014
+          },
+          "hashtags": ["#Обновление", "#AI", "#Аналитика", "#InsightPro"],
+          "mentions": [],
+          "content_category": "product_update",
+          "tone": "радостный",
+          "length": 187,
+          "has_media": true,
+          "media_type": "image"
+        }
+      ],
+      "content_strategy": {
+        "posting_frequency": "2-3 раза в неделю",
+        "content_types": ["text", "text_with_image"],
+        "themes": ["product_introduction", "case_study", "interactive", "product_updates"],
+        "optimal_posting_times": ["12:00", "18:00"],
+        "average_engagement_rate": 0.046,
+        "most_successful_category": "interactive"
+      }
+    },
+    {
+      "competitor_id": "competitor_bizanalytics",
+      "name": "BizAnalytics",
+      "description": "Облачные решения для финансовой и операционной аналитики",
+      "platform": "telegram",
+      "category": "B2B",
+      "follower_count": 8900,
+      "posts": [
+        {
+          "post_id": "ba_tg_001",
+          "content": "🎯 Кейс: Как BizAnalytics помог увеличить эффективность на 60%\n\nКомпания Z внедрила платформу и получила:\n• Сокращение времени на отчеты с 8ч до 1ч\n• Рост точности прогнозов на 40%\n• ROI 250%\n\nЧитать полностью: [ссылка]\n\n#Кейс #Аналитика #Бизнес",
+          "post_type": "text",
+          "publication_date": "2026-02-19T10:00:00",
+          "metrics": {
+            "likes": 89,
+            "views": 3200,
+            "comments": 15,
+            "shares": 8,
+            "engagement_rate": 0.035,
+            "click_through_rate": 0.019
+          },
+          "hashtags": ["#Кейс", "#Аналитика", "#Бизнес"],
+          "mentions": [],
+          "content_category": "case_study",
+          "tone": "информативный",
+          "length": 178,
+          "has_media": false,
+          "media_type": null
+        },
+        {
+          "post_id": "ba_tg_002",
+          "content": "💡 3 способа улучшить бизнес-решения с помощью аналитики:\n\n1. Автоматизируйте сбор данных\n2. Используйте визуализацию\n3. Внедряйте прогнозирование\n\nПодробнее: [ссылка]\n\n#Советы #Аналитика #Бизнес",
+          "post_type": "text",
+          "publication_date": "2026-02-17T17:00:00",
+          "metrics": {
+            "likes": 67,
+            "views": 2800,
+            "comments": 12,
+            "shares": 5,
+            "engagement_rate": 0.034,
+            "click_through_rate": 0.015
+          },
+          "hashtags": ["#Советы", "#Аналитика", "#Бизнес"],
+          "mentions": [],
+          "content_category": "educational",
+          "tone": "советующий",
+          "length": 145,
+          "has_media": false,
+          "media_type": null
+        },
+        {
+          "post_id": "ba_tg_003",
+          "content": "🚀 Новое в BizAnalytics:\n\n✅ Интеграция с 1С\n✅ Мобильное приложение\n✅ Расширенная аналитика\n\nПопробуйте бесплатно: [ссылка]\n\n#Обновление #Аналитика #Бизнес",
+          "post_type": "text",
+          "publication_date": "2026-02-15T09:00:00",
+          "metrics": {
+            "likes": 78,
+            "views": 2600,
+            "comments": 11,
+            "shares": 6,
+            "engagement_rate": 0.037,
+            "click_through_rate": 0.021
+          },
+          "hashtags": ["#Обновление", "#Аналитика", "#Бизнес"],
+          "mentions": [],
+          "content_category": "product_update",
+          "tone": "информативный",
+          "length": 112,
+          "has_media": false,
+          "media_type": null
+        }
+      ],
+      "content_strategy": {
+        "posting_frequency": "2 раза в неделю",
+        "content_types": ["text"],
+        "themes": ["case_study", "educational", "product_updates"],
+        "optimal_posting_times": ["10:00", "17:00"],
+        "average_engagement_rate": 0.035,
+        "most_successful_category": "case_study"
+      }
+    }
+  ]
+}

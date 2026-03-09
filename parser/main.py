@@ -1,0 +1,112 @@
+from parser import (
+    parse_linkedin_post,
+    parse_vk_account,
+    save_post_to_json,
+    save_posts_to_json,
+    LinkedInPost,
+    VKPost,
+    LinkedInParserError,
+    VKParserError,
+)
+
+
+def _ascii_preview(text: str, max_len: int = 100) -> str:
+    """
+    Return ASCII-only preview of text to avoid Windows console encoding issues.
+    Emojis and non-ASCII chars are replaced with '?'.
+    """
+    if not text:
+        return ""
+    preview = text[:max_len] + "..." if len(text) > max_len else text
+    return "".join(ch if ord(ch) < 128 else "?" for ch in preview)
+
+
+def main() -> None:
+    """
+    Simple CLI entrypoint for the parser.
+    """
+    url = input("Enter LinkedIn post URL or VK account URL: ").strip()
+    if not url:
+        print("Empty URL. Exit.")
+        return
+
+    is_vk = "vk.com" in url.lower()
+    is_linkedin = "linkedin.com" in url.lower()
+
+    if is_vk:
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+                "AppleWebKit/537.36 (KHTML, like Gecko)"
+                "Chrome/145.0.0.0 Safari/537.36"
+            ),
+            "Cookie":"remixstlid=9016301865148047650_qwDd8SPZQ3ryuZ2ETeALVGAPlvbz61jjz10j75cC7js; prcl=dfb645b981b365; remixstid=933596479_yowFzlDag39DunVFguy8nLWQRZ5gPc93TgV9YOOARCg"}
+        try:
+            print("Parsing posts from VK account...")
+            print("Using cookies for authorization...")
+            posts = parse_vk_account(url, headers=headers)
+            
+            if not posts:
+                print("\nNo posts found.")
+                print("Possible reasons:")
+                print("1. Cookies are outdated – refresh them from the browser")
+                print("2. VK requires JavaScript to load posts")
+                print("3. Check vk_debug.html – it contains saved page HTML")
+                print("\nTry:")
+                print("- Update cookies from browser DevTools")
+                print("- Install Selenium: pip install selenium")
+                return
+            
+            save_posts_to_json(posts, json_path="posts.json")
+            
+            print(f"\nFound posts: {len(posts)}")
+            print(f"Account: {posts[0].account_name if posts else 'Unknown'}")
+            print("\nFirst few posts:")
+            for i, post in enumerate(posts[:5], 1):
+                print(f"\n{i}. URL: {post.url}")
+                print(f"   Likes: {post.likes}")
+                print(f"   Comments: {post.comments}")
+                print(f"   Reposts: {post.reposts}")
+                print(f"   Datetime: {post.datetime}")
+                print(f"   Text: {_ascii_preview(post.text)}")
+            
+            if len(posts) > 5:
+                print(f"\n... and {len(posts) - 5} more posts")
+            
+            print(f"\nAll posts saved to 'posts.json'")
+            
+        except VKParserError as exc:
+            print(f"VK parsing error: {exc}")
+            return
+    
+    elif is_linkedin:
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+                "AppleWebKit/537.36 (KHTML, like Gecko)"
+                "Chrome/145.0.0.0 Safari/537.36"
+            ),
+            "Cookie": 'bcookie="...";'
+        }
+
+        try:
+            post: LinkedInPost = parse_linkedin_post(url, headers=headers)
+        except LinkedInParserError as exc:
+            print(f"LinkedIn parsing error: {exc}")
+            return
+
+        save_post_to_json(post, json_path="posts.json")
+
+        print("Post parsed and saved to 'posts.json':")
+        print(f"- URL: {post.url}")
+        print(f"- Account: {post.account_name}")
+        print(f"- Likes: {post.likes}")
+        print(f"- Datetime: {post.datetime}")
+        print(f"- Text: {_ascii_preview(post.text, max_len=120)}")
+    
+    else:
+        print("Unsupported URL. Only LinkedIn and VK are supported.")
+
+
+if __name__ == "__main__":
+    main()

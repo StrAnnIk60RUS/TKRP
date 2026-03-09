@@ -1,0 +1,1832 @@
+{
+  "parsing_metadata": {
+    "parsed_at": "2026-02-25T10:00:00Z",
+    "competitors_count": 8,
+    "total_posts": 92,
+    "platforms": [
+      "linkedin",
+      "vk",
+      "telegram"
+    ],
+    "date_range": {
+      "start": "2025-11-01",
+      "end": "2026-02-25"
+    },
+    "parser_version": "1.0",
+    "note": "Это сырые данные от парсера для тестирования на больших объемах. Поля content_category, tone, engagement_rate и content_strategy будут добавлены после обработки LLM."
+  },
+  "competitors": [
+    {
+      "competitor_id": "competitor_analyticshub",
+      "name": "AnalyticsHub",
+      "platform": "linkedin",
+      "follower_count": 20806,
+      "posts": [
+        {
+          "post_id": "competitor_analyticshub_linkedin_001",
+          "content": "Кейс: Как AnalyticsHub помог компании увеличить эффективность на 47% за 7 месяца.\n\nРезультаты:\n✅ Сокращение времени на 41%\n✅ Рост точности на 20%\n✅ ROI составил 235%\n\nПодробнее в комментариях 👇\n\n#КейсСтади #БизнесАналитика #AnalyticsHub",
+          "post_type": "video",
+          "publication_date": "2025-11-11T15:30:00.000Z",
+          "metrics": {
+            "likes": 297,
+            "views": 6738,
+            "comments": 31,
+            "shares": 17
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика",
+            "#Бизнес",
+            "#КейсСтади"
+          ],
+          "mentions": [],
+          "length": 237,
+          "has_media": true,
+          "media_type": "video",
+          "url": "https://linkedin.com/competitor_analyticshub/posts/1"
+        },
+        {
+          "post_id": "competitor_analyticshub_linkedin_002",
+          "content": "Приглашаем на вебинар \"Как внедрить бизнес-аналитики\"\n\n📅 4 марта, 16:00 МСК\n👨‍💼 Спикер: Мария Сидорова\n\nРегистрация: [ссылка]\n\n#Вебинар #Обучение #БизнесАналитика",
+          "post_type": "text_with_image",
+          "publication_date": "2026-01-18T15:45:00.000Z",
+          "metrics": {
+            "likes": 162,
+            "views": 4818,
+            "comments": 41,
+            "shares": 25
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика",
+            "#Бизнес"
+          ],
+          "mentions": [],
+          "length": 165,
+          "has_media": true,
+          "media_type": "image",
+          "url": "https://linkedin.com/competitor_analyticshub/posts/2"
+        },
+        {
+          "post_id": "competitor_analyticshub_linkedin_003",
+          "content": "6 способов улучшить качество бизнес-решений:\n\n1. Внедряйте стратегии\n2. Автоматизируйте стратегии\n3. Автоматизируйте данные\n4. Анализируйте стратегии\n\nКаждый из этих пунктов может значительно повысить эффективность.\n\n#Экспертиза #БизнесАналитика #Советы",
+          "post_type": "text_with_image",
+          "publication_date": "2025-12-03T11:00:00.000Z",
+          "metrics": {
+            "likes": 117,
+            "views": 4747,
+            "comments": 37,
+            "shares": 15
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика",
+            "#Бизнес",
+            "#КейсСтади"
+          ],
+          "mentions": [],
+          "length": 253,
+          "has_media": true,
+          "media_type": "image",
+          "url": "https://linkedin.com/competitor_analyticshub/posts/3"
+        },
+        {
+          "post_id": "competitor_analyticshub_linkedin_004",
+          "content": "🎯 Опрос: Какой инструмент в вашей аналитике?\n\nА) Сложная визуализация\nБ) Данные в разных системах\nВ) Дорогие инструменты\n\nНапишите свой вариант в комментариях! 👇\n\n#Опрос #БизнесАналитика #Интерактив",
+          "post_type": "text_with_image",
+          "publication_date": "2025-12-03T09:00:00.000Z",
+          "metrics": {
+            "likes": 447,
+            "views": 11220,
+            "comments": 80,
+            "shares": 19
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика"
+          ],
+          "mentions": [],
+          "length": 200,
+          "has_media": true,
+          "media_type": "image",
+          "url": "https://linkedin.com/competitor_analyticshub/posts/4"
+        },
+        {
+          "post_id": "competitor_analyticshub_linkedin_005",
+          "content": "Новое обновление AnalyticsHub 2.0!\n\nЧто нового:\n✨ Обновленный алгоритм,интерфейс,функционал\n📊 Улучшенные графики,отчеты,дашборды\n🔔 Уведомления\n\nОбновление бесплатное для всех пользователей!\n\n#Обновление #AnalyticsHub #Новости",
+          "post_type": "text_with_image",
+          "publication_date": "2025-11-17T15:00:00.000Z",
+          "metrics": {
+            "likes": 128,
+            "views": 5540,
+            "comments": 20,
+            "shares": 7
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience"
+          ],
+          "mentions": [],
+          "length": 227,
+          "has_media": true,
+          "media_type": "image",
+          "url": "https://linkedin.com/competitor_analyticshub/posts/5"
+        },
+        {
+          "post_id": "competitor_analyticshub_linkedin_006",
+          "content": "Новости: Компания AnalyticsHub запустила улучшенный сервис.\n\nТеперь пользователи смогут улучшить процессы.\n\nПодробнее: [ссылка]\n\n#Новости #AnalyticsHub #Анонс",
+          "post_type": "text_with_image",
+          "publication_date": "2026-02-02T16:30:00.000Z",
+          "metrics": {
+            "likes": 130,
+            "views": 4687,
+            "comments": 16,
+            "shares": 8
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience"
+          ],
+          "mentions": [],
+          "length": 158,
+          "has_media": true,
+          "media_type": "image",
+          "url": "https://linkedin.com/competitor_analyticshub/posts/6"
+        },
+        {
+          "post_id": "competitor_analyticshub_linkedin_007",
+          "content": "Новости: Платформа AnalyticsHub анонсировала новый функционал.\n\nЭто позволит оптимизировать процессы.\n\nПодробнее: [ссылка]\n\n#Новости #AnalyticsHub #Анонс",
+          "post_type": "text_with_image",
+          "publication_date": "2025-12-22T07:15:00.000Z",
+          "metrics": {
+            "likes": 157,
+            "views": 4055,
+            "comments": 14,
+            "shares": 8
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика",
+            "#Бизнес"
+          ],
+          "mentions": [],
+          "length": 153,
+          "has_media": true,
+          "media_type": "image",
+          "url": "https://linkedin.com/competitor_analyticshub/posts/7"
+        },
+        {
+          "post_id": "competitor_analyticshub_linkedin_008",
+          "content": "Новое обновление AnalyticsHub 3.2!\n\nЧто нового:\n✨ Новый алгоритм,интерфейс,функционал\n📊 Новые графики,отчеты,дашборды\n🔔 Автоматизация\n\nОбновление бесплатное для всех пользователей!\n\n#Обновление #AnalyticsHub #Новости",
+          "post_type": "text_with_image",
+          "publication_date": "2025-11-18T06:00:00.000Z",
+          "metrics": {
+            "likes": 114,
+            "views": 4197,
+            "comments": 28,
+            "shares": 10
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика"
+          ],
+          "mentions": [],
+          "length": 218,
+          "has_media": true,
+          "media_type": "image",
+          "url": "https://linkedin.com/competitor_analyticshub/posts/8"
+        },
+        {
+          "post_id": "competitor_analyticshub_linkedin_009",
+          "content": "Кейс: Как AnalyticsHub помог компании увеличить эффективность на 30% за 5 месяца.\n\nРезультаты:\n✅ Сокращение времени на 65%\n✅ Рост точности на 15%\n✅ ROI составил 268%\n\nПодробнее в комментариях 👇\n\n#КейсСтади #БизнесАналитика #AnalyticsHub",
+          "post_type": "text",
+          "publication_date": "2025-12-25T13:15:00.000Z",
+          "metrics": {
+            "likes": 262,
+            "views": 9800,
+            "comments": 31,
+            "shares": 17
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика",
+            "#Бизнес"
+          ],
+          "mentions": [],
+          "length": 237,
+          "has_media": false,
+          "media_type": null,
+          "url": "https://linkedin.com/competitor_analyticshub/posts/9"
+        },
+        {
+          "post_id": "competitor_analyticshub_linkedin_010",
+          "content": "7 способов улучшить качество бизнес-решений:\n\n1. Оптимизируйте процессы\n2. Используйте стратегии\n3. Используйте метрики\n\nКаждый из этих пунктов может значительно повысить эффективность.\n\n#Экспертиза #БизнесАналитика #Советы",
+          "post_type": "video",
+          "publication_date": "2025-12-14T12:00:00.000Z",
+          "metrics": {
+            "likes": 176,
+            "views": 5365,
+            "comments": 28,
+            "shares": 6
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика",
+            "#Бизнес"
+          ],
+          "mentions": [],
+          "length": 223,
+          "has_media": true,
+          "media_type": "video",
+          "url": "https://linkedin.com/competitor_analyticshub/posts/10"
+        },
+        {
+          "post_id": "competitor_analyticshub_linkedin_011",
+          "content": "🎯 Опрос: Что важнее в вашей аналитике?\n\nА) Сложная визуализация\nБ) Низкая точность\nВ) Нехватка экспертизы\n\nНапишите свой вариант в комментариях! 👇\n\n#Опрос #БизнесАналитика #Интерактив",
+          "post_type": "video",
+          "publication_date": "2026-02-12T12:45:00.000Z",
+          "metrics": {
+            "likes": 258,
+            "views": 11764,
+            "comments": 62,
+            "shares": 22
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика",
+            "#Бизнес",
+            "#КейсСтади"
+          ],
+          "mentions": [],
+          "length": 185,
+          "has_media": true,
+          "media_type": "video",
+          "url": "https://linkedin.com/competitor_analyticshub/posts/11"
+        },
+        {
+          "post_id": "competitor_analyticshub_linkedin_012",
+          "content": "Новое обновление AnalyticsHub 2.2!\n\nЧто нового:\n✨ Обновленный алгоритм,интерфейс,функционал\n📊 Улучшенные графики,отчеты,дашборды\n🔔 Автоматизация\n\nОбновление бесплатное для всех пользователей!\n\n#Обновление #AnalyticsHub #Новости",
+          "post_type": "text_with_image",
+          "publication_date": "2025-10-29T05:30:00.000Z",
+          "metrics": {
+            "likes": 159,
+            "views": 5207,
+            "comments": 16,
+            "shares": 3
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience"
+          ],
+          "mentions": [],
+          "length": 229,
+          "has_media": true,
+          "media_type": "image",
+          "url": "https://linkedin.com/competitor_analyticshub/posts/12"
+        }
+      ]
+    },
+    {
+      "competitor_id": "competitor_datavision",
+      "name": "DataVision",
+      "platform": "vk",
+      "follower_count": 10677,
+      "posts": [
+        {
+          "post_id": "competitor_datavision_vk_001",
+          "content": "Приглашаем на вебинар \"Практика автоматизации\"\n\n📅 16 апреля, 21:00 МСК\n👨‍💼 Спикер: Алексей Иванов\n\nРегистрация: [ссылка]\n\n#Вебинар #Обучение #БизнесАналитика",
+          "post_type": "video",
+          "publication_date": "2026-01-02T09:00:00.000Z",
+          "metrics": {
+            "likes": 134,
+            "views": 7198,
+            "comments": 34,
+            "shares": 17
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика",
+            "#Бизнес"
+          ],
+          "mentions": [],
+          "length": 160,
+          "has_media": true,
+          "media_type": "video",
+          "url": "https://vk.com/competitor_datavision/posts/1"
+        },
+        {
+          "post_id": "competitor_datavision_vk_002",
+          "content": "Кейс: Как DataVision помог компании увеличить эффективность на 28% за 7 месяца.\n\nРезультаты:\n✅ Сокращение времени на 33%\n✅ Рост точности на 38%\n✅ ROI составил 168%\n\nПодробнее в комментариях 👇\n\n#КейсСтади #БизнесАналитика #DataVision",
+          "post_type": "text",
+          "publication_date": "2025-12-13T16:45:00.000Z",
+          "metrics": {
+            "likes": 168,
+            "views": 6620,
+            "comments": 38,
+            "shares": 24
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика",
+            "#Бизнес",
+            "#КейсСтади"
+          ],
+          "mentions": [],
+          "length": 233,
+          "has_media": false,
+          "media_type": null,
+          "url": "https://vk.com/competitor_datavision/posts/2"
+        },
+        {
+          "post_id": "competitor_datavision_vk_003",
+          "content": "Новости: Компания DataVision анонсировала улучшенный функционал.\n\nТеперь пользователи смогут улучшить работу.\n\nПодробнее: [ссылка]\n\n#Новости #DataVision #Анонс",
+          "post_type": "text",
+          "publication_date": "2025-11-14T09:00:00.000Z",
+          "metrics": {
+            "likes": 164,
+            "views": 2871,
+            "comments": 9,
+            "shares": 5
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика",
+            "#Бизнес",
+            "#КейсСтади"
+          ],
+          "mentions": [],
+          "length": 159,
+          "has_media": false,
+          "media_type": null,
+          "url": "https://vk.com/competitor_datavision/posts/3"
+        },
+        {
+          "post_id": "competitor_datavision_vk_004",
+          "content": "Приглашаем на конференцию \"Практика data science\"\n\n📅 2 марта, 16:00 МСК\n👨‍💼 Спикер: Иван Петров\n\nРегистрация: [ссылка]\n\n#Вебинар #Обучение #БизнесАналитика",
+          "post_type": "text_with_image",
+          "publication_date": "2025-12-01T13:00:00.000Z",
+          "metrics": {
+            "likes": 288,
+            "views": 5447,
+            "comments": 28,
+            "shares": 24
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика",
+            "#Бизнес"
+          ],
+          "mentions": [],
+          "length": 158,
+          "has_media": true,
+          "media_type": "image",
+          "url": "https://vk.com/competitor_datavision/posts/4"
+        },
+        {
+          "post_id": "competitor_datavision_vk_005",
+          "content": "Что такое бизнес-аналитика?\n\nПодробное объяснение:\n\n• Это метод использования метрик\n• Это метод анализа информации\n• Это процесс анализа информации\n\nУзнайте больше в нашем блоге!\n\n#Обучение #БизнесАналитика #Образование",
+          "post_type": "video",
+          "publication_date": "2025-11-27T13:00:00.000Z",
+          "metrics": {
+            "likes": 136,
+            "views": 4021,
+            "comments": 14,
+            "shares": 10
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика"
+          ],
+          "mentions": [],
+          "length": 220,
+          "has_media": true,
+          "media_type": "video",
+          "url": "https://vk.com/competitor_datavision/posts/5"
+        },
+        {
+          "post_id": "competitor_datavision_vk_006",
+          "content": "🎯 Опрос: Что важнее в вашей аналитике?\n\nА) Долгая обработка\nБ) Низкая точность\nВ) Дорогие инструменты\n\nНапишите свой вариант в комментариях! 👇\n\n#Опрос #БизнесАналитика #Интерактив",
+          "post_type": "text_with_image",
+          "publication_date": "2026-02-10T16:00:00.000Z",
+          "metrics": {
+            "likes": 306,
+            "views": 6462,
+            "comments": 58,
+            "shares": 27
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика",
+            "#Бизнес",
+            "#КейсСтади"
+          ],
+          "mentions": [],
+          "length": 181,
+          "has_media": true,
+          "media_type": "image",
+          "url": "https://vk.com/competitor_datavision/posts/6"
+        },
+        {
+          "post_id": "competitor_datavision_vk_007",
+          "content": "Кейс: Как DataVision помог компании увеличить эффективность на 30% за 6 месяца.\n\nРезультаты:\n✅ Сокращение времени на 63%\n✅ Рост точности на 19%\n✅ ROI составил 286%\n\nПодробнее в комментариях 👇\n\n#КейсСтади #БизнесАналитика #DataVision",
+          "post_type": "text_with_image",
+          "publication_date": "2025-11-13T16:45:00.000Z",
+          "metrics": {
+            "likes": 293,
+            "views": 9342,
+            "comments": 53,
+            "shares": 26
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика",
+            "#Бизнес"
+          ],
+          "mentions": [],
+          "length": 233,
+          "has_media": true,
+          "media_type": "image",
+          "url": "https://vk.com/competitor_datavision/posts/7"
+        },
+        {
+          "post_id": "competitor_datavision_vk_008",
+          "content": "Что такое бизнес-аналитика?\n\nПодробное объяснение:\n\n• Это инструмент использования данных\n• Это метод использования метрик\n• Это инструмент обработки метрик\n\nУзнайте больше в нашем блоге!\n\n#Обучение #БизнесАналитика #Образование",
+          "post_type": "video",
+          "publication_date": "2025-11-21T11:00:00.000Z",
+          "metrics": {
+            "likes": 179,
+            "views": 5767,
+            "comments": 15,
+            "shares": 6
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика",
+            "#Бизнес",
+            "#КейсСтади"
+          ],
+          "mentions": [],
+          "length": 228,
+          "has_media": true,
+          "media_type": "video",
+          "url": "https://vk.com/competitor_datavision/posts/8"
+        },
+        {
+          "post_id": "competitor_datavision_vk_009",
+          "content": "Приглашаем на конференцию \"Секреты автоматизации\"\n\n📅 15 марта, 19:00 МСК\n👨‍💼 Спикер: Алексей Иванов\n\nРегистрация: [ссылка]\n\n#Вебинар #Обучение #БизнесАналитика",
+          "post_type": "video",
+          "publication_date": "2026-01-09T08:30:00.000Z",
+          "metrics": {
+            "likes": 189,
+            "views": 5311,
+            "comments": 25,
+            "shares": 19
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика",
+            "#Бизнес",
+            "#КейсСтади"
+          ],
+          "mentions": [],
+          "length": 162,
+          "has_media": true,
+          "media_type": "video",
+          "url": "https://vk.com/competitor_datavision/posts/9"
+        },
+        {
+          "post_id": "competitor_datavision_vk_010",
+          "content": "Кейс: Как DataVision помог компании увеличить эффективность на 45% за 4 месяца.\n\nРезультаты:\n✅ Сокращение времени на 35%\n✅ Рост точности на 23%\n✅ ROI составил 200%\n\nПодробнее в комментариях 👇\n\n#КейсСтади #БизнесАналитика #DataVision",
+          "post_type": "video",
+          "publication_date": "2025-12-12T12:45:00.000Z",
+          "metrics": {
+            "likes": 184,
+            "views": 7292,
+            "comments": 57,
+            "shares": 12
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика",
+            "#Бизнес"
+          ],
+          "mentions": [],
+          "length": 233,
+          "has_media": true,
+          "media_type": "video",
+          "url": "https://vk.com/competitor_datavision/posts/10"
+        }
+      ]
+    },
+    {
+      "competitor_id": "competitor_insightpro",
+      "name": "InsightPro",
+      "platform": "telegram",
+      "follower_count": 12317,
+      "posts": [
+        {
+          "post_id": "competitor_insightpro_telegram_001",
+          "content": "Что такое автоматизация аналитики?\n\nКраткое объяснение:\n\n• Это метод использования информации\n• Это процесс анализа данных\n• Это метод использования метрик\n\nУзнайте больше в нашем блоге!\n\n#Обучение #БизнесАналитика #Образование",
+          "post_type": "text_with_image",
+          "publication_date": "2025-12-02T15:30:00.000Z",
+          "metrics": {
+            "likes": 208,
+            "views": 6915,
+            "comments": 34,
+            "shares": 13
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience"
+          ],
+          "mentions": [],
+          "length": 227,
+          "has_media": true,
+          "media_type": "image",
+          "url": "https://telegram.com/competitor_insightpro/posts/1"
+        },
+        {
+          "post_id": "competitor_insightpro_telegram_002",
+          "content": "Новости: Компания InsightPro запустила улучшенный функционал.\n\nЭто позволит автоматизировать работу.\n\nПодробнее: [ссылка]\n\n#Новости #InsightPro #Анонс",
+          "post_type": "text",
+          "publication_date": "2025-10-29T05:45:00.000Z",
+          "metrics": {
+            "likes": 149,
+            "views": 4660,
+            "comments": 18,
+            "shares": 5
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика"
+          ],
+          "mentions": [],
+          "length": 150,
+          "has_media": false,
+          "media_type": null,
+          "url": "https://telegram.com/competitor_insightpro/posts/2"
+        },
+        {
+          "post_id": "competitor_insightpro_telegram_003",
+          "content": "Новое обновление InsightPro 1.3!\n\nЧто нового:\n✨ Новый алгоритм,интерфейс,функционал\n📊 Улучшенные графики,отчеты,дашборды\n🔔 Уведомления\n\nОбновление бесплатное для всех пользователей!\n\n#Обновление #InsightPro #Новости",
+          "post_type": "video",
+          "publication_date": "2025-11-01T08:15:00.000Z",
+          "metrics": {
+            "likes": 86,
+            "views": 5541,
+            "comments": 28,
+            "shares": 3
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика",
+            "#Бизнес"
+          ],
+          "mentions": [],
+          "length": 217,
+          "has_media": true,
+          "media_type": "video",
+          "url": "https://telegram.com/competitor_insightpro/posts/3"
+        },
+        {
+          "post_id": "competitor_insightpro_telegram_004",
+          "content": "Приглашаем на мастер-класс \"Как внедрить бизнес-аналитики\"\n\n📅 17 марта, 20:00 МСК\n👨‍💼 Спикер: Алексей Иванов\n\nРегистрация: [ссылка]\n\n#Вебинар #Обучение #БизнесАналитика",
+          "post_type": "video",
+          "publication_date": "2026-01-12T06:15:00.000Z",
+          "metrics": {
+            "likes": 282,
+            "views": 7383,
+            "comments": 43,
+            "shares": 24
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика",
+            "#Бизнес",
+            "#КейсСтади"
+          ],
+          "mentions": [],
+          "length": 171,
+          "has_media": true,
+          "media_type": "video",
+          "url": "https://telegram.com/competitor_insightpro/posts/4"
+        },
+        {
+          "post_id": "competitor_insightpro_telegram_005",
+          "content": "Что такое data science?\n\nПодробное объяснение:\n\n• Это инструмент использования метрик\n• Это процесс обработки информации\n• Это метод анализа данных\n\nУзнайте больше в нашем блоге!\n\n#Обучение #БизнесАналитика #Образование",
+          "post_type": "text",
+          "publication_date": "2025-10-30T12:45:00.000Z",
+          "metrics": {
+            "likes": 101,
+            "views": 6245,
+            "comments": 23,
+            "shares": 13
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience"
+          ],
+          "mentions": [],
+          "length": 219,
+          "has_media": false,
+          "media_type": null,
+          "url": "https://telegram.com/competitor_insightpro/posts/5"
+        },
+        {
+          "post_id": "competitor_insightpro_telegram_006",
+          "content": "Что такое бизнес-аналитика?\n\nПростое объяснение:\n\n• Это метод использования информации\n• Это метод использования информации\n• Это метод обработки данных\n\nУзнайте больше в нашем блоге!\n\n#Обучение #БизнесАналитика #Образование",
+          "post_type": "text_with_image",
+          "publication_date": "2026-02-20T13:00:00.000Z",
+          "metrics": {
+            "likes": 180,
+            "views": 6682,
+            "comments": 21,
+            "shares": 6
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience"
+          ],
+          "mentions": [],
+          "length": 224,
+          "has_media": true,
+          "media_type": "image",
+          "url": "https://telegram.com/competitor_insightpro/posts/6"
+        },
+        {
+          "post_id": "competitor_insightpro_telegram_007",
+          "content": "4 способов улучшить качество бизнес-решений:\n\n1. Анализируйте метрики\n2. Внедряйте процессы\n3. Анализируйте процессы\n\nКаждый из этих пунктов может значительно повысить эффективность.\n\n#Экспертиза #БизнесАналитика #Советы",
+          "post_type": "text",
+          "publication_date": "2025-12-26T05:45:00.000Z",
+          "metrics": {
+            "likes": 148,
+            "views": 6567,
+            "comments": 44,
+            "shares": 8
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика"
+          ],
+          "mentions": [],
+          "length": 220,
+          "has_media": false,
+          "media_type": null,
+          "url": "https://telegram.com/competitor_insightpro/posts/7"
+        },
+        {
+          "post_id": "competitor_insightpro_telegram_008",
+          "content": "3 способов улучшить качество бизнес-решений:\n\n1. Автоматизируйте инструменты\n2. Анализируйте метрики\n3. Оптимизируйте метрики\n4. Оптимизируйте стратегии\n5. Внедряйте стратегии\n6. Оптимизируйте стратегии\n\nКаждый из этих пунктов может значительно повысить эффективность.\n\n#Экспертиза #БизнесАналитика #Советы",
+          "post_type": "video",
+          "publication_date": "2025-12-30T07:00:00.000Z",
+          "metrics": {
+            "likes": 126,
+            "views": 5841,
+            "comments": 30,
+            "shares": 15
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика",
+            "#Бизнес"
+          ],
+          "mentions": [],
+          "length": 306,
+          "has_media": true,
+          "media_type": "video",
+          "url": "https://telegram.com/competitor_insightpro/posts/8"
+        }
+      ]
+    },
+    {
+      "competitor_id": "competitor_bizanalytics",
+      "name": "BizAnalytics",
+      "platform": "linkedin",
+      "follower_count": 17814,
+      "posts": [
+        {
+          "post_id": "competitor_bizanalytics_linkedin_001",
+          "content": "Кейс: Как BizAnalytics помог компании увеличить эффективность на 24% за 6 месяца.\n\nРезультаты:\n✅ Сокращение времени на 58%\n✅ Рост точности на 22%\n✅ ROI составил 201%\n\nПодробнее в комментариях 👇\n\n#КейсСтади #БизнесАналитика #BizAnalytics",
+          "post_type": "text_with_image",
+          "publication_date": "2026-01-08T11:15:00.000Z",
+          "metrics": {
+            "likes": 264,
+            "views": 7573,
+            "comments": 59,
+            "shares": 13
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика",
+            "#Бизнес"
+          ],
+          "mentions": [],
+          "length": 237,
+          "has_media": true,
+          "media_type": "image",
+          "url": "https://linkedin.com/competitor_bizanalytics/posts/1"
+        },
+        {
+          "post_id": "competitor_bizanalytics_linkedin_002",
+          "content": "Приглашаем на мастер-класс \"Как внедрить бизнес-аналитики\"\n\n📅 20 марта, 15:00 МСК\n👨‍💼 Спикер: Алексей Иванов\n\nРегистрация: [ссылка]\n\n#Вебинар #Обучение #БизнесАналитика",
+          "post_type": "video",
+          "publication_date": "2025-12-07T16:45:00.000Z",
+          "metrics": {
+            "likes": 187,
+            "views": 4908,
+            "comments": 40,
+            "shares": 13
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика",
+            "#Бизнес"
+          ],
+          "mentions": [],
+          "length": 171,
+          "has_media": true,
+          "media_type": "video",
+          "url": "https://linkedin.com/competitor_bizanalytics/posts/2"
+        },
+        {
+          "post_id": "competitor_bizanalytics_linkedin_003",
+          "content": "Приглашаем на онлайн-встречу \"Практика автоматизации\"\n\n📅 22 апреля, 18:00 МСК\n👨‍💼 Спикер: Алексей Иванов\n\nРегистрация: [ссылка]\n\n#Вебинар #Обучение #БизнесАналитика",
+          "post_type": "video",
+          "publication_date": "2025-12-29T16:15:00.000Z",
+          "metrics": {
+            "likes": 273,
+            "views": 7737,
+            "comments": 38,
+            "shares": 15
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience"
+          ],
+          "mentions": [],
+          "length": 167,
+          "has_media": true,
+          "media_type": "video",
+          "url": "https://linkedin.com/competitor_bizanalytics/posts/3"
+        },
+        {
+          "post_id": "competitor_bizanalytics_linkedin_004",
+          "content": "Кейс: Как BizAnalytics помог компании увеличить эффективность на 36% за 5 месяца.\n\nРезультаты:\n✅ Сокращение времени на 70%\n✅ Рост точности на 33%\n✅ ROI составил 260%\n\nПодробнее в комментариях 👇\n\n#КейсСтади #БизнесАналитика #BizAnalytics",
+          "post_type": "text",
+          "publication_date": "2026-01-22T07:00:00.000Z",
+          "metrics": {
+            "likes": 254,
+            "views": 9299,
+            "comments": 55,
+            "shares": 27
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика"
+          ],
+          "mentions": [],
+          "length": 237,
+          "has_media": false,
+          "media_type": null,
+          "url": "https://linkedin.com/competitor_bizanalytics/posts/4"
+        },
+        {
+          "post_id": "competitor_bizanalytics_linkedin_005",
+          "content": "Кейс: Как BizAnalytics помог компании увеличить эффективность на 21% за 2 месяца.\n\nРезультаты:\n✅ Сокращение времени на 46%\n✅ Рост точности на 18%\n✅ ROI составил 166%\n\nПодробнее в комментариях 👇\n\n#КейсСтади #БизнесАналитика #BizAnalytics",
+          "post_type": "video",
+          "publication_date": "2025-11-30T10:15:00.000Z",
+          "metrics": {
+            "likes": 203,
+            "views": 8600,
+            "comments": 48,
+            "shares": 28
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика",
+            "#Бизнес",
+            "#КейсСтади"
+          ],
+          "mentions": [],
+          "length": 237,
+          "has_media": true,
+          "media_type": "video",
+          "url": "https://linkedin.com/competitor_bizanalytics/posts/5"
+        },
+        {
+          "post_id": "competitor_bizanalytics_linkedin_006",
+          "content": "Новости: Стартап BizAnalytics анонсировала улучшенный сервис.\n\nЭто позволит оптимизировать процессы.\n\nПодробнее: [ссылка]\n\n#Новости #BizAnalytics #Анонс",
+          "post_type": "text_with_image",
+          "publication_date": "2026-02-20T12:00:00.000Z",
+          "metrics": {
+            "likes": 102,
+            "views": 2688,
+            "comments": 18,
+            "shares": 6
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience"
+          ],
+          "mentions": [],
+          "length": 152,
+          "has_media": true,
+          "media_type": "image",
+          "url": "https://linkedin.com/competitor_bizanalytics/posts/6"
+        },
+        {
+          "post_id": "competitor_bizanalytics_linkedin_007",
+          "content": "3 способов улучшить качество бизнес-решений:\n\n1. Используйте процессы\n2. Внедряйте стратегии\n3. Используйте инструменты\n4. Анализируйте инструменты\n5. Анализируйте стратегии\n6. Используйте инструменты\n7. Оптимизируйте данные\n\nКаждый из этих пунктов может значительно повысить эффективность.\n\n#Экспертиза #БизнесАналитика #Советы",
+          "post_type": "text",
+          "publication_date": "2025-12-14T15:45:00.000Z",
+          "metrics": {
+            "likes": 147,
+            "views": 7453,
+            "comments": 21,
+            "shares": 6
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика",
+            "#Бизнес"
+          ],
+          "mentions": [],
+          "length": 328,
+          "has_media": false,
+          "media_type": null,
+          "url": "https://linkedin.com/competitor_bizanalytics/posts/7"
+        },
+        {
+          "post_id": "competitor_bizanalytics_linkedin_008",
+          "content": "Приглашаем на конференцию \"Как внедрить автоматизации\"\n\n📅 10 мая, 17:00 МСК\n👨‍💼 Спикер: Иван Петров\n\nРегистрация: [ссылка]\n\n#Вебинар #Обучение #БизнесАналитика",
+          "post_type": "video",
+          "publication_date": "2025-12-05T10:30:00.000Z",
+          "metrics": {
+            "likes": 268,
+            "views": 8928,
+            "comments": 53,
+            "shares": 22
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика",
+            "#Бизнес"
+          ],
+          "mentions": [],
+          "length": 162,
+          "has_media": true,
+          "media_type": "video",
+          "url": "https://linkedin.com/competitor_bizanalytics/posts/8"
+        }
+      ]
+    },
+    {
+      "competitor_id": "competitor_cloudmetrics",
+      "name": "CloudMetrics",
+      "platform": "vk",
+      "follower_count": 11462,
+      "posts": [
+        {
+          "post_id": "competitor_cloudmetrics_vk_001",
+          "content": "Кейс: Как CloudMetrics помог компании увеличить эффективность на 59% за 3 месяца.\n\nРезультаты:\n✅ Сокращение времени на 62%\n✅ Рост точности на 24%\n✅ ROI составил 202%\n\nПодробнее в комментариях 👇\n\n#КейсСтади #БизнесАналитика #CloudMetrics",
+          "post_type": "video",
+          "publication_date": "2025-11-02T11:00:00.000Z",
+          "metrics": {
+            "likes": 197,
+            "views": 6071,
+            "comments": 41,
+            "shares": 10
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience"
+          ],
+          "mentions": [],
+          "length": 237,
+          "has_media": true,
+          "media_type": "video",
+          "url": "https://vk.com/competitor_cloudmetrics/posts/1"
+        },
+        {
+          "post_id": "competitor_cloudmetrics_vk_002",
+          "content": "Приглашаем на онлайн-встречу \"Как внедрить бизнес-аналитики\"\n\n📅 23 апреля, 14:00 МСК\n👨‍💼 Спикер: Алексей Иванов\n\nРегистрация: [ссылка]\n\n#Вебинар #Обучение #БизнесАналитика",
+          "post_type": "video",
+          "publication_date": "2026-02-22T11:15:00.000Z",
+          "metrics": {
+            "likes": 212,
+            "views": 4512,
+            "comments": 32,
+            "shares": 8
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика"
+          ],
+          "mentions": [],
+          "length": 174,
+          "has_media": true,
+          "media_type": "video",
+          "url": "https://vk.com/competitor_cloudmetrics/posts/2"
+        },
+        {
+          "post_id": "competitor_cloudmetrics_vk_003",
+          "content": "Новости: Стартап CloudMetrics анонсировала расширенный сервис.\n\nНовая функция автоматизировать аналитику.\n\nПодробнее: [ссылка]\n\n#Новости #CloudMetrics #Анонс",
+          "post_type": "text",
+          "publication_date": "2025-12-28T05:15:00.000Z",
+          "metrics": {
+            "likes": 94,
+            "views": 2585,
+            "comments": 11,
+            "shares": 8
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика"
+          ],
+          "mentions": [],
+          "length": 157,
+          "has_media": false,
+          "media_type": null,
+          "url": "https://vk.com/competitor_cloudmetrics/posts/3"
+        },
+        {
+          "post_id": "competitor_cloudmetrics_vk_004",
+          "content": "Что такое бизнес-аналитика?\n\nПодробное объяснение:\n\n• Это инструмент использования информации\n• Это процесс обработки информации\n• Это метод анализа метрик\n\nУзнайте больше в нашем блоге!\n\n#Обучение #БизнесАналитика #Образование",
+          "post_type": "text_with_image",
+          "publication_date": "2025-12-13T11:45:00.000Z",
+          "metrics": {
+            "likes": 211,
+            "views": 4518,
+            "comments": 13,
+            "shares": 13
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика"
+          ],
+          "mentions": [],
+          "length": 227,
+          "has_media": true,
+          "media_type": "image",
+          "url": "https://vk.com/competitor_cloudmetrics/posts/4"
+        },
+        {
+          "post_id": "competitor_cloudmetrics_vk_005",
+          "content": "4 способов улучшить качество бизнес-решений:\n\n1. Внедряйте данные\n2. Автоматизируйте процессы\n3. Используйте стратегии\n4. Внедряйте метрики\n5. Оптимизируйте метрики\n\nКаждый из этих пунктов может значительно повысить эффективность.\n\n#Экспертиза #БизнесАналитика #Советы",
+          "post_type": "text_with_image",
+          "publication_date": "2026-02-04T15:15:00.000Z",
+          "metrics": {
+            "likes": 214,
+            "views": 6021,
+            "comments": 26,
+            "shares": 11
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience"
+          ],
+          "mentions": [],
+          "length": 268,
+          "has_media": true,
+          "media_type": "image",
+          "url": "https://vk.com/competitor_cloudmetrics/posts/5"
+        },
+        {
+          "post_id": "competitor_cloudmetrics_vk_006",
+          "content": "Кейс: Как CloudMetrics помог компании увеличить эффективность на 34% за 5 месяца.\n\nРезультаты:\n✅ Сокращение времени на 68%\n✅ Рост точности на 17%\n✅ ROI составил 236%\n\nПодробнее в комментариях 👇\n\n#КейсСтади #БизнесАналитика #CloudMetrics",
+          "post_type": "text",
+          "publication_date": "2025-11-28T09:00:00.000Z",
+          "metrics": {
+            "likes": 340,
+            "views": 6917,
+            "comments": 41,
+            "shares": 23
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика",
+            "#Бизнес"
+          ],
+          "mentions": [],
+          "length": 237,
+          "has_media": false,
+          "media_type": null,
+          "url": "https://vk.com/competitor_cloudmetrics/posts/6"
+        },
+        {
+          "post_id": "competitor_cloudmetrics_vk_007",
+          "content": "6 способов улучшить качество бизнес-решений:\n\n1. Используйте стратегии\n2. Оптимизируйте стратегии\n3. Используйте стратегии\n4. Автоматизируйте метрики\n5. Анализируйте данные\n6. Автоматизируйте стратегии\n7. Анализируйте данные\n\nКаждый из этих пунктов может значительно повысить эффективность.\n\n#Экспертиза #БизнесАналитика #Советы",
+          "post_type": "text",
+          "publication_date": "2026-02-04T05:30:00.000Z",
+          "metrics": {
+            "likes": 179,
+            "views": 7963,
+            "comments": 26,
+            "shares": 14
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика",
+            "#Бизнес",
+            "#КейсСтади"
+          ],
+          "mentions": [],
+          "length": 328,
+          "has_media": false,
+          "media_type": null,
+          "url": "https://vk.com/competitor_cloudmetrics/posts/7"
+        },
+        {
+          "post_id": "competitor_cloudmetrics_vk_008",
+          "content": "🎯 Опрос: Какой инструмент в вашей аналитике?\n\nА) Недостаточно данных\nБ) Низкая точность\nВ) Дорогие инструменты\n\nНапишите свой вариант в комментариях! 👇\n\n#Опрос #БизнесАналитика #Интерактив",
+          "post_type": "text_with_image",
+          "publication_date": "2025-12-23T08:45:00.000Z",
+          "metrics": {
+            "likes": 388,
+            "views": 8627,
+            "comments": 51,
+            "shares": 31
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience"
+          ],
+          "mentions": [],
+          "length": 190,
+          "has_media": true,
+          "media_type": "image",
+          "url": "https://vk.com/competitor_cloudmetrics/posts/8"
+        },
+        {
+          "post_id": "competitor_cloudmetrics_vk_009",
+          "content": "Кейс: Как CloudMetrics помог компании увеличить эффективность на 54% за 7 месяца.\n\nРезультаты:\n✅ Сокращение времени на 67%\n✅ Рост точности на 28%\n✅ ROI составил 212%\n\nПодробнее в комментариях 👇\n\n#КейсСтади #БизнесАналитика #CloudMetrics",
+          "post_type": "text_with_image",
+          "publication_date": "2025-11-21T16:30:00.000Z",
+          "metrics": {
+            "likes": 312,
+            "views": 8927,
+            "comments": 60,
+            "shares": 10
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика",
+            "#Бизнес"
+          ],
+          "mentions": [],
+          "length": 237,
+          "has_media": true,
+          "media_type": "image",
+          "url": "https://vk.com/competitor_cloudmetrics/posts/9"
+        },
+        {
+          "post_id": "competitor_cloudmetrics_vk_010",
+          "content": "Новости: Платформа CloudMetrics запустила расширенный инструмент.\n\nТеперь пользователи смогут автоматизировать процессы.\n\nПодробнее: [ссылка]\n\n#Новости #CloudMetrics #Анонс",
+          "post_type": "video",
+          "publication_date": "2026-01-23T07:30:00.000Z",
+          "metrics": {
+            "likes": 79,
+            "views": 4144,
+            "comments": 9,
+            "shares": 2
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience"
+          ],
+          "mentions": [],
+          "length": 172,
+          "has_media": true,
+          "media_type": "video",
+          "url": "https://vk.com/competitor_cloudmetrics/posts/10"
+        },
+        {
+          "post_id": "competitor_cloudmetrics_vk_011",
+          "content": "Новости: Платформа CloudMetrics анонсировала новый сервис.\n\nЭто позволит улучшить аналитику.\n\nПодробнее: [ссылка]\n\n#Новости #CloudMetrics #Анонс",
+          "post_type": "text_with_image",
+          "publication_date": "2025-11-13T14:00:00.000Z",
+          "metrics": {
+            "likes": 127,
+            "views": 4147,
+            "comments": 18,
+            "shares": 6
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика"
+          ],
+          "mentions": [],
+          "length": 144,
+          "has_media": true,
+          "media_type": "image",
+          "url": "https://vk.com/competitor_cloudmetrics/posts/11"
+        },
+        {
+          "post_id": "competitor_cloudmetrics_vk_012",
+          "content": "6 способов улучшить качество бизнес-решений:\n\n1. Внедряйте метрики\n2. Оптимизируйте инструменты\n3. Оптимизируйте стратегии\n4. Внедряйте метрики\n5. Используйте стратегии\n\nКаждый из этих пунктов может значительно повысить эффективность.\n\n#Экспертиза #БизнесАналитика #Советы",
+          "post_type": "text_with_image",
+          "publication_date": "2026-01-25T05:30:00.000Z",
+          "metrics": {
+            "likes": 193,
+            "views": 6317,
+            "comments": 23,
+            "shares": 7
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика"
+          ],
+          "mentions": [],
+          "length": 272,
+          "has_media": true,
+          "media_type": "image",
+          "url": "https://vk.com/competitor_cloudmetrics/posts/12"
+        },
+        {
+          "post_id": "competitor_cloudmetrics_vk_013",
+          "content": "Кейс: Как CloudMetrics помог компании увеличить эффективность на 27% за 4 месяца.\n\nРезультаты:\n✅ Сокращение времени на 40%\n✅ Рост точности на 38%\n✅ ROI составил 234%\n\nПодробнее в комментариях 👇\n\n#КейсСтади #БизнесАналитика #CloudMetrics",
+          "post_type": "video",
+          "publication_date": "2026-01-03T13:30:00.000Z",
+          "metrics": {
+            "likes": 347,
+            "views": 9298,
+            "comments": 41,
+            "shares": 22
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика",
+            "#Бизнес"
+          ],
+          "mentions": [],
+          "length": 237,
+          "has_media": true,
+          "media_type": "video",
+          "url": "https://vk.com/competitor_cloudmetrics/posts/13"
+        }
+      ]
+    },
+    {
+      "competitor_id": "competitor_dataflow",
+      "name": "DataFlow",
+      "platform": "telegram",
+      "follower_count": 12460,
+      "posts": [
+        {
+          "post_id": "competitor_dataflow_telegram_001",
+          "content": "Новое обновление DataFlow 1.4!\n\nЧто нового:\n✨ Обновленный алгоритм,интерфейс,функционал\n📊 Новые графики,отчеты,дашборды\n🔔 Интеграции\n\nОбновление бесплатное для всех пользователей!\n\n#Обновление #DataFlow #Новости",
+          "post_type": "text_with_image",
+          "publication_date": "2026-01-29T09:45:00.000Z",
+          "metrics": {
+            "likes": 197,
+            "views": 4572,
+            "comments": 28,
+            "shares": 4
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика"
+          ],
+          "mentions": [],
+          "length": 213,
+          "has_media": true,
+          "media_type": "image",
+          "url": "https://telegram.com/competitor_dataflow/posts/1"
+        },
+        {
+          "post_id": "competitor_dataflow_telegram_002",
+          "content": "🎯 Опрос: Что важнее в вашей аналитике?\n\nА) Сложная визуализация\nБ) Данные в разных системах\nВ) Дорогие инструменты\n\nНапишите свой вариант в комментариях! 👇\n\n#Опрос #БизнесАналитика #Интерактив",
+          "post_type": "text",
+          "publication_date": "2026-02-12T09:30:00.000Z",
+          "metrics": {
+            "likes": 379,
+            "views": 8188,
+            "comments": 96,
+            "shares": 28
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика"
+          ],
+          "mentions": [],
+          "length": 194,
+          "has_media": false,
+          "media_type": null,
+          "url": "https://telegram.com/competitor_dataflow/posts/2"
+        },
+        {
+          "post_id": "competitor_dataflow_telegram_003",
+          "content": "Что такое автоматизация аналитики?\n\nПодробное объяснение:\n\n• Это процесс обработки данных\n• Это метод использования метрик\n• Это процесс анализа данных\n\nУзнайте больше в нашем блоге!\n\n#Обучение #БизнесАналитика #Образование",
+          "post_type": "video",
+          "publication_date": "2026-01-09T13:15:00.000Z",
+          "metrics": {
+            "likes": 171,
+            "views": 6911,
+            "comments": 28,
+            "shares": 9
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience"
+          ],
+          "mentions": [],
+          "length": 223,
+          "has_media": true,
+          "media_type": "video",
+          "url": "https://telegram.com/competitor_dataflow/posts/3"
+        },
+        {
+          "post_id": "competitor_dataflow_telegram_004",
+          "content": "Новости: Компания DataFlow анонсировала расширенный инструмент.\n\nТеперь пользователи смогут улучшить аналитику.\n\nПодробнее: [ссылка]\n\n#Новости #DataFlow #Анонс",
+          "post_type": "video",
+          "publication_date": "2026-01-13T15:30:00.000Z",
+          "metrics": {
+            "likes": 79,
+            "views": 2550,
+            "comments": 12,
+            "shares": 9
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика",
+            "#Бизнес"
+          ],
+          "mentions": [],
+          "length": 159,
+          "has_media": true,
+          "media_type": "video",
+          "url": "https://telegram.com/competitor_dataflow/posts/4"
+        },
+        {
+          "post_id": "competitor_dataflow_telegram_005",
+          "content": "Что такое бизнес-аналитика?\n\nПодробное объяснение:\n\n• Это процесс анализа информации\n• Это инструмент обработки информации\n• Это инструмент обработки информации\n\nУзнайте больше в нашем блоге!\n\n#Обучение #БизнесАналитика #Образование",
+          "post_type": "text_with_image",
+          "publication_date": "2025-11-30T10:30:00.000Z",
+          "metrics": {
+            "likes": 127,
+            "views": 6349,
+            "comments": 21,
+            "shares": 10
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience"
+          ],
+          "mentions": [],
+          "length": 232,
+          "has_media": true,
+          "media_type": "image",
+          "url": "https://telegram.com/competitor_dataflow/posts/5"
+        },
+        {
+          "post_id": "competitor_dataflow_telegram_006",
+          "content": "Кейс: Как DataFlow помог компании увеличить эффективность на 23% за 3 месяца.\n\nРезультаты:\n✅ Сокращение времени на 32%\n✅ Рост точности на 35%\n✅ ROI составил 290%\n\nПодробнее в комментариях 👇\n\n#КейсСтади #БизнесАналитика #DataFlow",
+          "post_type": "text_with_image",
+          "publication_date": "2025-12-09T14:00:00.000Z",
+          "metrics": {
+            "likes": 305,
+            "views": 9844,
+            "comments": 52,
+            "shares": 26
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика",
+            "#Бизнес",
+            "#КейсСтади"
+          ],
+          "mentions": [],
+          "length": 229,
+          "has_media": true,
+          "media_type": "image",
+          "url": "https://telegram.com/competitor_dataflow/posts/6"
+        },
+        {
+          "post_id": "competitor_dataflow_telegram_007",
+          "content": "Новости: Платформа DataFlow анонсировала улучшенный функционал.\n\nЭто позволит оптимизировать процессы.\n\nПодробнее: [ссылка]\n\n#Новости #DataFlow #Анонс",
+          "post_type": "text",
+          "publication_date": "2025-12-14T15:45:00.000Z",
+          "metrics": {
+            "likes": 157,
+            "views": 4009,
+            "comments": 19,
+            "shares": 4
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience"
+          ],
+          "mentions": [],
+          "length": 150,
+          "has_media": false,
+          "media_type": null,
+          "url": "https://telegram.com/competitor_dataflow/posts/7"
+        },
+        {
+          "post_id": "competitor_dataflow_telegram_008",
+          "content": "Кейс: Как DataFlow помог компании увеличить эффективность на 32% за 7 месяца.\n\nРезультаты:\n✅ Сокращение времени на 70%\n✅ Рост точности на 19%\n✅ ROI составил 204%\n\nПодробнее в комментариях 👇\n\n#КейсСтади #БизнесАналитика #DataFlow",
+          "post_type": "video",
+          "publication_date": "2025-12-14T05:45:00.000Z",
+          "metrics": {
+            "likes": 193,
+            "views": 9005,
+            "comments": 56,
+            "shares": 27
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика",
+            "#Бизнес",
+            "#КейсСтади"
+          ],
+          "mentions": [],
+          "length": 229,
+          "has_media": true,
+          "media_type": "video",
+          "url": "https://telegram.com/competitor_dataflow/posts/8"
+        },
+        {
+          "post_id": "competitor_dataflow_telegram_009",
+          "content": "Кейс: Как DataFlow помог компании увеличить эффективность на 51% за 5 месяца.\n\nРезультаты:\n✅ Сокращение времени на 49%\n✅ Рост точности на 25%\n✅ ROI составил 210%\n\nПодробнее в комментариях 👇\n\n#КейсСтади #БизнесАналитика #DataFlow",
+          "post_type": "video",
+          "publication_date": "2026-01-24T12:15:00.000Z",
+          "metrics": {
+            "likes": 315,
+            "views": 5621,
+            "comments": 39,
+            "shares": 22
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика",
+            "#Бизнес"
+          ],
+          "mentions": [],
+          "length": 229,
+          "has_media": true,
+          "media_type": "video",
+          "url": "https://telegram.com/competitor_dataflow/posts/9"
+        },
+        {
+          "post_id": "competitor_dataflow_telegram_010",
+          "content": "6 способов улучшить качество бизнес-решений:\n\n1. Внедряйте метрики\n2. Анализируйте процессы\n3. Анализируйте инструменты\n4. Автоматизируйте стратегии\n5. Анализируйте метрики\n6. Анализируйте стратегии\n\nКаждый из этих пунктов может значительно повысить эффективность.\n\n#Экспертиза #БизнесАналитика #Советы",
+          "post_type": "text_with_image",
+          "publication_date": "2025-11-24T14:15:00.000Z",
+          "metrics": {
+            "likes": 183,
+            "views": 5936,
+            "comments": 19,
+            "shares": 19
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика"
+          ],
+          "mentions": [],
+          "length": 302,
+          "has_media": true,
+          "media_type": "image",
+          "url": "https://telegram.com/competitor_dataflow/posts/10"
+        },
+        {
+          "post_id": "competitor_dataflow_telegram_011",
+          "content": "7 способов улучшить качество бизнес-решений:\n\n1. Внедряйте данные\n2. Оптимизируйте стратегии\n3. Автоматизируйте инструменты\n4. Оптимизируйте данные\n5. Оптимизируйте стратегии\n6. Внедряйте данные\n\nКаждый из этих пунктов может значительно повысить эффективность.\n\n#Экспертиза #БизнесАналитика #Советы",
+          "post_type": "text",
+          "publication_date": "2025-12-07T05:15:00.000Z",
+          "metrics": {
+            "likes": 235,
+            "views": 4659,
+            "comments": 17,
+            "shares": 18
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика",
+            "#Бизнес",
+            "#КейсСтади"
+          ],
+          "mentions": [],
+          "length": 298,
+          "has_media": false,
+          "media_type": null,
+          "url": "https://telegram.com/competitor_dataflow/posts/11"
+        },
+        {
+          "post_id": "competitor_dataflow_telegram_012",
+          "content": "Приглашаем на вебинар \"Как внедрить data science\"\n\n📅 9 марта, 21:00 МСК\n👨‍💼 Спикер: Мария Сидорова\n\nРегистрация: [ссылка]\n\n#Вебинар #Обучение #БизнесАналитика",
+          "post_type": "video",
+          "publication_date": "2025-11-19T10:30:00.000Z",
+          "metrics": {
+            "likes": 212,
+            "views": 7422,
+            "comments": 27,
+            "shares": 17
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика"
+          ],
+          "mentions": [],
+          "length": 161,
+          "has_media": true,
+          "media_type": "video",
+          "url": "https://telegram.com/competitor_dataflow/posts/12"
+        },
+        {
+          "post_id": "competitor_dataflow_telegram_013",
+          "content": "6 способов улучшить качество бизнес-решений:\n\n1. Внедряйте инструменты\n2. Оптимизируйте процессы\n3. Внедряйте процессы\n\nКаждый из этих пунктов может значительно повысить эффективность.\n\n#Экспертиза #БизнесАналитика #Советы",
+          "post_type": "text_with_image",
+          "publication_date": "2026-01-12T09:15:00.000Z",
+          "metrics": {
+            "likes": 151,
+            "views": 6185,
+            "comments": 37,
+            "shares": 19
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience"
+          ],
+          "mentions": [],
+          "length": 222,
+          "has_media": true,
+          "media_type": "image",
+          "url": "https://telegram.com/competitor_dataflow/posts/13"
+        },
+        {
+          "post_id": "competitor_dataflow_telegram_014",
+          "content": "Кейс: Как DataFlow помог компании увеличить эффективность на 50% за 4 месяца.\n\nРезультаты:\n✅ Сокращение времени на 53%\n✅ Рост точности на 21%\n✅ ROI составил 229%\n\nПодробнее в комментариях 👇\n\n#КейсСтади #БизнесАналитика #DataFlow",
+          "post_type": "text",
+          "publication_date": "2026-02-20T06:00:00.000Z",
+          "metrics": {
+            "likes": 204,
+            "views": 5397,
+            "comments": 42,
+            "shares": 11
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика",
+            "#Бизнес"
+          ],
+          "mentions": [],
+          "length": 229,
+          "has_media": false,
+          "media_type": null,
+          "url": "https://telegram.com/competitor_dataflow/posts/14"
+        },
+        {
+          "post_id": "competitor_dataflow_telegram_015",
+          "content": "Новое обновление DataFlow 1.3!\n\nЧто нового:\n✨ Новый алгоритм,интерфейс,функционал\n📊 Улучшенные графики,отчеты,дашборды\n🔔 Уведомления\n\nОбновление бесплатное для всех пользователей!\n\n#Обновление #DataFlow #Новости",
+          "post_type": "text",
+          "publication_date": "2026-02-07T07:00:00.000Z",
+          "metrics": {
+            "likes": 96,
+            "views": 4365,
+            "comments": 13,
+            "shares": 11
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience"
+          ],
+          "mentions": [],
+          "length": 213,
+          "has_media": false,
+          "media_type": null,
+          "url": "https://telegram.com/competitor_dataflow/posts/15"
+        },
+        {
+          "post_id": "competitor_dataflow_telegram_016",
+          "content": "Что такое бизнес-аналитика?\n\nПростое объяснение:\n\n• Это метод использования информации\n• Это процесс обработки данных\n• Это метод анализа метрик\n\nУзнайте больше в нашем блоге!\n\n#Обучение #БизнесАналитика #Образование",
+          "post_type": "text_with_image",
+          "publication_date": "2025-12-15T06:15:00.000Z",
+          "metrics": {
+            "likes": 98,
+            "views": 5465,
+            "comments": 13,
+            "shares": 12
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика",
+            "#Бизнес"
+          ],
+          "mentions": [],
+          "length": 216,
+          "has_media": true,
+          "media_type": "image",
+          "url": "https://telegram.com/competitor_dataflow/posts/16"
+        },
+        {
+          "post_id": "competitor_dataflow_telegram_017",
+          "content": "🎯 Опрос: Что важнее в вашей аналитике?\n\nА) Долгая обработка\nБ) Данные в разных системах\nВ) Дорогие инструменты\n\nНапишите свой вариант в комментариях! 👇\n\n#Опрос #БизнесАналитика #Интерактив",
+          "post_type": "video",
+          "publication_date": "2026-02-04T16:15:00.000Z",
+          "metrics": {
+            "likes": 385,
+            "views": 11938,
+            "comments": 73,
+            "shares": 25
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика"
+          ],
+          "mentions": [],
+          "length": 190,
+          "has_media": true,
+          "media_type": "video",
+          "url": "https://telegram.com/competitor_dataflow/posts/17"
+        }
+      ]
+    },
+    {
+      "competitor_id": "competitor_analyticspro",
+      "name": "AnalyticsPro",
+      "platform": "linkedin",
+      "follower_count": 6405,
+      "posts": [
+        {
+          "post_id": "competitor_analyticspro_linkedin_001",
+          "content": "4 способов улучшить качество бизнес-решений:\n\n1. Автоматизируйте процессы\n2. Анализируйте инструменты\n3. Оптимизируйте процессы\n4. Автоматизируйте стратегии\n5. Анализируйте данные\n6. Внедряйте инструменты\n7. Автоматизируйте процессы\n\nКаждый из этих пунктов может значительно повысить эффективность.\n\n#Экспертиза #БизнесАналитика #Советы",
+          "post_type": "video",
+          "publication_date": "2025-12-03T12:00:00.000Z",
+          "metrics": {
+            "likes": 112,
+            "views": 5403,
+            "comments": 19,
+            "shares": 11
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика",
+            "#Бизнес",
+            "#КейсСтади"
+          ],
+          "mentions": [],
+          "length": 336,
+          "has_media": true,
+          "media_type": "video",
+          "url": "https://linkedin.com/competitor_analyticspro/posts/1"
+        },
+        {
+          "post_id": "competitor_analyticspro_linkedin_002",
+          "content": "Новое обновление AnalyticsPro 2.0!\n\nЧто нового:\n✨ Улучшенный алгоритм,интерфейс,функционал\n📊 Новые графики,отчеты,дашборды\n🔔 Уведомления\n\nОбновление бесплатное для всех пользователей!\n\n#Обновление #AnalyticsPro #Новости",
+          "post_type": "text",
+          "publication_date": "2025-12-09T15:30:00.000Z",
+          "metrics": {
+            "likes": 117,
+            "views": 3210,
+            "comments": 16,
+            "shares": 8
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience"
+          ],
+          "mentions": [],
+          "length": 221,
+          "has_media": false,
+          "media_type": null,
+          "url": "https://linkedin.com/competitor_analyticspro/posts/2"
+        },
+        {
+          "post_id": "competitor_analyticspro_linkedin_003",
+          "content": "🎯 Опрос: Что важнее в вашей аналитике?\n\nА) Долгая обработка\nБ) Низкая точность\nВ) Нехватка экспертизы\n\nНапишите свой вариант в комментариях! 👇\n\n#Опрос #БизнесАналитика #Интерактив",
+          "post_type": "text_with_image",
+          "publication_date": "2026-02-20T05:30:00.000Z",
+          "metrics": {
+            "likes": 309,
+            "views": 9819,
+            "comments": 91,
+            "shares": 22
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика",
+            "#Бизнес",
+            "#КейсСтади"
+          ],
+          "mentions": [],
+          "length": 181,
+          "has_media": true,
+          "media_type": "image",
+          "url": "https://linkedin.com/competitor_analyticspro/posts/3"
+        },
+        {
+          "post_id": "competitor_analyticspro_linkedin_004",
+          "content": "Приглашаем на онлайн-встречу \"Как внедрить data science\"\n\n📅 4 апреля, 16:00 МСК\n👨‍💼 Спикер: Алексей Иванов\n\nРегистрация: [ссылка]\n\n#Вебинар #Обучение #БизнесАналитика",
+          "post_type": "video",
+          "publication_date": "2026-01-10T07:00:00.000Z",
+          "metrics": {
+            "likes": 165,
+            "views": 7720,
+            "comments": 39,
+            "shares": 17
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика",
+            "#Бизнес"
+          ],
+          "mentions": [],
+          "length": 169,
+          "has_media": true,
+          "media_type": "video",
+          "url": "https://linkedin.com/competitor_analyticspro/posts/4"
+        },
+        {
+          "post_id": "competitor_analyticspro_linkedin_005",
+          "content": "Новости: Компания AnalyticsPro анонсировала улучшенный функционал.\n\nЭто позволит оптимизировать процессы.\n\nПодробнее: [ссылка]\n\n#Новости #AnalyticsPro #Анонс",
+          "post_type": "text",
+          "publication_date": "2025-11-03T15:00:00.000Z",
+          "metrics": {
+            "likes": 133,
+            "views": 3388,
+            "comments": 14,
+            "shares": 6
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика"
+          ],
+          "mentions": [],
+          "length": 157,
+          "has_media": false,
+          "media_type": null,
+          "url": "https://linkedin.com/competitor_analyticspro/posts/5"
+        },
+        {
+          "post_id": "competitor_analyticspro_linkedin_006",
+          "content": "Кейс: Как AnalyticsPro помог компании увеличить эффективность на 37% за 6 месяца.\n\nРезультаты:\n✅ Сокращение времени на 46%\n✅ Рост точности на 33%\n✅ ROI составил 248%\n\nПодробнее в комментариях 👇\n\n#КейсСтади #БизнесАналитика #AnalyticsPro",
+          "post_type": "text_with_image",
+          "publication_date": "2025-11-28T12:45:00.000Z",
+          "metrics": {
+            "likes": 154,
+            "views": 8628,
+            "comments": 61,
+            "shares": 16
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика"
+          ],
+          "mentions": [],
+          "length": 237,
+          "has_media": true,
+          "media_type": "image",
+          "url": "https://linkedin.com/competitor_analyticspro/posts/6"
+        },
+        {
+          "post_id": "competitor_analyticspro_linkedin_007",
+          "content": "Что такое автоматизация аналитики?\n\nПростое объяснение:\n\n• Это метод анализа метрик\n• Это процесс использования данных\n• Это процесс использования метрик\n\nУзнайте больше в нашем блоге!\n\n#Обучение #БизнесАналитика #Образование",
+          "post_type": "text_with_image",
+          "publication_date": "2025-12-17T05:00:00.000Z",
+          "metrics": {
+            "likes": 138,
+            "views": 5555,
+            "comments": 23,
+            "shares": 7
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика",
+            "#Бизнес"
+          ],
+          "mentions": [],
+          "length": 225,
+          "has_media": true,
+          "media_type": "image",
+          "url": "https://linkedin.com/competitor_analyticspro/posts/7"
+        },
+        {
+          "post_id": "competitor_analyticspro_linkedin_008",
+          "content": "🎯 Опрос: Какая главная проблема в вашей аналитике?\n\nА) Сложная визуализация\nБ) Низкая точность\nВ) Дорогие инструменты\n\nНапишите свой вариант в комментариях! 👇\n\n#Опрос #БизнесАналитика #Интерактив",
+          "post_type": "text",
+          "publication_date": "2026-02-14T05:45:00.000Z",
+          "metrics": {
+            "likes": 347,
+            "views": 11393,
+            "comments": 50,
+            "shares": 23
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика",
+            "#Бизнес"
+          ],
+          "mentions": [],
+          "length": 197,
+          "has_media": false,
+          "media_type": null,
+          "url": "https://linkedin.com/competitor_analyticspro/posts/8"
+        },
+        {
+          "post_id": "competitor_analyticspro_linkedin_009",
+          "content": "Новости: Компания AnalyticsPro запустила улучшенный сервис.\n\nЭто позволит автоматизировать аналитику.\n\nПодробнее: [ссылка]\n\n#Новости #AnalyticsPro #Анонс",
+          "post_type": "text_with_image",
+          "publication_date": "2025-12-30T05:30:00.000Z",
+          "metrics": {
+            "likes": 161,
+            "views": 3806,
+            "comments": 20,
+            "shares": 7
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика",
+            "#Бизнес"
+          ],
+          "mentions": [],
+          "length": 153,
+          "has_media": true,
+          "media_type": "image",
+          "url": "https://linkedin.com/competitor_analyticspro/posts/9"
+        },
+        {
+          "post_id": "competitor_analyticspro_linkedin_010",
+          "content": "Новое обновление AnalyticsPro 2.2!\n\nЧто нового:\n✨ Новый алгоритм,интерфейс,функционал\n📊 Новые графики,отчеты,дашборды\n🔔 Автоматизация\n\nОбновление бесплатное для всех пользователей!\n\n#Обновление #AnalyticsPro #Новости",
+          "post_type": "video",
+          "publication_date": "2025-11-05T10:30:00.000Z",
+          "metrics": {
+            "likes": 156,
+            "views": 3346,
+            "comments": 24,
+            "shares": 6
+          },
+          "hashtags": [
+            "#БизнесАналитика",
+            "#DataScience",
+            "#Аналитика",
+            "#Бизнес"
+          ],
+          "mentions": [],
+          "length": 218,
+          "has_media": true,
+          "media_type": "video",
+          "url": "https://linkedin.com/competitor_analyticspro/posts/10"
+        }
+      ]
+    }
+  ]
+}
