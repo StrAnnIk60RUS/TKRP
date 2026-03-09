@@ -209,12 +209,20 @@
 
   .precedent-summary {
     width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
   }
 
   .precedent-summary-text {
     color: #ffffff;
     font-size: 0.9rem;
     font-weight: 600;
+  }
+
+  .precedent-seed-btn {
+    flex-shrink: 0;
   }
 
   .precedent-search-controls {
@@ -331,6 +339,49 @@
     background: rgba(255, 255, 255, 0.08);
     padding: 12px 14px;
     border: 1px solid rgba(255, 255, 255, 0.12);
+  }
+
+  .precedent-workflow-section {
+    margin-top: 8px;
+  }
+
+  .precedent-summary-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  .precedent-summary-line {
+    color: #1a1a2e;
+    font-size: 0.95rem;
+    font-weight: 600;
+  }
+
+  .precedent-query-box {
+    border: 2px solid #1a1a2e;
+    background: #fafbfc;
+    padding: 12px 14px;
+    color: #1a1a2e;
+    line-height: 1.5;
+  }
+
+  .precedent-results-light {
+    border-top: 1px solid rgba(26, 26, 46, 0.2);
+    padding-top: 20px;
+  }
+
+  .precedent-results-header-light,
+  .precedent-results-title-light,
+  .precedent-results-subtitle-light,
+  .precedent-section-title-light {
+    color: #1a1a2e;
+  }
+
+  .precedent-empty-state-light {
+    color: #1a1a2e;
+    background: #fafbfc;
+    border: 2px solid #1a1a2e;
   }
 
   /* Состояния кнопок быстрых действий */

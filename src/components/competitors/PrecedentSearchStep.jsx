@@ -12,7 +12,9 @@ const PrecedentSearchStep = ({
   onSearchQueryChange,
   onUseSuggestedQuery,
   onSearch,
+  onSeedDemo,
   isSearching,
+  isSeeding,
   isServerAvailable,
   precedentsSummary,
   precedentResults
@@ -36,6 +38,17 @@ const PrecedentSearchStep = ({
             В базе: {precedentsSummary?.publications_count || 0} публикаций и{' '}
             {precedentsSummary?.content_plans_count || 0} контент-планов
           </span>
+          {onSeedDemo && (
+            <button
+              type="button"
+              className="action-btn precedent-seed-btn"
+              onClick={onSeedDemo}
+              disabled={isSeeding || isServerAvailable === false}
+              title="Загрузить готовые демо-данные (2 конкурента, 3 публикации, 2 контент-плана), чтобы сразу попробовать поиск"
+            >
+              {isSeeding ? 'Загрузка...' : 'Загрузить демо-базу прецедентов'}
+            </button>
+          )}
         </div>
 
         <div className="precedent-search-controls">

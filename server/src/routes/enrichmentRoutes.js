@@ -1,4 +1,7 @@
 import { Router } from 'express';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { enrichCompetitorsData } from '../../openrouter.js';
 import { parseAndEnrichByUrl, parseOnlyByUrl } from '../services/parserPipeline.js';
 import {
@@ -7,6 +10,9 @@ import {
   persistPrecedents,
   searchPrecedents
 } from '../repositories/precedentRepository.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const DEMO_FIXTURE_PATH = path.join(__dirname, '..', 'fixtures', 'demoPrecedents.json');
 
 const router = Router();
 
@@ -36,6 +42,37 @@ router.get('/precedents', (req, res) => {
     return res.status(500).json({
       success: false,
       error: error.message || 'Внутренняя ошибка сервера в /api/precedents'
+    });
+  }
+});
+
+router.post('/precedents/seed', (req, res) => {
+  try {
+    if (!fs.existsSync(DEMO_FIXTURE_PATH)) {
+      return res.status(404).json({
+        success: false,
+        error: 'Демо-фикстура не найдена'
+      });
+    }
+    const raw = fs.readFileSync(DEMO_FIXTURE_PATH, 'utf-8');
+    const fixture = JSON.parse(raw);
+    if (!fixture.competitors || !Array.isArray(fixture.competitors)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Неверный формат фикстуры: ожидается массив competitors'
+      });
+    }
+    const persistence = persistPrecedents(fixture, { source: 'demo_seed' });
+    return res.json({
+      success: true,
+      message: 'Демо-база прецедентов загружена',
+      persistence
+    });
+  } catch (error) {
+    console.error('Ошибка в /api/precedents/seed:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Внутренняя ошибка сервера в /api/precedents/seed'
     });
   }
 });

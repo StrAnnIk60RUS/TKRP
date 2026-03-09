@@ -3,11 +3,17 @@ import { useNavigate } from 'react-router-dom'
 import PreviewModal from './PreviewModal'
 import { ToastContainer } from './Toast'
 import CompetitorsStep from './competitors/CompetitorsStep'
-import PrecedentSearchStep from './competitors/PrecedentSearchStep'
 import { useCompetitorsPipeline } from '../hooks/useCompetitorsPipeline'
 import { buildExportPayload } from '../utils/formMappers'
-import { getPrecedentsSummary, searchPrecedents } from '../services/enrichmentService'
+import { getPrecedentsSummary, searchPrecedents, seedDemoPrecedents } from '../services/enrichmentService'
 import './ProjectForm.css'
+
+const formatPrecedentScore = (score) => `${Math.round((Number(score) || 0) * 100)}%`
+
+const renderMatchedTokens = (matchedTokens = []) => {
+  if (!matchedTokens.length) return 'Без совпавших токенов'
+  return matchedTokens.join(', ')
+}
 
 const ProjectForm = () => {
   const navigate = useNavigate()
@@ -77,6 +83,7 @@ const ProjectForm = () => {
   const [precedentSearchQuery, setPrecedentSearchQuery] = useState('')
   const [precedentSearchResults, setPrecedentSearchResults] = useState(null)
   const [isSearchingPrecedents, setIsSearchingPrecedents] = useState(false)
+  const [isSeedingPrecedents, setIsSeedingPrecedents] = useState(false)
   const toastCounterRef = useRef(0)
 
   // B2G - Business-to-Government (бизнес для государства)
@@ -125,6 +132,31 @@ const ProjectForm = () => {
   }, [formData])
 
   const progress = (filledRequired / requiredFields.length) * 100
+
+  const addToast = (message, type = 'success') => {
+    toastCounterRef.current += 1
+    const id = `${Date.now()}-${toastCounterRef.current}-${Math.random().toString(36).substr(2, 9)}`
+    setToasts(prev => [...prev, { id, message, type }])
+  }
+
+  const {
+    competitorsData,
+    competitorsFileName,
+    isEnrichmentServerAvailable,
+    competitorUrls,
+    postsLimit,
+    isParsingFromUrls,
+    isEnriching,
+    handleRemoveCompetitorsData,
+    handleEnrichCompetitorsData,
+    handleCompetitorUrlChange,
+    handleAddCompetitorUrl,
+    handleRemoveCompetitorUrl,
+    handlePostsLimitChange,
+    handleParseCompetitorsFromUrls,
+    clearCompetitors,
+    canEnrich
+  } = useCompetitorsPipeline(addToast)
 
   useEffect(() => {
     const savedDraft = localStorage.getItem('projectFormDraft')
@@ -182,31 +214,6 @@ const ProjectForm = () => {
       return () => clearTimeout(timeoutId)
     }
   }, [formData])
-
-  const addToast = (message, type = 'success') => {
-    toastCounterRef.current += 1
-    const id = `${Date.now()}-${toastCounterRef.current}-${Math.random().toString(36).substr(2, 9)}`
-    setToasts(prev => [...prev, { id, message, type }])
-  }
-
-  const {
-    competitorsData,
-    competitorsFileName,
-    isEnrichmentServerAvailable,
-    competitorUrls,
-    postsLimit,
-    isParsingFromUrls,
-    isEnriching,
-    handleRemoveCompetitorsData,
-    handleEnrichCompetitorsData,
-    handleCompetitorUrlChange,
-    handleAddCompetitorUrl,
-    handleRemoveCompetitorUrl,
-    handlePostsLimitChange,
-    handleParseCompetitorsFromUrls,
-    clearCompetitors,
-    canEnrich
-  } = useCompetitorsPipeline(addToast)
 
   const removeToast = (id) => {
     setToasts(prev => prev.filter(toast => toast.id !== id))
@@ -512,21 +519,16 @@ const ProjectForm = () => {
     return parts.join('. ')
   }
 
-  const handleUseSuggestedPrecedentQuery = () => {
-    const nextQuery = buildSuggestedPrecedentQuery()
-    setPrecedentSearchQuery(nextQuery)
-    addToast('Запрос для поиска прецедентов сформирован из данных формы', 'info')
-  }
-
   const handleSearchPrecedents = async () => {
-    const query = precedentSearchQuery.trim()
+    const query = buildSuggestedPrecedentQuery().trim()
 
     if (!query) {
-      addToast('Введите запрос для поиска прецедентов', 'error')
+      addToast('Недостаточно данных формы для подбора прецедентов', 'error')
       return
     }
 
     setIsSearchingPrecedents(true)
+    setPrecedentSearchQuery(query)
 
     try {
       const response = await searchPrecedents({
@@ -546,6 +548,25 @@ const ProjectForm = () => {
       addToast(`Ошибка поиска прецедентов: ${error.message}`, 'error')
     } finally {
       setIsSearchingPrecedents(false)
+    }
+  }
+
+  const handleSeedDemoPrecedents = async () => {
+    if (isEnrichmentServerAvailable === false) {
+      addToast('Сервер недоступен. Запустите backend на порту 3001.', 'error')
+      return
+    }
+    setIsSeedingPrecedents(true)
+    try {
+      await seedDemoPrecedents()
+      const summaryResponse = await getPrecedentsSummary()
+      setPrecedentsSummary(summaryResponse.summary || null)
+      addToast('Демо-база прецедентов загружена. Можно искать по запросу.', 'success')
+    } catch (error) {
+      console.error('Ошибка загрузки демо-базы:', error)
+      addToast(`Ошибка: ${error.message}`, 'error')
+    } finally {
+      setIsSeedingPrecedents(false)
     }
   }
 
@@ -765,17 +786,6 @@ const ProjectForm = () => {
           onParseFromUrls={handleParseCompetitorsFromUrls}
           onEnrichUploaded={handleEnrichCompetitorsData}
           onRemoveData={handleRemoveCompetitorsData}
-        />
-
-        <PrecedentSearchStep
-          searchQuery={precedentSearchQuery}
-          onSearchQueryChange={setPrecedentSearchQuery}
-          onUseSuggestedQuery={handleUseSuggestedPrecedentQuery}
-          onSearch={handleSearchPrecedents}
-          isSearching={isSearchingPrecedents}
-          isServerAvailable={isEnrichmentServerAvailable}
-          precedentsSummary={precedentsSummary}
-          precedentResults={precedentSearchResults}
         />
 
         {/* Панель быстрых действий */}
@@ -1615,6 +1625,24 @@ const ProjectForm = () => {
           </button>
           <button
             type="button"
+            className="submit-button secondary"
+            onClick={handleSeedDemoPrecedents}
+            disabled={isSubmitting || isProcessing || isSeedingPrecedents || isEnrichmentServerAvailable === false}
+            title="Загрузить готовую демо-базу прецедентов, чтобы сразу увидеть рабочий поиск"
+          >
+            <span>{isSeedingPrecedents ? 'ЗАГРУЗКА ДЕМО...' : 'ЗАГРУЗИТЬ ДЕМО-ПРЕЦЕДЕНТЫ'}</span>
+          </button>
+          <button
+            type="button"
+            className="submit-button secondary"
+            onClick={handleSearchPrecedents}
+            disabled={isSubmitting || isProcessing || isSearchingPrecedents || isEnrichmentServerAvailable === false}
+            title="Подобрать релевантные публикации и контент-планы по данным формы"
+          >
+            <span>{isSearchingPrecedents ? 'ПОИСК ПРЕЦЕДЕНТОВ...' : 'ПОДОБРАТЬ ПРЕЦЕДЕНТЫ'}</span>
+          </button>
+          <button
+            type="button"
             className="submit-button primary"
             onClick={handleSendToLLM}
             disabled={isSubmitting || isProcessing || !competitorsData}
@@ -1622,6 +1650,127 @@ const ProjectForm = () => {
             <span>{isProcessing ? 'ОБРАБОТКА...' : 'ОТПРАВИТЬ НА ОБРАБОТКУ LLM'}</span>
           </button>
         </div>
+
+        <section className="form-section precedent-workflow-section">
+          <h2 className="section-title">Подобранные прецеденты</h2>
+
+          <div className="precedent-summary-panel">
+            <div className="precedent-summary-line">
+              В базе сейчас: {precedentsSummary?.publications_count || 0} публикаций и{' '}
+              {precedentsSummary?.content_plans_count || 0} контент-планов.
+            </div>
+            <div className="precedent-summary-line">
+              Источник запроса: данные текущей формы проекта, аудитории, платформ и преимуществ.
+            </div>
+            {precedentSearchQuery && (
+              <div className="precedent-query-box">
+                <strong>Последний автоматически собранный запрос:</strong> {precedentSearchQuery}
+              </div>
+            )}
+          </div>
+
+          {!precedentSearchResults && (
+            <div className="precedent-empty-state precedent-empty-state-light">
+              Сначала нажмите `Подобрать прецеденты`.
+              {precedentsSummary?.publications_count
+                ? ' Поиск выполнится по уже накопленной базе.'
+                : ' Если база пустая, можно загрузить демо-прецеденты или сначала обогатить конкурентов.'}
+            </div>
+          )}
+
+          {!!precedentSearchResults && (
+            <div className="precedent-results precedent-results-light">
+              <div className="precedent-results-header precedent-results-header-light">
+                <span className="precedent-results-title precedent-results-title-light">
+                  Найдено: {precedentSearchResults.publications?.length || 0} публикаций и{' '}
+                  {precedentSearchResults.content_plans?.length || 0} планов
+                </span>
+                <span className="precedent-results-subtitle precedent-results-subtitle-light">
+                  Поиск выполнен по {precedentSearchResults.total_publications_searched || 0} публикациям и{' '}
+                  {precedentSearchResults.total_content_plans_searched || 0} планам
+                </span>
+              </div>
+
+              {(precedentSearchResults.publications?.length || 0) > 0 && (
+                <div className="precedent-section">
+                  <h3 className="precedent-section-title precedent-section-title-light">Публикации</h3>
+                  <div className="precedent-cards">
+                    {precedentSearchResults.publications.map((item) => (
+                      <div key={item.data.publication_id} className="precedent-card">
+                        <div className="precedent-card-header">
+                          <span className="precedent-card-title">
+                            {item.data.publication_model?.topic || 'Без темы'}
+                          </span>
+                          <span className="precedent-card-score">{formatPrecedentScore(item.score)}</span>
+                        </div>
+                        <div className="precedent-card-meta">
+                          <span>{item.data.competitor_name || 'Неизвестный конкурент'}</span>
+                          <span>{item.data.platform || 'unknown'}</span>
+                          <span>{item.data.publication_model?.format || 'unknown'}</span>
+                        </div>
+                        <div className="precedent-card-body">
+                          <div>Тип: {item.data.publication_model?.type || 'other'}</div>
+                          <div>Категория: {item.data.publication_model?.content_category || 'other'}</div>
+                          <div>
+                            Аудитория:{' '}
+                            {(item.data.publication_model?.audience_segments || []).join(', ') || 'не указана'}
+                          </div>
+                          <div>Совпадения: {renderMatchedTokens(item.matched_tokens)}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {(precedentSearchResults.content_plans?.length || 0) > 0 && (
+                <div className="precedent-section">
+                  <h3 className="precedent-section-title precedent-section-title-light">Контент-планы</h3>
+                  <div className="precedent-cards">
+                    {precedentSearchResults.content_plans.map((item) => (
+                      <div key={item.data.plan_id} className="precedent-card">
+                        <div className="precedent-card-header">
+                          <span className="precedent-card-title">
+                            {item.data.competitor_name || item.data.plan_id}
+                          </span>
+                          <span className="precedent-card-score">{formatPrecedentScore(item.score)}</span>
+                        </div>
+                        <div className="precedent-card-meta">
+                          <span>{item.data.platform || 'unknown'}</span>
+                          <span>
+                            {item.data.content_plan_model?.posting_frequency_per_week || 0} постов/неделю
+                          </span>
+                          <span>
+                            {item.data.content_plan_model?.total_publications || 0} публикаций
+                          </span>
+                        </div>
+                        <div className="precedent-card-body">
+                          <div>
+                            Аудитория:{' '}
+                            {(item.data.content_plan_model?.audience_segments || []).join(', ') || 'не указана'}
+                          </div>
+                          <div>
+                            Avg engagement:{' '}
+                            {formatPrecedentScore(item.data.content_plan_model?.kpi_estimate?.avg_engagement_rate)}
+                          </div>
+                          <div>Совпадения: {renderMatchedTokens(item.matched_tokens)}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {(precedentSearchResults.publications?.length || 0) === 0 &&
+                (precedentSearchResults.content_plans?.length || 0) === 0 && (
+                  <div className="precedent-empty-state precedent-empty-state-light">
+                    По текущим данным формы ничего не найдено. Попробуйте точнее заполнить описание
+                    проекта, платформы и преимущества или загрузите демо-прецеденты.
+                  </div>
+                )}
+            </div>
+          )}
+        </section>
       </form>
     </>
   )

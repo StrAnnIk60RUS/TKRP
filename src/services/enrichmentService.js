@@ -163,6 +163,28 @@ export async function getPrecedentsSummary() {
 }
 
 /**
+ * Загружает демо-базу прецедентов (фикстура) для проверки поиска без парсинга/обогащения
+ * @returns {Promise<Object>}
+ */
+export async function seedDemoPrecedents() {
+  try {
+    const response = await fetch(`${API_URL}/api/precedents/seed`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || `HTTP ${response.status}: ${response.statusText}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Ошибка в seedDemoPrecedents:', error);
+    throw error;
+  }
+}
+
+/**
  * Выполняет минимальный RAG-поиск по базе прецедентов
  * @param {Object} payload
  * @returns {Promise<Object>}
