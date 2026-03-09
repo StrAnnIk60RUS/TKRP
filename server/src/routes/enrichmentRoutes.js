@@ -1,8 +1,43 @@
 import { Router } from 'express';
 import { enrichCompetitorsData } from '../../openrouter.js';
 import { parseAndEnrichByUrl, parseOnlyByUrl } from '../services/parserPipeline.js';
+import {
+  getPrecedentsSnapshot,
+  getPrecedentsSummary,
+  persistPrecedents
+} from '../repositories/precedentRepository.js';
 
 const router = Router();
+
+router.get('/precedents/summary', (req, res) => {
+  try {
+    return res.json({
+      success: true,
+      summary: getPrecedentsSummary()
+    });
+  } catch (error) {
+    console.error('Ошибка в /api/precedents/summary:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Внутренняя ошибка сервера в /api/precedents/summary'
+    });
+  }
+});
+
+router.get('/precedents', (req, res) => {
+  try {
+    return res.json({
+      success: true,
+      data: getPrecedentsSnapshot()
+    });
+  } catch (error) {
+    console.error('Ошибка в /api/precedents:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Внутренняя ошибка сервера в /api/precedents'
+    });
+  }
+});
 
 router.post('/parse', async (req, res) => {
   try {
@@ -91,12 +126,18 @@ router.post('/enrich', async (req, res) => {
     const result = await enrichCompetitorsData(competitors_data);
     console.log(`[${new Date().toISOString()}] Обогащение завершено. Использовано токенов: ${result.usage?.total_tokens || 'N/A'}`);
 
+    const persistence =
+      result.enriched_data !== null
+        ? persistPrecedents(result.enriched_data, { source: 'api_enrich' })
+        : null;
+
     if (result.parse_error) {
       console.warn('[ВНИМАНИЕ] JSON ответ от LLM невалидный, но данные возвращаются для проверки');
     }
 
     return res.json({
       success: result.enriched_data !== null,
+      persistence,
       ...result
     });
   } catch (error) {

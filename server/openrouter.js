@@ -4,6 +4,10 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { applyDeterministicPostProcessing } from './src/services/postDeterministicFeatures.js';
+import {
+  CONTENT_MODEL_SPEC,
+  normalizeCompetitorsContentData
+} from './src/models/contentModels.js';
 
 // Загружаем единый .env из корня проекта
 const __filename = fileURLToPath(import.meta.url);
@@ -161,7 +165,12 @@ export async function enrichCompetitorsData(competitorsData) {
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = path.dirname(__filename);
   
-  const stage1PromptPath = path.join(__dirname, '..', 'YANDEX_CLOUD_AGENT_STAGE1.txt');
+  const stage1PromptPath = path.join(
+    __dirname,
+    'src',
+    'prompts',
+    'articleStage1EnrichmentPrompt.txt'
+  );
   let systemPrompt;
   
   const fileContent = fs.readFileSync(stage1PromptPath, 'utf-8');
@@ -175,15 +184,31 @@ export async function enrichCompetitorsData(competitorsData) {
   }
 
   // Формируем пользовательский промпт
-  const userPrompt = `Обогати следующие данные конкурентов. 
+  const userPrompt = `Обогати следующие данные конкурентов и приведи результат к формальной модели публикации и контент-плана.
+
+ТРЕБУЕМАЯ СХЕМА:
+${JSON.stringify(CONTENT_MODEL_SPEC, null, 2)}
 
 Данные:
 ${JSON.stringify(dataWithEngagementRate, null, 2)}
 
-КРИТИЧЕСКИ ВАЖНО: 
-Верни ТОЛЬКО валидный JSON объект. 
-НЕ используй markdown блоки (тройные обратные кавычки).
-НЕ добавляй никакого текста до или после JSON.
+КРИТИЧЕСКИ ВАЖНО:
+1. Верни ТОЛЬКО валидный JSON объект.
+2. НЕ используй markdown блоки (тройные обратные кавычки).
+3. НЕ добавляй никакого текста до или после JSON.
+4. НЕ удаляй существующие поля у competitors и posts.
+5. Для каждого post ОБЯЗАТЕЛЬНО добавь:
+   - content_category
+   - tone
+   - topic
+   - target_audience
+   - publication_model
+6. Для каждого competitor ОБЯЗАТЕЛЬНО добавь:
+   - content_strategy
+   - content_plan_model
+7. В publication_model.spcj.dimensions все значения должны быть числами в диапазоне 0..1.
+8. В publication_model.spcj.vector верни массив чисел в том же порядке, что и required schema.
+
 Просто верни чистый JSON объект, начинающийся с { и заканчивающийся }.`;
 
   // Вызываем API
@@ -363,9 +388,12 @@ ${JSON.stringify(dataWithEngagementRate, null, 2)}
 
   // ВСЕГДА возвращаем результат, даже если JSON невалидный
   const postProcessedData = enrichedData ? applyDeterministicPostProcessing(enrichedData) : null;
+  const normalizedData = postProcessedData
+    ? normalizeCompetitorsContentData(postProcessedData)
+    : null;
 
   return {
-    enriched_data: postProcessedData, // null если не удалось распарсить
+    enriched_data: normalizedData, // null если не удалось распарсить
     raw_response: rawContent, // Сырой ответ от LLM для отладки
     parse_error: parseError, // Информация об ошибке парсинга, если была
     usage: response.usage,
@@ -373,7 +401,8 @@ ${JSON.stringify(dataWithEngagementRate, null, 2)}
       enriched_at: new Date().toISOString(),
       model: DEEPSEEK_MODEL,
       engagement_rate_calculated_locally: true,
-      parse_successful: enrichedData !== null
+      parse_successful: enrichedData !== null,
+      normalized_to_content_model: normalizedData !== null
     }
   };
 }
