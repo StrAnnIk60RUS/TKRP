@@ -203,6 +203,136 @@
     font-size: 0.9rem;
   }
 
+  .precedent-search-step {
+    margin-bottom: 24px;
+  }
+
+  .precedent-summary {
+    width: 100%;
+  }
+
+  .precedent-summary-text {
+    color: #ffffff;
+    font-size: 0.9rem;
+    font-weight: 600;
+  }
+
+  .precedent-search-controls {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .precedent-search-textarea {
+    min-height: 96px;
+    background: #ffffff;
+  }
+
+  .precedent-search-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .precedent-results {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-top: 8px;
+    border-top: 1px solid rgba(148, 163, 184, 0.4);
+    padding-top: 16px;
+  }
+
+  .precedent-results-header {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .precedent-results-title {
+    color: #ffffff;
+    font-size: 0.95rem;
+    font-weight: 700;
+  }
+
+  .precedent-results-subtitle {
+    color: #e2e8f0;
+    font-size: 0.8rem;
+  }
+
+  .precedent-section {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .precedent-section-title {
+    color: #ffffff;
+    font-size: 0.95rem;
+    font-weight: 700;
+    margin: 0;
+  }
+
+  .precedent-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 12px;
+  }
+
+  .precedent-card {
+    background: #ffffff;
+    border: 2px solid #1a1a2e;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .precedent-card-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: flex-start;
+  }
+
+  .precedent-card-title {
+    color: #1a1a2e;
+    font-weight: 700;
+    line-height: 1.3;
+  }
+
+  .precedent-card-score {
+    color: #ff6b9d;
+    font-weight: 800;
+    white-space: nowrap;
+  }
+
+  .precedent-card-meta {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    color: #2d2d44;
+    font-size: 0.8rem;
+  }
+
+  .precedent-card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    color: #1a1a2e;
+    font-size: 0.85rem;
+  }
+
+  .precedent-empty-state {
+    color: #ffffff;
+    font-size: 0.9rem;
+    background: rgba(255, 255, 255, 0.08);
+    padding: 12px 14px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+  }
+
   /* Состояния кнопок быстрых действий */
   .action-btn:disabled,
   .action-btn:disabled:hover {

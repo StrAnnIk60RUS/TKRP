@@ -4,7 +4,8 @@ import { parseAndEnrichByUrl, parseOnlyByUrl } from '../services/parserPipeline.
 import {
   getPrecedentsSnapshot,
   getPrecedentsSummary,
-  persistPrecedents
+  persistPrecedents,
+  searchPrecedents
 } from '../repositories/precedentRepository.js';
 
 const router = Router();
@@ -35,6 +36,36 @@ router.get('/precedents', (req, res) => {
     return res.status(500).json({
       success: false,
       error: error.message || 'Внутренняя ошибка сервера в /api/precedents'
+    });
+  }
+});
+
+router.post('/precedents/search', (req, res) => {
+  try {
+    const { query, limit, platform, audience_segments } = req.body || {};
+
+    if (!query || typeof query !== 'string' || !query.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: 'Отсутствует или некорректное поле query в теле запроса'
+      });
+    }
+
+    const results = searchPrecedents(query, {
+      limit,
+      platform,
+      audience_segments
+    });
+
+    return res.json({
+      success: true,
+      results
+    });
+  } catch (error) {
+    console.error('Ошибка в /api/precedents/search:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Внутренняя ошибка сервера в /api/precedents/search'
     });
   }
 });
@@ -84,6 +115,10 @@ router.post('/parse-and-enrich', async (req, res) => {
 
     console.log(`[${new Date().toISOString()}] Запуск parse-and-enrich для URL: ${url}`);
     const result = await parseAndEnrichByUrl(url);
+    const persistence =
+      result.enriched_data !== null
+        ? persistPrecedents(result.enriched_data, { source: 'api_parse_and_enrich' })
+        : null;
 
     console.log(
       `[${new Date().toISOString()}] parse-and-enrich завершен. Использовано токенов: ${
@@ -91,7 +126,10 @@ router.post('/parse-and-enrich', async (req, res) => {
       }`
     );
 
-    return res.json(result);
+    return res.json({
+      ...result,
+      persistence
+    });
   } catch (error) {
     console.error('Ошибка в /api/parse-and-enrich:', error);
     return res.status(500).json({

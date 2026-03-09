@@ -140,3 +140,58 @@ export async function parseAndEnrichByUrl(url) {
     throw error;
   }
 }
+
+/**
+ * Получает краткую сводку по накопленной базе прецедентов
+ * @returns {Promise<Object>}
+ */
+export async function getPrecedentsSummary() {
+  try {
+    const response = await fetch(`${API_URL}/api/precedents/summary`, {
+      method: 'GET'
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Ошибка в getPrecedentsSummary:', error);
+    throw error;
+  }
+}
+
+/**
+ * Выполняет минимальный RAG-поиск по базе прецедентов
+ * @param {Object} payload
+ * @returns {Promise<Object>}
+ */
+export async function searchPrecedents(payload) {
+  try {
+    const response = await fetch(`${API_URL}/api/precedents/search`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error || errorData.message || errorMessage;
+      } catch (e) {
+        const text = await response.text().catch(() => 'Неизвестная ошибка');
+        errorMessage = text || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Ошибка в searchPrecedents:', error);
+    throw error;
+  }
+}

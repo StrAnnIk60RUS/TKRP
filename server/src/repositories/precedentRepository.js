@@ -52,6 +52,98 @@ function readStorage() {
   }
 }
 
+function normalizeText(value) {
+  if (typeof value !== 'string') return '';
+  return value.toLowerCase().replace(/[^\p{L}\p{N}\s_-]+/gu, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function tokenize(value) {
+  const normalized = normalizeText(value);
+  if (!normalized) return [];
+  return normalized.split(' ').filter((token) => token.length >= 2);
+}
+
+function uniqueTokens(tokens) {
+  return Array.from(new Set(tokens.filter(Boolean)));
+}
+
+function collectPublicationSearchText(publication) {
+  const model = publication?.publication_model || {};
+  return [
+    publication?.competitor_name,
+    publication?.platform,
+    model.type,
+    model.topic,
+    model.format,
+    model.content_category,
+    model.tone,
+    model.funnel_stage,
+    model.objective,
+    model.summary,
+    ...(Array.isArray(model.audience_segments) ? model.audience_segments : []),
+    ...(Array.isArray(model.key_entities) ? model.key_entities : [])
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
+function collectContentPlanSearchText(contentPlan) {
+  const model = contentPlan?.content_plan_model || {};
+  const schedule = Array.isArray(model.publication_schedule) ? model.publication_schedule : [];
+  return [
+    contentPlan?.competitor_name,
+    contentPlan?.platform,
+    model.plan_type,
+    ...(Array.isArray(model.audience_segments) ? model.audience_segments : []),
+    ...(schedule.flatMap((item) => [item?.topic, item?.format, item?.objective]).filter(Boolean))
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
+function calculateTokenScore(queryTokens, text, options = {}) {
+  const textTokens = uniqueTokens(tokenize(text));
+  if (!queryTokens.length || !textTokens.length) {
+    return {
+      score: 0,
+      matched_tokens: []
+    };
+  }
+
+  const matchedTokens = queryTokens.filter((token) => textTokens.includes(token));
+  const baseScore = matchedTokens.length / queryTokens.length;
+
+  let score = baseScore;
+  if (options.boostExactPhrase && normalizeText(text).includes(normalizeText(options.boostExactPhrase))) {
+    score += 0.25;
+  }
+
+  return {
+    score: Number(Math.min(score, 1).toFixed(4)),
+    matched_tokens: uniqueTokens(matchedTokens)
+  };
+}
+
+function filterByPlatform(items, platform) {
+  if (!platform) return items;
+  const normalizedPlatform = normalizeText(platform);
+  return items.filter((item) => normalizeText(item?.platform) === normalizedPlatform);
+}
+
+function filterByAudience(items, audienceSegments = [], getter) {
+  if (!Array.isArray(audienceSegments) || audienceSegments.length === 0) {
+    return items;
+  }
+
+  const normalizedSegments = audienceSegments.map((segment) => normalizeText(segment)).filter(Boolean);
+  if (!normalizedSegments.length) return items;
+
+  return items.filter((item) => {
+    const values = getter(item).map((segment) => normalizeText(segment)).filter(Boolean);
+    return normalizedSegments.some((segment) => values.includes(segment));
+  });
+}
+
 function writeStorage(storage) {
   ensureStorageFile();
 
@@ -202,4 +294,76 @@ export function getPrecedentsSummary() {
 
 export function getPrecedentsSnapshot() {
   return readStorage();
+}
+
+export function searchPrecedents(query, options = {}) {
+  const normalizedQuery = normalizeText(query);
+  if (!normalizedQuery) {
+    return {
+      query: '',
+      publications: [],
+      content_plans: [],
+      total_publications_searched: 0,
+      total_content_plans_searched: 0
+    };
+  }
+
+  const storage = readStorage();
+  const limit = Math.max(1, Math.min(Number(options.limit) || 5, 20));
+  const queryTokens = uniqueTokens(tokenize(normalizedQuery));
+
+  const filteredPublications = filterByAudience(
+    filterByPlatform(storage.publications, options.platform),
+    options.audience_segments,
+    (item) => item?.publication_model?.audience_segments || []
+  );
+  const filteredContentPlans = filterByAudience(
+    filterByPlatform(storage.content_plans, options.platform),
+    options.audience_segments,
+    (item) => item?.content_plan_model?.audience_segments || []
+  );
+
+  const rankedPublications = filteredPublications
+    .map((publication) => {
+      const searchText = collectPublicationSearchText(publication);
+      const scoreData = calculateTokenScore(queryTokens, searchText, {
+        boostExactPhrase: normalizedQuery
+      });
+
+      return {
+        type: 'publication',
+        score: scoreData.score,
+        matched_tokens: scoreData.matched_tokens,
+        data: publication
+      };
+    })
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
+
+  const rankedContentPlans = filteredContentPlans
+    .map((contentPlan) => {
+      const searchText = collectContentPlanSearchText(contentPlan);
+      const scoreData = calculateTokenScore(queryTokens, searchText, {
+        boostExactPhrase: normalizedQuery
+      });
+
+      return {
+        type: 'content_plan',
+        score: scoreData.score,
+        matched_tokens: scoreData.matched_tokens,
+        data: contentPlan
+      };
+    })
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
+
+  return {
+    query: normalizedQuery,
+    publications: rankedPublications,
+    content_plans: rankedContentPlans,
+    total_publications_searched: filteredPublications.length,
+    total_content_plans_searched: filteredContentPlans.length
+  };
 }

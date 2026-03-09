@@ -3,8 +3,10 @@ import { useNavigate } from 'react-router-dom'
 import PreviewModal from './PreviewModal'
 import { ToastContainer } from './Toast'
 import CompetitorsStep from './competitors/CompetitorsStep'
+import PrecedentSearchStep from './competitors/PrecedentSearchStep'
 import { useCompetitorsPipeline } from '../hooks/useCompetitorsPipeline'
 import { buildExportPayload } from '../utils/formMappers'
+import { getPrecedentsSummary, searchPrecedents } from '../services/enrichmentService'
 import './ProjectForm.css'
 
 const ProjectForm = () => {
@@ -71,6 +73,10 @@ const ProjectForm = () => {
   const [toasts, setToasts] = useState([])
   const [pendingDownload, setPendingDownload] = useState(null)
   const [isEditMode, setIsEditMode] = useState(true)
+  const [precedentsSummary, setPrecedentsSummary] = useState(null)
+  const [precedentSearchQuery, setPrecedentSearchQuery] = useState('')
+  const [precedentSearchResults, setPrecedentSearchResults] = useState(null)
+  const [isSearchingPrecedents, setIsSearchingPrecedents] = useState(false)
   const toastCounterRef = useRef(0)
 
   // B2G - Business-to-Government (бизнес для государства)
@@ -132,6 +138,37 @@ const ProjectForm = () => {
       }
     }
   }, [])
+
+  useEffect(() => {
+    const loadPrecedentsSummary = async () => {
+      try {
+        const response = await getPrecedentsSummary()
+        setPrecedentsSummary(response.summary || null)
+      } catch (error) {
+        console.error('Ошибка загрузки сводки прецедентов:', error)
+      }
+    }
+
+    loadPrecedentsSummary()
+  }, [])
+
+  useEffect(() => {
+    const firstPost = competitorsData?.competitors?.[0]?.posts?.[0]
+    const hasNormalizedPublicationModel = !!firstPost?.publication_model
+
+    if (!hasNormalizedPublicationModel) return
+
+    const refreshPrecedentsSummary = async () => {
+      try {
+        const response = await getPrecedentsSummary()
+        setPrecedentsSummary(response.summary || null)
+      } catch (error) {
+        console.error('Ошибка обновления сводки прецедентов:', error)
+      }
+    }
+
+    refreshPrecedentsSummary()
+  }, [competitorsData])
 
   useEffect(() => {
     const hasData = Object.values(formData).some(val => 
@@ -462,6 +499,56 @@ const ProjectForm = () => {
     addToast('Режим редактирования включен', 'info')
   }
 
+  const buildSuggestedPrecedentQuery = () => {
+    const parts = [
+      formData.projectName ? `IT-проект ${formData.projectName}` : '',
+      formData.projectDescription ? formData.projectDescription : '',
+      formData.consumerCategory ? `аудитория ${formData.consumerCategory}` : '',
+      formData.platforms.length ? `платформы ${formData.platforms.join(', ')}` : '',
+      formData.contentFormats.length ? `форматы ${formData.contentFormats.join(', ')}` : '',
+      formData.projectBenefits ? `ключевые преимущества: ${formData.projectBenefits}` : ''
+    ].filter(Boolean)
+
+    return parts.join('. ')
+  }
+
+  const handleUseSuggestedPrecedentQuery = () => {
+    const nextQuery = buildSuggestedPrecedentQuery()
+    setPrecedentSearchQuery(nextQuery)
+    addToast('Запрос для поиска прецедентов сформирован из данных формы', 'info')
+  }
+
+  const handleSearchPrecedents = async () => {
+    const query = precedentSearchQuery.trim()
+
+    if (!query) {
+      addToast('Введите запрос для поиска прецедентов', 'error')
+      return
+    }
+
+    setIsSearchingPrecedents(true)
+
+    try {
+      const response = await searchPrecedents({
+        query,
+        limit: 5,
+        platform: formData.platforms[0] || undefined,
+        audience_segments: formData.consumerCategory ? [formData.consumerCategory] : []
+      })
+
+      setPrecedentSearchResults(response.results || null)
+      addToast('Поиск прецедентов завершён', 'success')
+
+      const summaryResponse = await getPrecedentsSummary()
+      setPrecedentsSummary(summaryResponse.summary || null)
+    } catch (error) {
+      console.error('Ошибка поиска прецедентов:', error)
+      addToast(`Ошибка поиска прецедентов: ${error.message}`, 'error')
+    } finally {
+      setIsSearchingPrecedents(false)
+    }
+  }
+
   const handleReset = () => {
     if (window.confirm('Вы уверены, что хотите очистить все поля формы?')) {
       setFormData({
@@ -678,6 +765,17 @@ const ProjectForm = () => {
           onParseFromUrls={handleParseCompetitorsFromUrls}
           onEnrichUploaded={handleEnrichCompetitorsData}
           onRemoveData={handleRemoveCompetitorsData}
+        />
+
+        <PrecedentSearchStep
+          searchQuery={precedentSearchQuery}
+          onSearchQueryChange={setPrecedentSearchQuery}
+          onUseSuggestedQuery={handleUseSuggestedPrecedentQuery}
+          onSearch={handleSearchPrecedents}
+          isSearching={isSearchingPrecedents}
+          isServerAvailable={isEnrichmentServerAvailable}
+          precedentsSummary={precedentsSummary}
+          precedentResults={precedentSearchResults}
         />
 
         {/* Панель быстрых действий */}
