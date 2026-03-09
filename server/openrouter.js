@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { applyDeterministicPostProcessing } from './src/services/postDeterministicFeatures.js';
 
 // Загружаем единый .env из корня проекта
 const __filename = fileURLToPath(import.meta.url);
@@ -361,8 +362,10 @@ ${JSON.stringify(dataWithEngagementRate, null, 2)}
   }
 
   // ВСЕГДА возвращаем результат, даже если JSON невалидный
+  const postProcessedData = enrichedData ? applyDeterministicPostProcessing(enrichedData) : null;
+
   return {
-    enriched_data: enrichedData, // null если не удалось распарсить
+    enriched_data: postProcessedData, // null если не удалось распарсить
     raw_response: rawContent, // Сырой ответ от LLM для отладки
     parse_error: parseError, // Информация об ошибке парсинга, если была
     usage: response.usage,

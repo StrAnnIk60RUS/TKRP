@@ -110,6 +110,112 @@
     color: #ffffff !important;
   }
   
+  /* Блок конкурентов */
+  .competitors-step {
+    margin-bottom: 24px;
+  }
+
+  .competitors-actions-group {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  .competitors-step-header {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .actions-description {
+    font-size: 0.85rem;
+    color: #e2e8f0;
+    max-width: 720px;
+  }
+
+  .competitors-inputs {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .competitor-url-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .competitor-url-input {
+    flex: 1;
+    min-width: 220px;
+  }
+
+  .competitors-controls {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-top: 4px;
+  }
+
+  .competitors-select-block {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 220px;
+  }
+
+  .competitors-select-label {
+    font-size: 0.8rem;
+    color: #e2e8f0;
+  }
+
+  .competitors-select {
+    font-size: 0.85rem;
+  }
+
+  .competitor-remove-btn,
+  .competitors-add-btn,
+  .competitors-parse-btn,
+  .competitors-enrich-btn,
+  .competitors-clear-btn {
+    padding: 6px 12px;
+    font-size: 0.85rem;
+  }
+
+  .competitors-status {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    gap: 12px;
+    margin-top: 16px;
+    border-top: 1px solid rgba(148, 163, 184, 0.4);
+    padding-top: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .competitors-status-text {
+    color: #ffffff;
+    font-size: 0.9rem;
+  }
+
+  /* Состояния кнопок быстрых действий */
+  .action-btn:disabled,
+  .action-btn:disabled:hover {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  .action-btn.danger:disabled {
+    background: #4a3040;
+    border-color: #4a3040;
+  }
+
   /* Прогресс-бар */
   .form-progress {
     background: #ffffff;

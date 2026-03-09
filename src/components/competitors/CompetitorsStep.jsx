@@ -18,63 +18,49 @@ const CompetitorsStep = ({
   onEnrichUploaded,
   onRemoveData
 }) => {
-  return (
-    <div className="quick-actions" style={{ marginBottom: '24px' }}>
-      <div className="actions-group" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '16px' }}>
-        <span className="actions-label">Конкуренты: ссылки и файлы</span>
+  const isActionsDisabled = isParsingFromUrls || isEnriching || isProcessing;
 
-        <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <span style={{ color: '#e2e8f0', fontSize: '0.85rem' }}>
+  return (
+    <div className="quick-actions competitors-step">
+      <div className="actions-group competitors-actions-group">
+        <div className="competitors-step-header">
+          <span className="actions-label">Конкуренты: ссылки и данные</span>
+          <span className="actions-description">
             Шаг 1. Введите ссылки на страницы/аккаунты конкурентов (VK, LinkedIn и т.п.), затем запустите парсинг.
           </span>
+        </div>
+
+        <div className="competitors-inputs">
           {competitorUrls.map((url, index) => (
-            <div
-              key={index}
-              style={{
-                display: 'flex',
-                gap: '8px',
-                alignItems: 'center',
-                marginBottom: '4px',
-                width: '100%',
-                flexWrap: 'wrap'
-              }}
-            >
+            <div key={index} className="competitor-url-row">
               <input
                 type="text"
                 value={url}
                 onChange={(e) => onUrlChange(index, e.target.value)}
                 placeholder="https://vk.com/..., https://www.linkedin.com/..."
-                className="form-input"
-                style={{ flex: 1, minWidth: '220px' }}
+                className="form-input competitor-url-input"
               />
               {competitorUrls.length > 1 && (
                 <button
                   type="button"
-                  className="action-btn danger"
+                  className="action-btn danger competitor-remove-btn"
                   onClick={() => onRemoveUrl(index)}
-                  style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+                  disabled={isActionsDisabled}
                 >
                   Удалить
                 </button>
               )}
             </div>
           ))}
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '4px',
-                minWidth: '220px'
-              }}
-            >
-              <span style={{ color: '#e2e8f0', fontSize: '0.8rem' }}>Сколько постов парсить</span>
+
+          <div className="competitors-controls">
+            <div className="competitors-select-block">
+              <span className="competitors-select-label">Сколько постов парсить</span>
               <select
-                className="form-select"
+                className="form-select competitors-select"
                 value={postsLimit}
                 onChange={(e) => onPostsLimitChange(e.target.value)}
-                disabled={isParsingFromUrls || isEnriching || isProcessing}
-                style={{ fontSize: '0.85rem' }}
+                disabled={isActionsDisabled}
               >
                 <option value="1">1 пост</option>
                 <option value="10">10 постов</option>
@@ -83,26 +69,24 @@ const CompetitorsStep = ({
                 <option value="all">Все посты</option>
               </select>
             </div>
+
             <button
               type="button"
-              className="action-btn"
+              className="action-btn competitors-add-btn"
               onClick={onAddUrl}
-              style={{ padding: '6px 12px', fontSize: '0.85rem' }}
-              disabled={isParsingFromUrls || isEnriching || isProcessing}
+              disabled={isActionsDisabled}
             >
               + Добавить ссылку
             </button>
+
             <button
               type="button"
-              className="action-btn"
+              className="action-btn competitors-parse-btn"
               onClick={onParseFromUrls}
-              disabled={isParsingFromUrls || isEnriching || isProcessing}
+              disabled={isActionsDisabled || isEnrichmentServerAvailable === false}
               style={{
-                padding: '6px 12px',
-                fontSize: '0.85rem',
-                backgroundColor: isEnrichmentServerAvailable === false ? '#666' : '#3b82f6',
-                opacity: isParsingFromUrls ? 0.6 : 1,
-                cursor: isParsingFromUrls ? 'wait' : 'pointer'
+                backgroundColor: isEnrichmentServerAvailable === false ? '#666' : undefined,
+                cursor: isParsingFromUrls ? 'wait' : undefined
               }}
               title={
                 isEnrichmentServerAvailable === false
@@ -110,58 +94,44 @@ const CompetitorsStep = ({
                   : 'Спарсить конкурентов по ссылкам'
               }
             >
-              {isParsingFromUrls ? 'ПАРСИНГ...' : 'Спарсить'}
+              {isParsingFromUrls ? 'Парсинг...' : 'Спарсить'}
             </button>
           </div>
         </div>
 
         {competitorsData && (
-          <div
-            style={{
-              width: '100%',
-              display: 'flex',
-              flexDirection: 'row',
-              gap: '12px',
-              marginTop: '16px',
-              borderTop: '1px solid rgba(148, 163, 184, 0.4)',
-              paddingTop: '12px',
-              alignItems: 'center',
-              flexWrap: 'wrap'
-            }}
-          >
-            <span style={{ color: '#ffffff', fontSize: '0.9rem' }}>
+          <div className="competitors-status">
+            <span className="competitors-status-text">
               ✓ Данные конкурентов получены из парсера
               {competitorsFileName && ` (${competitorsFileName})`}
               {` — ${competitorsData.competitors?.length || 0} конкурентов`}
             </span>
+
             <button
               type="button"
-              className="action-btn"
+              className="action-btn competitors-enrich-btn"
               onClick={onEnrichUploaded}
-              disabled={isEnriching || isProcessing || !canEnrich}
+              disabled={isEnriching || isProcessing || !canEnrich || isEnrichmentServerAvailable === false}
               style={{
-                padding: '6px 12px',
-                fontSize: '0.85rem',
-                backgroundColor: isEnrichmentServerAvailable === false ? '#666' : '#3b82f6',
-                opacity: isEnriching || !canEnrich ? 0.6 : 1,
-                cursor: isEnriching || !canEnrich ? 'not-allowed' : 'pointer'
+                backgroundColor: isEnrichmentServerAvailable === false ? '#666' : undefined,
+                cursor: isEnriching || !canEnrich ? 'not-allowed' : undefined
               }}
               title={
                 isEnrichmentServerAvailable === false
                   ? 'Сервер обогащения недоступен'
                   : !canEnrich
                   ? 'Сначала выполните успешный парсинг конкурентов'
-                  : 'Обогатить данные через DeepSeek'
+                  : 'Обогатить данные конкурентов'
               }
             >
-              {isEnriching ? 'ОБОГАЩЕНИЕ...' : '🤖 Обогатить'}
+              {isEnriching ? 'Обогащение...' : 'Обогатить'}
             </button>
+
             <button
               type="button"
-              className="action-btn danger"
+              className="action-btn danger competitors-clear-btn"
               onClick={onRemoveData}
               disabled={isEnriching || isProcessing}
-              style={{ padding: '6px 12px', fontSize: '0.85rem' }}
             >
               Очистить конкурентов
             </button>
