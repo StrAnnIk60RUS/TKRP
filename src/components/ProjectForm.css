@@ -384,6 +384,22 @@
     border: 2px solid #1a1a2e;
   }
 
+  .draft-plan-section .analysis-view {
+    background: #fafbfc;
+    border: 2px solid #1a1a2e;
+    padding: 14px;
+    overflow-x: auto;
+  }
+
+  .draft-plan-section .analysis-view pre {
+    margin: 0;
+    color: #1a1a2e;
+    font-size: 0.83rem;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
   /* Состояния кнопок быстрых действий */
   .action-btn:disabled,
   .action-btn:disabled:hover {

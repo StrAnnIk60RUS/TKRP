@@ -217,3 +217,37 @@ export async function searchPrecedents(payload) {
     throw error;
   }
 }
+
+/**
+ * Генерирует черновой контент-план на основе формы и прецедентов (RAG -> LLM)
+ * @param {Object} payload
+ * @returns {Promise<Object>}
+ */
+export async function generateDraftContentPlan(payload) {
+  try {
+    const response = await fetch(`${API_URL}/api/plan/generate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error || errorData.message || errorMessage;
+      } catch (e) {
+        const text = await response.text().catch(() => 'Неизвестная ошибка');
+        errorMessage = text || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Ошибка в generateDraftContentPlan:', error);
+    throw error;
+  }
+}

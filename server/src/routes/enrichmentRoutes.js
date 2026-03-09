@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { enrichCompetitorsData } from '../../openrouter.js';
+import { callDeepSeekAPI } from '../../openrouter.js';
 import { parseAndEnrichByUrl, parseOnlyByUrl } from '../services/parserPipeline.js';
 import {
   getPrecedentsSnapshot,
@@ -13,8 +14,41 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEMO_FIXTURE_PATH = path.join(__dirname, '..', 'fixtures', 'demoPrecedents.json');
+const DRAFT_PLAN_PROMPT_PATH = path.join(__dirname, '..', 'prompts', 'articleDraftPlanPrompt.txt');
 
 const router = Router();
+
+function extractJsonFromLlmContent(content) {
+  if (!content || typeof content !== 'string') {
+    throw new Error('Пустой ответ от LLM');
+  }
+
+  const trimmed = content.trim();
+  const start = trimmed.indexOf('{');
+  const end = trimmed.lastIndexOf('}');
+  if (start === -1 || end === -1 || end <= start) {
+    throw new Error('LLM не вернул JSON объект');
+  }
+
+  return JSON.parse(trimmed.slice(start, end + 1));
+}
+
+function buildRagQueryFromForm(formInput = {}) {
+  const parts = [
+    formInput.projectName ? `IT-проект ${formInput.projectName}` : '',
+    formInput.projectDescription || '',
+    formInput.projectBenefits ? `Преимущества: ${formInput.projectBenefits}` : '',
+    formInput.consumerCategory ? `Аудитория: ${formInput.consumerCategory}` : '',
+    Array.isArray(formInput.platforms) && formInput.platforms.length
+      ? `Платформы: ${formInput.platforms.join(', ')}`
+      : '',
+    Array.isArray(formInput.contentFormats) && formInput.contentFormats.length
+      ? `Форматы: ${formInput.contentFormats.join(', ')}`
+      : ''
+  ];
+
+  return parts.filter(Boolean).join('. ');
+}
 
 router.get('/precedents/summary', (req, res) => {
   try {
@@ -103,6 +137,70 @@ router.post('/precedents/search', (req, res) => {
     return res.status(500).json({
       success: false,
       error: error.message || 'Внутренняя ошибка сервера в /api/precedents/search'
+    });
+  }
+});
+
+router.post('/plan/generate', async (req, res) => {
+  try {
+    const { form_input, rag_query, rag_limit } = req.body || {};
+    if (!form_input || typeof form_input !== 'object') {
+      return res.status(400).json({
+        success: false,
+        error: 'Отсутствует или некорректное поле form_input'
+      });
+    }
+
+    const query = typeof rag_query === 'string' && rag_query.trim()
+      ? rag_query.trim()
+      : buildRagQueryFromForm(form_input);
+    if (!query) {
+      return res.status(400).json({
+        success: false,
+        error: 'Не удалось сформировать rag_query из form_input'
+      });
+    }
+
+    const ragResults = searchPrecedents(query, {
+      limit: rag_limit || 8,
+      platform: Array.isArray(form_input.platforms) ? form_input.platforms[0] : undefined,
+      audience_segments: form_input.consumerCategory ? [form_input.consumerCategory] : []
+    });
+
+    const systemPrompt = fs.readFileSync(DRAFT_PLAN_PROMPT_PATH, 'utf-8');
+    const userPrompt = `Сформируй черновой контент-план на основании требований проекта и найденных прецедентов.
+
+Требования проекта:
+${JSON.stringify(form_input, null, 2)}
+
+RAG query:
+${query}
+
+Найденные публикации-прецеденты:
+${JSON.stringify(ragResults.publications, null, 2)}
+
+Найденные прецеденты контент-планов:
+${JSON.stringify(ragResults.content_plans, null, 2)}
+`;
+
+    const llmResponse = await callDeepSeekAPI(systemPrompt, userPrompt, {
+      temperature: 0.3,
+      maxTokens: 100000,
+      responseFormat: null
+    });
+    const parsed = extractJsonFromLlmContent(llmResponse.content || '');
+
+    return res.json({
+      success: true,
+      rag: ragResults,
+      draft: parsed,
+      usage: llmResponse.usage || null
+    });
+  } catch (error) {
+    console.error('Ошибка в /api/plan/generate:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Внутренняя ошибка сервера в /api/plan/generate'
     });
   }
 });

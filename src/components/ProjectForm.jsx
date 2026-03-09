@@ -1,11 +1,8 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
-import PreviewModal from './PreviewModal'
 import { ToastContainer } from './Toast'
 import CompetitorsStep from './competitors/CompetitorsStep'
 import { useCompetitorsPipeline } from '../hooks/useCompetitorsPipeline'
-import { buildExportPayload } from '../utils/formMappers'
-import { getPrecedentsSummary, searchPrecedents, seedDemoPrecedents } from '../services/enrichmentService'
+import { getPrecedentsSummary, searchPrecedents, seedDemoPrecedents, generateDraftContentPlan } from '../services/enrichmentService'
 import './ProjectForm.css'
 
 const formatPrecedentScore = (score) => `${Math.round((Number(score) || 0) * 100)}%`
@@ -15,8 +12,9 @@ const renderMatchedTokens = (matchedTokens = []) => {
   return matchedTokens.join(', ')
 }
 
+const formatDateISO = (date) => date.toISOString().split('T')[0]
+
 const ProjectForm = () => {
-  const navigate = useNavigate()
   const [formData, setFormData] = useState({
     // Сведения о производителе
     producerName: '',
@@ -74,16 +72,16 @@ const ProjectForm = () => {
   const [errors, setErrors] = useState({})
   const [touched, setTouched] = useState({})
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [isProcessing, setIsProcessing] = useState(false)
-  const [showPreview, setShowPreview] = useState(false)
   const [toasts, setToasts] = useState([])
-  const [pendingDownload, setPendingDownload] = useState(null)
+  const isProcessing = false
   const [isEditMode, setIsEditMode] = useState(true)
   const [precedentsSummary, setPrecedentsSummary] = useState(null)
   const [precedentSearchQuery, setPrecedentSearchQuery] = useState('')
   const [precedentSearchResults, setPrecedentSearchResults] = useState(null)
   const [isSearchingPrecedents, setIsSearchingPrecedents] = useState(false)
   const [isSeedingPrecedents, setIsSeedingPrecedents] = useState(false)
+  const [isGeneratingDraftPlan, setIsGeneratingDraftPlan] = useState(false)
+  const [draftPlanResult, setDraftPlanResult] = useState(null)
   const toastCounterRef = useRef(0)
 
   // B2G - Business-to-Government (бизнес для государства)
@@ -400,66 +398,6 @@ const ProjectForm = () => {
     return isValid
   }
 
-  const formatDataForExport = () => buildExportPayload(formData, competitorsData, competitorsFileName)
-
-  const downloadJSONFile = (data, filename) => {
-    const jsonString = JSON.stringify(data, null, 2)
-    const blob = new Blob([jsonString], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = filename
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
-  }
-
-  const handleExport = () => {
-    if (validateForm()) {
-      const formattedData = formatDataForExport()
-      const date = new Date().toISOString().split('T')[0]
-      const safeProjectName = formData.projectName
-        .trim()
-        .replace(/[^a-zA-Zа-яА-Я0-9\s]/g, '')
-        .replace(/\s+/g, '_')
-        .toLowerCase()
-        .substring(0, 50)
-      // Если загружены данные конкурентов, создаем объединенный файл
-      const filename = competitorsData 
-        ? `combined_data_${safeProjectName || 'project'}_${date}.json`
-        : `project_data_${safeProjectName || 'project'}_${date}.json`
-
-      setPendingDownload({ data: formattedData, filename })
-      setShowPreview(true)
-    } else {
-      const allTouched = {}
-      Object.keys(formData).forEach(key => { allTouched[key] = true })
-      setTouched(allTouched)
-      addToast('Заполните все обязательные поля', 'error')
-    }
-  }
-
-  const handleConfirmDownload = () => {
-    if (pendingDownload) {
-      downloadJSONFile(pendingDownload.data, pendingDownload.filename)
-      
-      // Если это объединенный файл с контент-планом, сохраняем для просмотра
-      if (pendingDownload.data.content_plan) {
-        localStorage.setItem('currentContentPlan', JSON.stringify(pendingDownload.data))
-      }
-      
-      localStorage.removeItem('projectFormDraft')
-      addToast(`Файл "${pendingDownload.filename}" скачан!`, 'success')
-      setShowPreview(false)
-      setPendingDownload(null)
-    }
-  }
-
-  const handleCancelPreview = () => {
-    setShowPreview(false)
-    setPendingDownload(null)
-  }
 
   const loadExample = async (exampleName) => {
     try {
@@ -516,16 +454,41 @@ const ProjectForm = () => {
       formData.projectBenefits ? `ключевые преимущества: ${formData.projectBenefits}` : ''
     ].filter(Boolean)
 
+    if (parts.length === 0) {
+      return 'продвижение IT-проекта в социальных сетях, B2B, экспертный контент, кейсы внедрения'
+    }
+
     return parts.join('. ')
+  }
+
+  const buildSafeFormInputForGeneration = () => {
+    const now = new Date()
+    const end = new Date(now)
+    end.setDate(now.getDate() + 30)
+
+    return {
+      ...formData,
+      producerName: formData.producerName || 'Unknown producer',
+      producerActivitySpecification:
+        formData.producerActivitySpecification || 'IT-project development and promotion.',
+      projectName: formData.projectName || 'IT Project',
+      projectDescription:
+        formData.projectDescription ||
+        'Draft generation request for IT project promotion in social networks.',
+      consumerCategory: formData.consumerCategory || 'B2B',
+      contentPlanStartDate: formData.contentPlanStartDate || formatDateISO(now),
+      contentPlanEndDate: formData.contentPlanEndDate || formatDateISO(end),
+      publicationFrequency: formData.publicationFrequency || 'weekly',
+      minPublications: formData.minPublications || '8',
+      totalBudget: formData.totalBudget || '0',
+      maxCostPerPublication: formData.maxCostPerPublication || '0',
+      contentFormats: formData.contentFormats.length ? formData.contentFormats : ['text'],
+      platforms: formData.platforms.length ? formData.platforms : ['linkedin']
+    }
   }
 
   const handleSearchPrecedents = async () => {
     const query = buildSuggestedPrecedentQuery().trim()
-
-    if (!query) {
-      addToast('Недостаточно данных формы для подбора прецедентов', 'error')
-      return
-    }
 
     setIsSearchingPrecedents(true)
     setPrecedentSearchQuery(query)
@@ -671,85 +634,34 @@ const ProjectForm = () => {
     }
   }
 
-  const handleSendToLLM = async () => {
-    if (!validateForm()) {
-      const allTouched = {}
-      Object.keys(formData).forEach(key => { allTouched[key] = true })
-      setTouched(allTouched)
-      addToast('Заполните все обязательные поля', 'error')
+  const handleGenerateDraftPlan = async () => {
+    if (!precedentsSummary?.publications_count) {
+      addToast('База прецедентов пуста. Сначала обогатите конкурентов или загрузите демо-прецеденты.', 'error')
       return
     }
 
-    if (!competitorsData) {
-      addToast('Необходимо загрузить данные конкурентов перед отправкой на обработку', 'error')
-      return
-    }
+    const safeFormInput = buildSafeFormInputForGeneration()
 
-    setIsProcessing(true)
-    addToast('Отправка данных на обработку LLM...', 'info')
+    setIsGeneratingDraftPlan(true)
+    addToast('Генерация чернового контент-плана по данным формы и прецедентам...', 'info')
 
     try {
-      const dataToSend = formatDataForExport()
-      
-      // Сохраняем данные для обработки
-      localStorage.setItem('llmProcessingData', JSON.stringify(dataToSend))
-      localStorage.setItem('llmProcessingStatus', 'pending')
-      
-      // Имитация отправки на API (замените на реальный API вызов)
-      // const response = await fetch('/api/llm/process', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify(dataToSend)
-      // })
-      // const result = await response.json()
+      const response = await generateDraftContentPlan({
+        form_input: safeFormInput,
+        rag_query: precedentSearchQuery || undefined,
+        rag_limit: 8
+      })
 
-      // Для демонстрации: имитируем обработку
-      setTimeout(() => {
-        // В реальном приложении здесь будет результат от LLM
-        // Пока сохраняем данные как "обработанные" для демонстрации
-        const mockResult = {
-          ...dataToSend,
-          content_plan: {
-            project_id: formData.projectName.toLowerCase().replace(/\s+/g, '_'),
-            ontology: {
-              classes: ['IT_Project', 'ContentPlan', 'Publication', 'Competitor', 'Metrics', 'Audience', 'Platform'],
-              subclasses: ['SaaS_Project', 'B2B_Audience', 'Text_Publication', 'Video_Publication'],
-              attributes: ['publication_date', 'engagement_rate', 'views', 'likes', 'content_length'],
-              relationships: ['hasPublication', 'targetsAudience', 'publishedOnPlatform']
-            },
-            platforms: {},
-            analysis: {
-              successful_patterns: {},
-              competitor_strategies: {}
-            }
-          },
-          processing_metadata: {
-            ...dataToSend.processing_metadata,
-            processed_at: new Date().toISOString(),
-            status: 'completed'
-          }
-        }
-
-        localStorage.setItem('currentContentPlan', JSON.stringify(mockResult))
-        localStorage.setItem('llmProcessingStatus', 'completed')
-        
-        setIsProcessing(false)
-        addToast('Обработка завершена! Переход к результатам...', 'success')
-        
-        // Переход на страницу просмотра контент-плана
-        setTimeout(() => {
-          if (navigate) {
-            navigate('/content-plan')
-          } else {
-            window.location.href = '/content-plan'
-          }
-        }, 1500)
-      }, 2000)
-
+      setDraftPlanResult(response)
+      if (response?.rag) {
+        setPrecedentSearchResults(response.rag)
+      }
+      addToast('Черновой контент-план успешно сгенерирован', 'success')
     } catch (error) {
-      console.error('Ошибка отправки на обработку:', error)
-      setIsProcessing(false)
-      addToast('Ошибка при отправке данных на обработку', 'error')
+      console.error('Ошибка генерации чернового плана:', error)
+      addToast(`Ошибка генерации: ${error.message}`, 'error')
+    } finally {
+      setIsGeneratingDraftPlan(false)
     }
   }
 
@@ -759,15 +671,6 @@ const ProjectForm = () => {
     <>
       <ToastContainer toasts={toasts} removeToast={removeToast} />
       
-      {showPreview && pendingDownload && (
-        <PreviewModal
-          data={pendingDownload.data}
-          filename={pendingDownload.filename}
-          onConfirm={handleConfirmDownload}
-          onCancel={handleCancelPreview}
-        />
-      )}
-
       <form className="project-form">
         <CompetitorsStep
           competitorUrls={competitorUrls}
@@ -1611,23 +1514,15 @@ const ProjectForm = () => {
             type="button"
             className="btn-edit"
             onClick={handleEdit}
-            disabled={isEditMode || isProcessing}
+            disabled={isEditMode || isProcessing || isGeneratingDraftPlan}
           >
             <span>ИЗМЕНИТЬ</span>
           </button>
           <button
             type="button"
             className="submit-button secondary"
-            onClick={handleExport}
-            disabled={isSubmitting || isProcessing}
-          >
-            <span>ЭКСПОРТ В JSON</span>
-          </button>
-          <button
-            type="button"
-            className="submit-button secondary"
             onClick={handleSeedDemoPrecedents}
-            disabled={isSubmitting || isProcessing || isSeedingPrecedents || isEnrichmentServerAvailable === false}
+            disabled={isSubmitting || isProcessing || isGeneratingDraftPlan || isSeedingPrecedents || isEnrichmentServerAvailable === false}
             title="Загрузить готовую демо-базу прецедентов, чтобы сразу увидеть рабочий поиск"
           >
             <span>{isSeedingPrecedents ? 'ЗАГРУЗКА ДЕМО...' : 'ЗАГРУЗИТЬ ДЕМО-ПРЕЦЕДЕНТЫ'}</span>
@@ -1636,7 +1531,7 @@ const ProjectForm = () => {
             type="button"
             className="submit-button secondary"
             onClick={handleSearchPrecedents}
-            disabled={isSubmitting || isProcessing || isSearchingPrecedents || isEnrichmentServerAvailable === false}
+            disabled={isSubmitting || isProcessing || isGeneratingDraftPlan || isSearchingPrecedents || isEnrichmentServerAvailable === false}
             title="Подобрать релевантные публикации и контент-планы по данным формы"
           >
             <span>{isSearchingPrecedents ? 'ПОИСК ПРЕЦЕДЕНТОВ...' : 'ПОДОБРАТЬ ПРЕЦЕДЕНТЫ'}</span>
@@ -1644,10 +1539,10 @@ const ProjectForm = () => {
           <button
             type="button"
             className="submit-button primary"
-            onClick={handleSendToLLM}
-            disabled={isSubmitting || isProcessing || !competitorsData}
+            onClick={handleGenerateDraftPlan}
+            disabled={isSubmitting || isProcessing || isGeneratingDraftPlan || isEnrichmentServerAvailable === false}
           >
-            <span>{isProcessing ? 'ОБРАБОТКА...' : 'ОТПРАВИТЬ НА ОБРАБОТКУ LLM'}</span>
+            <span>{isGeneratingDraftPlan ? 'ГЕНЕРАЦИЯ...' : 'СФОРМИРОВАТЬ ЧЕРНОВОЙ ПЛАН'}</span>
           </button>
         </div>
 
@@ -1768,6 +1663,36 @@ const ProjectForm = () => {
                     проекта, платформы и преимущества или загрузите демо-прецеденты.
                   </div>
                 )}
+            </div>
+          )}
+        </section>
+
+        <section className="form-section precedent-workflow-section">
+          <h2 className="section-title">Черновой контент-план (RAG → LLM)</h2>
+          {!draftPlanResult?.draft?.draft_content_plan && (
+            <div className="precedent-empty-state precedent-empty-state-light">
+              После нажатия `Сформировать черновой план` здесь появится структура плана с датами,
+              темами, форматами, KPI и ссылками на использованные прецеденты.
+            </div>
+          )}
+
+          {!!draftPlanResult?.draft?.draft_content_plan && (
+            <div className="draft-plan-section">
+              <div className="precedent-summary-panel">
+                <div className="precedent-summary-line">
+                  План: {draftPlanResult.draft.draft_content_plan.plan_id}
+                </div>
+                <div className="precedent-summary-line">
+                  Период: {draftPlanResult.draft.draft_content_plan.planning_horizon?.start_date} -{' '}
+                  {draftPlanResult.draft.draft_content_plan.planning_horizon?.end_date}
+                </div>
+                <div className="precedent-summary-line">
+                  Публикаций в черновике: {draftPlanResult.draft.draft_content_plan.publications?.length || 0}
+                </div>
+              </div>
+              <div className="analysis-view">
+                <pre>{JSON.stringify(draftPlanResult.draft.draft_content_plan, null, 2)}</pre>
+              </div>
             </div>
           )}
         </section>
