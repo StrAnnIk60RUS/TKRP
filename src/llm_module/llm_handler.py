@@ -1,11 +1,11 @@
-"""Модуль для работы с Yandex Cloud AI Agent API"""
+"""Модуль для работы с LLM Agent API (провайдер-агностичный)"""
 import json
 import requests
 from typing import Dict, Any, Optional
 from config import (
-    YANDEX_CLOUD_API_KEY,
-    YANDEX_CLOUD_FOLDER_ID,
-    YANDEX_CLOUD_AGENT_ID,
+    LLM_API_KEY,
+    LLM_PROJECT_ID,
+    LLM_AGENT_ID,
     TEMPERATURE,
     MAX_TOKENS,
     INSTRUCTION_FILE,
@@ -14,17 +14,17 @@ from config import (
 
 
 class YandexLLMHandler:
-    """Обработчик для работы с Yandex Cloud AI Agent"""
+    """Обработчик для работы с абстрактным LLM Agent (без привязки к провайдеру)"""
     
     def __init__(self):
-        self.api_key = YANDEX_CLOUD_API_KEY
-        self.folder_id = YANDEX_CLOUD_FOLDER_ID
-        self.agent_id = YANDEX_CLOUD_AGENT_ID
+        self.api_key = LLM_API_KEY
+        self.folder_id = LLM_PROJECT_ID
+        self.agent_id = LLM_AGENT_ID
         self.temperature = TEMPERATURE
         self.max_tokens = MAX_TOKENS
         
         if not self.api_key or not self.folder_id:
-            raise ValueError("YANDEX_CLOUD_API_KEY и YANDEX_CLOUD_FOLDER_ID должны быть установлены")
+            raise ValueError("LLM_API_KEY и LLM_PROJECT_ID должны быть установлены")
     
     def _load_instruction(self) -> str:
         """Загружает инструкцию для агента из файла"""
