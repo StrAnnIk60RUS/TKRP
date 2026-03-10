@@ -82,7 +82,16 @@ const ProjectForm = () => {
   const [isSeedingPrecedents, setIsSeedingPrecedents] = useState(false)
   const [isGeneratingDraftPlan, setIsGeneratingDraftPlan] = useState(false)
   const [draftPlanResult, setDraftPlanResult] = useState(null)
+  const [currentStep, setCurrentStep] = useState(1)
   const toastCounterRef = useRef(0)
+
+  const wizardSteps = [
+    'Конкуренты',
+    'Проект',
+    'Аудитория и план',
+    'Настройки и запуск',
+    'Результаты'
+  ]
 
   // B2G - Business-to-Government (бизнес для государства)
   const consumerCategoryOptions = [
@@ -666,90 +675,105 @@ const ProjectForm = () => {
   }
 
   const hasError = (fieldName) => touched[fieldName] && errors[fieldName]
+  const isFirstStep = currentStep === 1
+  const isLastStep = currentStep === wizardSteps.length
+  const wizardProgress = (currentStep / wizardSteps.length) * 100
+
+  const goToNextStep = () => {
+    if (!isLastStep) setCurrentStep((prev) => prev + 1)
+  }
+
+  const goToPrevStep = () => {
+    if (!isFirstStep) setCurrentStep((prev) => prev - 1)
+  }
 
   return (
     <>
       <ToastContainer toasts={toasts} removeToast={removeToast} />
       
       <form className="project-form">
-        <CompetitorsStep
-          competitorUrls={competitorUrls}
-          competitorsData={competitorsData}
-          competitorsFileName={competitorsFileName}
-          postsLimit={postsLimit}
-          isParsingFromUrls={isParsingFromUrls}
-          isEnriching={isEnriching}
-          isProcessing={isProcessing}
-          isEnrichmentServerAvailable={isEnrichmentServerAvailable}
-          canEnrich={canEnrich}
-          onUrlChange={handleCompetitorUrlChange}
-          onAddUrl={handleAddCompetitorUrl}
-          onRemoveUrl={handleRemoveCompetitorUrl}
-          onPostsLimitChange={handlePostsLimitChange}
-          onParseFromUrls={handleParseCompetitorsFromUrls}
-          onEnrichUploaded={handleEnrichCompetitorsData}
-          onRemoveData={handleRemoveCompetitorsData}
-        />
-
-        {/* Панель быстрых действий */}
-        <div className="quick-actions">
-          <div className="actions-group">
-            <span className="actions-label">Примеры готовых форм:</span>
-            <button
-              type="button"
-              className="action-btn"
-              onClick={() => loadExample('example_saas_platform')}
-              title="Загрузить пример SaaS платформы"
-            >
-              SaaS платформа
-            </button>
-            <button
-              type="button"
-              className="action-btn"
-              onClick={() => loadExample('example_mobile_app')}
-              title="Загрузить пример мобильного приложения"
-            >
-              Мобильное приложение
-            </button>
-            <button
-              type="button"
-              className="action-btn"
-              onClick={() => loadExample('example_enterprise_solution')}
-              title="Загрузить пример enterprise решения"
-            >
-              Enterprise решение
-            </button>
-            <button
-              type="button"
-              className="action-btn"
-              onClick={handleLoadExample}
-              title="Загрузить пример данных CloudAnalytics Pro из project_data_example.json"
-            >
-              Пример: CloudAnalytics Pro
-            </button>
-            <button
-              type="button"
-              className="action-btn"
-              onClick={handleReset}
-              title="Очистить все поля формы"
-            >
-              Очистить форму
-            </button>
-          </div>
-        </div>
-
         {/* Прогресс-бар */}
         <div className="form-progress">
           <div className="progress-bar-container">
-            <div className="progress-bar-fill" style={{ width: `${progress}%` }}></div>
+            <div className="progress-bar-fill" style={{ width: `${wizardProgress}%` }}></div>
           </div>
           <span className="progress-text">
-            Заполнено {filledRequired} из {requiredFields.length} обязательных полей
+            Шаг {currentStep} из {wizardSteps.length}: {wizardSteps[currentStep - 1]}
           </span>
         </div>
 
+        {currentStep === 1 && (
+          <>
+            <CompetitorsStep
+              competitorUrls={competitorUrls}
+              competitorsData={competitorsData}
+              competitorsFileName={competitorsFileName}
+              postsLimit={postsLimit}
+              isParsingFromUrls={isParsingFromUrls}
+              isEnriching={isEnriching}
+              isProcessing={isProcessing}
+              isEnrichmentServerAvailable={isEnrichmentServerAvailable}
+              canEnrich={canEnrich}
+              onUrlChange={handleCompetitorUrlChange}
+              onAddUrl={handleAddCompetitorUrl}
+              onRemoveUrl={handleRemoveCompetitorUrl}
+              onPostsLimitChange={handlePostsLimitChange}
+              onParseFromUrls={handleParseCompetitorsFromUrls}
+              onEnrichUploaded={handleEnrichCompetitorsData}
+              onRemoveData={handleRemoveCompetitorsData}
+            />
+
+            {/* Панель быстрых действий */}
+            <div className="quick-actions">
+              <div className="actions-group">
+                <span className="actions-label">Примеры готовых форм:</span>
+                <button
+                  type="button"
+                  className="action-btn"
+                  onClick={() => loadExample('example_saas_platform')}
+                  title="Загрузить пример SaaS платформы"
+                >
+                  SaaS платформа
+                </button>
+                <button
+                  type="button"
+                  className="action-btn"
+                  onClick={() => loadExample('example_mobile_app')}
+                  title="Загрузить пример мобильного приложения"
+                >
+                  Мобильное приложение
+                </button>
+                <button
+                  type="button"
+                  className="action-btn"
+                  onClick={() => loadExample('example_enterprise_solution')}
+                  title="Загрузить пример enterprise решения"
+                >
+                  Enterprise решение
+                </button>
+                <button
+                  type="button"
+                  className="action-btn"
+                  onClick={handleLoadExample}
+                  title="Загрузить пример данных CloudAnalytics Pro из project_data_example.json"
+                >
+                  Пример: CloudAnalytics Pro
+                </button>
+                <button
+                  type="button"
+                  className="action-btn"
+                  onClick={handleReset}
+                  title="Очистить все поля формы"
+                >
+                  Очистить форму
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+
         {/* Сведения о производителе */}
-        <section className="form-section">
+        {currentStep === 2 && <section className="form-section">
           <h2 className="section-title">Сведения о производителе</h2>
           
           <div className="form-group">
@@ -787,10 +811,10 @@ const ProjectForm = () => {
             />
             {hasError('producerActivitySpecification') && <span className="error-message">{errors.producerActivitySpecification}</span>}
           </div>
-        </section>
+        </section>}
 
         {/* Сведения об IT-проекте */}
-        <section className="form-section">
+        {currentStep === 2 && <section className="form-section">
           <h2 className="section-title">Сведения об IT-проекте</h2>
           
           <div className="form-group">
@@ -879,10 +903,10 @@ const ProjectForm = () => {
               disabled={!isEditMode}
             />
           </div>
-        </section>
+        </section>}
 
         {/* Профиль потребителя */}
-        <section className="form-section">
+        {currentStep === 3 && <section className="form-section">
           <h2 className="section-title">Профиль потребителя</h2>
           
           <div className="form-group">
@@ -956,10 +980,10 @@ const ProjectForm = () => {
               disabled={!isEditMode}
             />
           </div>
-        </section>
+        </section>}
 
         {/* Сведения о контент-плане */}
-        <section className="form-section">
+        {currentStep === 3 && <section className="form-section">
           <h2 className="section-title">Сведения о контент-плане</h2>
           
           <div className="form-row">
@@ -1165,10 +1189,10 @@ const ProjectForm = () => {
             </div>
             {hasError('platforms') && <span className="error-message">{errors.platforms}</span>}
           </div>
-        </section>
+        </section>}
 
         {/* Параметры эволюционного моделирования (опционально) */}
-        <section className="form-section">
+        {currentStep === 4 && <section className="form-section">
           <h2 className="section-title">Параметры эволюционного моделирования (опционально)</h2>
           
           {/* Основные параметры */}
@@ -1506,10 +1530,10 @@ const ProjectForm = () => {
           <small className="form-hint">
             Если вы не уверены в настройках, оставьте значения по умолчанию — они подобраны для баланса качества и скорости.
           </small>
-        </section>
+        </section>}
 
         {/* Кнопки действий */}
-        <div className="form-actions">
+        {currentStep === 4 && <div className="form-actions">
           <button
             type="button"
             className="btn-edit"
@@ -1544,9 +1568,9 @@ const ProjectForm = () => {
           >
             <span>{isGeneratingDraftPlan ? 'ГЕНЕРАЦИЯ...' : 'СФОРМИРОВАТЬ ЧЕРНОВОЙ ПЛАН'}</span>
           </button>
-        </div>
+        </div>}
 
-        <section className="form-section precedent-workflow-section">
+        {currentStep === 5 && <section className="form-section precedent-workflow-section">
           <h2 className="section-title">Подобранные прецеденты</h2>
 
           <div className="precedent-summary-panel">
@@ -1665,9 +1689,9 @@ const ProjectForm = () => {
                 )}
             </div>
           )}
-        </section>
+        </section>}
 
-        <section className="form-section precedent-workflow-section">
+        {currentStep === 5 && <section className="form-section precedent-workflow-section">
           <h2 className="section-title">Черновой контент-план (RAG → LLM)</h2>
           {!draftPlanResult?.draft?.draft_content_plan && (
             <div className="precedent-empty-state precedent-empty-state-light">
@@ -1695,7 +1719,26 @@ const ProjectForm = () => {
               </div>
             </div>
           )}
-        </section>
+        </section>}
+
+        <div className="form-actions wizard-nav-actions">
+          <button
+            type="button"
+            className="submit-button secondary"
+            onClick={goToPrevStep}
+            disabled={isFirstStep}
+          >
+            <span>НАЗАД</span>
+          </button>
+          <button
+            type="button"
+            className="submit-button primary"
+            onClick={goToNextStep}
+            disabled={isLastStep}
+          >
+            <span>ДАЛЕЕ</span>
+          </button>
+        </div>
       </form>
     </>
   )
