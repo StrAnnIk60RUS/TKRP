@@ -652,6 +652,17 @@ const ProjectForm = () => {
       })
 
       setDraftPlanResult(response)
+      // Если LLM вернул черновой контент-план, сохраняем его для страницы просмотра
+      if (response?.draft?.draft_content_plan) {
+        try {
+          localStorage.setItem(
+            'currentContentPlan',
+            JSON.stringify(response.draft.draft_content_plan)
+          )
+        } catch (e) {
+          console.error('Не удалось сохранить контент-план в localStorage:', e)
+        }
+      }
       if (response?.rag) {
         setPrecedentSearchResults(response.rag)
       }

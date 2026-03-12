@@ -8,7 +8,7 @@ const ContentPlanPage = () => {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Загрузка контент-плана из localStorage или API
+    // Загрузка чернового контент-плана из localStorage
     const savedPlan = localStorage.getItem('currentContentPlan')
     if (savedPlan) {
       try {
@@ -22,7 +22,7 @@ const ContentPlanPage = () => {
 
   const handleDownload = () => {
     if (!contentPlan) return
-    
+
     const jsonString = JSON.stringify(contentPlan, null, 2)
     const blob = new Blob([jsonString], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
@@ -60,11 +60,25 @@ const ContentPlanPage = () => {
     )
   }
 
+  const publications = Array.isArray(contentPlan.publications) ? contentPlan.publications : []
+  const platforms = Array.isArray(contentPlan.platforms) ? contentPlan.platforms : []
+
+  const groupedByPlatform = platforms.reduce((acc, platform) => {
+    acc[platform] = publications
+      .filter((p) => p.platform === platform)
+      .sort((a, b) => {
+        const da = a.planned_date ? new Date(a.planned_date).getTime() : 0
+        const db = b.planned_date ? new Date(b.planned_date).getTime() : 0
+        return da - db
+      })
+    return acc
+  }, {})
+
   return (
     <div className="content-plan-page">
       <div className="page-header">
         <div className="header-actions">
-          <h1>Контент-план</h1>
+          <h1>Черновой контент-план</h1>
           <div className="action-buttons">
             <button className="secondary-btn" onClick={() => navigate('/')}>
               Назад
@@ -75,81 +89,162 @@ const ContentPlanPage = () => {
           </div>
         </div>
         <p className="page-subtitle">
-          Сгенерированный контент-план для проекта: <strong>{contentPlan.project_input?.it_project_info?.name || 'Неизвестно'}</strong>
+          ID плана: <strong>{contentPlan.plan_id || 'Неизвестно'}</strong>
         </p>
       </div>
 
       <div className="content-plan-content">
-        {/* Онтология */}
-        {contentPlan.content_plan?.ontology && (
-          <section className="plan-section">
-            <h2 className="section-title">Онтология</h2>
-            <div className="ontology-view">
-              <div className="ontology-item">
-                <h3>Классы</h3>
-                <ul>
-                  {contentPlan.content_plan.ontology.classes?.map((cls, idx) => (
-                    <li key={idx}>{cls}</li>
-                  ))}
-                </ul>
-              </div>
-              <div className="ontology-item">
-                <h3>Подклассы</h3>
-                <ul>
-                  {contentPlan.content_plan.ontology.subclasses?.map((sub, idx) => (
-                    <li key={idx}>{sub}</li>
-                  ))}
-                </ul>
-              </div>
+        {/* Общая информация по плану (человекочитаемая сводка) */}
+        <section className="plan-section">
+          <h2 className="section-title">Параметры плана</h2>
+          <div className="plan-summary-grid">
+            <div className="plan-summary-item">
+              <span className="plan-summary-label">Период:</span>
+              <span className="plan-summary-value">
+                {contentPlan.planning_horizon?.start_date || '—'} —{' '}
+                {contentPlan.planning_horizon?.end_date || '—'}
+              </span>
             </div>
-          </section>
-        )}
+            <div className="plan-summary-item">
+              <span className="plan-summary-label">Платформы:</span>
+              <span className="plan-summary-value">
+                {platforms.length ? platforms.join(', ').toUpperCase() : 'не заданы'}
+              </span>
+            </div>
+            <div className="plan-summary-item">
+              <span className="plan-summary-label">Публикаций:</span>
+              <span className="plan-summary-value">
+                {publications.length}
+              </span>
+            </div>
+            <div className="plan-summary-item">
+              <span className="plan-summary-label">Цели KPI:</span>
+              <span className="plan-summary-value">
+                {contentPlan.kpi_targets
+                  ? `ср. вовлечённость ≥ ${
+                      ((contentPlan.kpi_targets.avg_engagement_rate || 0) * 100).toFixed(1)
+                    }%, конверсии ≈ ${contentPlan.kpi_targets.estimated_conversions || 0}`
+                  : 'не заданы'}
+              </span>
+            </div>
+            {contentPlan.constraints && (
+              <div className="plan-summary-item plan-summary-item-full">
+                <span className="plan-summary-label">Ограничения:</span>
+                <span className="plan-summary-value">
+                  мин. публикаций: {contentPlan.constraints.min_publications ?? '—'};
+                  {' '}общий бюджет: {contentPlan.constraints.total_budget ?? '—'};
+                  {' '}макс. стоимость поста: {contentPlan.constraints.max_cost_per_publication ?? '—'}
+                </span>
+              </div>
+            )}
+            {contentPlan.notes && (
+              <div className="plan-summary-item plan-summary-item-full">
+                <span className="plan-summary-label">Заметки:</span>
+                <span className="plan-summary-value">
+                  {contentPlan.notes}
+                </span>
+              </div>
+            )}
+          </div>
+        </section>
 
-        {/* Платформы и посты */}
-        {contentPlan.content_plan?.platforms && (
-          <section className="plan-section">
-            <h2 className="section-title">Публикации по платформам</h2>
-            {Object.entries(contentPlan.content_plan.platforms).map(([platform, data]) => (
-              <div key={platform} className="platform-block">
-                <h3 className="platform-name">{platform.toUpperCase()}</h3>
-                {data.posts && data.posts.length > 0 ? (
-                  <div className="posts-list">
-                    {data.posts.map((post, idx) => (
-                      <div key={idx} className="post-card">
-                        <div className="post-header">
-                          <span className="post-date">
-                            {new Date(post.publication_date).toLocaleDateString('ru-RU')}
-                          </span>
-                          <span className="post-category">{post.category}</span>
-                        </div>
-                        <div className="post-content">{post.content}</div>
-                        {post.estimated_metrics && (
-                          <div className="post-metrics">
-                            <span>Лайки: {post.estimated_metrics.likes}</span>
-                            <span>Просмотры: {post.estimated_metrics.views}</span>
-                            <span>Вовлеченность: {(post.estimated_metrics.engagement_rate * 100).toFixed(2)}%</span>
-                          </div>
-                        )}
-                      </div>
-                    ))}
+        {/* Список публикаций как контент-календарь по платформам */}
+        <section className="plan-section">
+          <h2 className="section-title">Публикации в плане</h2>
+          {publications.length === 0 && (
+            <p className="no-posts">В черновом плане пока нет публикаций.</p>
+          )}
+          {publications.length > 0 && platforms.length === 0 && (
+            <div className="posts-list">
+              {publications.map((post, idx) => (
+                <div key={post.publication_id || idx} className="post-card">
+                  <div className="post-header">
+                    <span className="post-date">
+                      {post.planned_date
+                        ? new Date(post.planned_date).toLocaleDateString('ru-RU')
+                        : 'Дата не указана'}
+                    </span>
+                    <span className="post-category">{post.topic || 'Без темы'}</span>
                   </div>
-                ) : (
-                  <p className="no-posts">Посты не сгенерированы</p>
-                )}
-              </div>
-            ))}
-          </section>
-        )}
-
-        {/* Анализ */}
-        {contentPlan.content_plan?.analysis && (
-          <section className="plan-section">
-            <h2 className="section-title">Анализ конкурентов</h2>
-            <div className="analysis-view">
-              <pre>{JSON.stringify(contentPlan.content_plan.analysis, null, 2)}</pre>
+                  <div className="post-content">
+                    <div><strong>Платформа:</strong> {post.platform || 'не указана'}</div>
+                    <div><strong>Формат:</strong> {post.format || 'не указан'}</div>
+                    <div><strong>Цель:</strong> {post.objective || 'не указана'}</div>
+                    <div><strong>Тон:</strong> {post.tone || 'не указан'}</div>
+                    <div><strong>Ключевое сообщение:</strong> {post.key_message || 'не задано'}</div>
+                    <div><strong>CTA:</strong> {post.cta || 'не задано'}</div>
+                  </div>
+                  {post.expected_kpi && (
+                    <div className="post-metrics">
+                      <span>
+                        Вовлечённость: {((post.expected_kpi.engagement_rate || 0) * 100).toFixed(1)}%
+                      </span>
+                      <span>
+                        Потенциал конверсии:{' '}
+                        {((post.expected_kpi.conversion_potential || 0) * 100).toFixed(1)}%
+                      </span>
+                      <span>
+                        Потенциал охвата:{' '}
+                        {((post.expected_kpi.reach_potential || 0) * 100).toFixed(1)}%
+                      </span>
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
-          </section>
-        )}
+          )}
+
+          {platforms.length > 0 && (
+            <>
+              {platforms.map((platform) => {
+                const posts = groupedByPlatform[platform] || []
+                if (!posts.length) return null
+                return (
+                  <div key={platform} className="platform-block">
+                    <h3 className="platform-name">{platform.toUpperCase()}</h3>
+                    <div className="posts-list">
+                      {posts.map((post, idx) => (
+                        <div key={post.publication_id || idx} className="post-card">
+                          <div className="post-header">
+                            <span className="post-date">
+                              {post.planned_date
+                                ? new Date(post.planned_date).toLocaleDateString('ru-RU')
+                                : 'Дата не указана'}
+                            </span>
+                            <span className="post-category">{post.topic || 'Без темы'}</span>
+                          </div>
+                          <div className="post-content">
+                            <div><strong>Формат:</strong> {post.format || 'не указан'}</div>
+                            <div><strong>Цель:</strong> {post.objective || 'не указана'}</div>
+                            <div><strong>Тон:</strong> {post.tone || 'не указан'}</div>
+                            <div><strong>Ключевое сообщение:</strong> {post.key_message || 'не задано'}</div>
+                            <div><strong>CTA:</strong> {post.cta || 'не задано'}</div>
+                          </div>
+                          {post.expected_kpi && (
+                            <div className="post-metrics">
+                              <span>
+                                Вовлечённость:{' '}
+                                {((post.expected_kpi.engagement_rate || 0) * 100).toFixed(1)}%
+                              </span>
+                              <span>
+                                Потенциал конверсии:{' '}
+                                {((post.expected_kpi.conversion_potential || 0) * 100).toFixed(1)}%
+                              </span>
+                              <span>
+                                Потенциал охвата:{' '}
+                                {((post.expected_kpi.reach_potential || 0) * 100).toFixed(1)}%
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
+            </>
+          )}
+        </section>
       </div>
     </div>
   )

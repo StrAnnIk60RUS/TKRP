@@ -256,6 +256,37 @@
   word-wrap: break-word;
 }
 
+/* Сводка по плану для SMM-специалиста */
+.plan-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px 24px;
+}
+
+.plan-summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.plan-summary-item-full {
+  grid-column: 1 / -1;
+}
+
+.plan-summary-label {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #718096;
+  font-weight: 700;
+}
+
+.plan-summary-value {
+  font-size: 1rem;
+  color: #1a1a2e;
+  font-weight: 600;
+}
+
 @media (max-width: 768px) {
   .header-actions {
     flex-direction: column;
