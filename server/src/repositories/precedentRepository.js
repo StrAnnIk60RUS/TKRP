@@ -312,16 +312,23 @@ export function searchPrecedents(query, options = {}) {
   const limit = Math.max(1, Math.min(Number(options.limit) || 5, 20));
   const queryTokens = uniqueTokens(tokenize(normalizedQuery));
 
-  const filteredPublications = filterByAudience(
+  let filteredPublications = filterByAudience(
     filterByPlatform(storage.publications, options.platform),
     options.audience_segments,
     (item) => item?.publication_model?.audience_segments || []
   );
-  const filteredContentPlans = filterByAudience(
+  let filteredContentPlans = filterByAudience(
     filterByPlatform(storage.content_plans, options.platform),
     options.audience_segments,
     (item) => item?.content_plan_model?.audience_segments || []
   );
+
+  // Если после фильтрации по платформе/аудитории ничего не осталось,
+  // ослабляем фильтры и ищем по всей базе (fallback-режим).
+  if (filteredPublications.length === 0 && filteredContentPlans.length === 0) {
+    filteredPublications = storage.publications;
+    filteredContentPlans = storage.content_plans;
+  }
 
   const rankedPublications = filteredPublications
     .map((publication) => {

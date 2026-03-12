@@ -448,11 +448,6 @@ const ProjectForm = () => {
     }
   }
 
-  const handleEdit = () => {
-    setIsEditMode(true)
-    addToast('Режим редактирования включен', 'info')
-  }
-
   const buildSuggestedPrecedentQuery = () => {
     const parts = [
       formData.projectName ? `IT-проект ${formData.projectName}` : '',
@@ -644,11 +639,6 @@ const ProjectForm = () => {
   }
 
   const handleGenerateDraftPlan = async () => {
-    if (!precedentsSummary?.publications_count) {
-      addToast('База прецедентов пуста. Сначала обогатите конкурентов или загрузите демо-прецеденты.', 'error')
-      return
-    }
-
     const safeFormInput = buildSafeFormInputForGeneration()
 
     setIsGeneratingDraftPlan(true)
@@ -687,19 +677,41 @@ const ProjectForm = () => {
     if (!isFirstStep) setCurrentStep((prev) => prev - 1)
   }
 
+  const goToStep = (stepNumber) => {
+    if (stepNumber < 1 || stepNumber > wizardSteps.length) return
+    setCurrentStep(stepNumber)
+  }
+
   return (
     <>
       <ToastContainer toasts={toasts} removeToast={removeToast} />
       
       <form className="project-form">
         {/* Прогресс-бар */}
-        <div className="form-progress">
+        <div className="main-nav wizard-main-nav">
           <div className="progress-bar-container">
             <div className="progress-bar-fill" style={{ width: `${wizardProgress}%` }}></div>
           </div>
           <span className="progress-text">
             Шаг {currentStep} из {wizardSteps.length}: {wizardSteps[currentStep - 1]}
           </span>
+          <div className="wizard-step-tabs">
+            {wizardSteps.map((stepName, idx) => {
+              const stepNumber = idx + 1
+              const isActive = currentStep === stepNumber
+              return (
+                <button
+                  key={stepName}
+                  type="button"
+                  className={`wizard-step-tab ${isActive ? 'active' : ''}`}
+                  onClick={() => goToStep(stepNumber)}
+                  title={`Перейти к этапу: ${stepName}`}
+                >
+                  {stepNumber}. {stepName}
+                </button>
+              )
+            })}
+          </div>
         </div>
 
         {currentStep === 1 && (
@@ -723,52 +735,6 @@ const ProjectForm = () => {
               onRemoveData={handleRemoveCompetitorsData}
             />
 
-            {/* Панель быстрых действий */}
-            <div className="quick-actions">
-              <div className="actions-group">
-                <span className="actions-label">Примеры готовых форм:</span>
-                <button
-                  type="button"
-                  className="action-btn"
-                  onClick={() => loadExample('example_saas_platform')}
-                  title="Загрузить пример SaaS платформы"
-                >
-                  SaaS платформа
-                </button>
-                <button
-                  type="button"
-                  className="action-btn"
-                  onClick={() => loadExample('example_mobile_app')}
-                  title="Загрузить пример мобильного приложения"
-                >
-                  Мобильное приложение
-                </button>
-                <button
-                  type="button"
-                  className="action-btn"
-                  onClick={() => loadExample('example_enterprise_solution')}
-                  title="Загрузить пример enterprise решения"
-                >
-                  Enterprise решение
-                </button>
-                <button
-                  type="button"
-                  className="action-btn"
-                  onClick={handleLoadExample}
-                  title="Загрузить пример данных CloudAnalytics Pro из project_data_example.json"
-                >
-                  Пример: CloudAnalytics Pro
-                </button>
-                <button
-                  type="button"
-                  className="action-btn"
-                  onClick={handleReset}
-                  title="Очистить все поля формы"
-                >
-                  Очистить форму
-                </button>
-              </div>
-            </div>
           </>
         )}
 
@@ -1532,21 +1498,20 @@ const ProjectForm = () => {
           </small>
         </section>}
 
-        {/* Кнопки действий */}
-        {currentStep === 4 && <div className="form-actions">
-          <button
-            type="button"
-            className="btn-edit"
-            onClick={handleEdit}
-            disabled={isEditMode || isProcessing || isGeneratingDraftPlan}
-          >
-            <span>ИЗМЕНИТЬ</span>
-          </button>
+        {currentStep === 5 && (
+        <>
+        <div className="form-actions precedent-actions">
           <button
             type="button"
             className="submit-button secondary"
             onClick={handleSeedDemoPrecedents}
-            disabled={isSubmitting || isProcessing || isGeneratingDraftPlan || isSeedingPrecedents || isEnrichmentServerAvailable === false}
+            disabled={
+              isSubmitting ||
+              isProcessing ||
+              isGeneratingDraftPlan ||
+              isSeedingPrecedents ||
+              isEnrichmentServerAvailable === false
+            }
             title="Загрузить готовую демо-базу прецедентов, чтобы сразу увидеть рабочий поиск"
           >
             <span>{isSeedingPrecedents ? 'ЗАГРУЗКА ДЕМО...' : 'ЗАГРУЗИТЬ ДЕМО-ПРЕЦЕДЕНТЫ'}</span>
@@ -1555,7 +1520,13 @@ const ProjectForm = () => {
             type="button"
             className="submit-button secondary"
             onClick={handleSearchPrecedents}
-            disabled={isSubmitting || isProcessing || isGeneratingDraftPlan || isSearchingPrecedents || isEnrichmentServerAvailable === false}
+            disabled={
+              isSubmitting ||
+              isProcessing ||
+              isGeneratingDraftPlan ||
+              isSearchingPrecedents ||
+              isEnrichmentServerAvailable === false
+            }
             title="Подобрать релевантные публикации и контент-планы по данным формы"
           >
             <span>{isSearchingPrecedents ? 'ПОИСК ПРЕЦЕДЕНТОВ...' : 'ПОДОБРАТЬ ПРЕЦЕДЕНТЫ'}</span>
@@ -1564,13 +1535,15 @@ const ProjectForm = () => {
             type="button"
             className="submit-button primary"
             onClick={handleGenerateDraftPlan}
-            disabled={isSubmitting || isProcessing || isGeneratingDraftPlan || isEnrichmentServerAvailable === false}
+            disabled={
+              isSubmitting || isProcessing || isGeneratingDraftPlan || isEnrichmentServerAvailable === false
+            }
           >
             <span>{isGeneratingDraftPlan ? 'ГЕНЕРАЦИЯ...' : 'СФОРМИРОВАТЬ ЧЕРНОВОЙ ПЛАН'}</span>
           </button>
-        </div>}
+        </div>
 
-        {currentStep === 5 && <section className="form-section precedent-workflow-section">
+        <section className="form-section precedent-workflow-section">
           <h2 className="section-title">Подобранные прецеденты</h2>
 
           <div className="precedent-summary-panel">
@@ -1689,7 +1662,9 @@ const ProjectForm = () => {
                 )}
             </div>
           )}
-        </section>}
+        </section>
+        </>
+        )}
 
         {currentStep === 5 && <section className="form-section precedent-workflow-section">
           <h2 className="section-title">Черновой контент-план (RAG → LLM)</h2>

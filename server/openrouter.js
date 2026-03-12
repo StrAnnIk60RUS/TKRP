@@ -15,11 +15,11 @@ const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
 
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';
-const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || 'deepseek/deepseek-chat';
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+const AI_MODEL = process.env.AI_MODEL;
 
 // Экспортируем для проверки в server.js
-export { OPENROUTER_API_KEY, DEEPSEEK_MODEL };
+export { OPENROUTER_API_KEY, AI_MODEL };
 
 /**
  * Вычисляет engagement_rate для поста
@@ -78,7 +78,7 @@ export async function callDeepSeekAPI(systemPrompt, userPrompt, options = {}) {
   } = options;
 
   const requestBody = {
-    model: DEEPSEEK_MODEL,
+    model: AI_MODEL,
     messages: [
       {
         role: 'system',
@@ -100,7 +100,7 @@ export async function callDeepSeekAPI(systemPrompt, userPrompt, options = {}) {
 
   try {
     console.log(`[OpenRouter] Отправка запроса к ${OPENROUTER_API_URL}`);
-    console.log(`[OpenRouter] Модель: ${DEEPSEEK_MODEL}`);
+    console.log(`[OpenRouter] Модель: ${AI_MODEL}`);  
     console.log(`[OpenRouter] Размер промпта: ${(systemPrompt.length + userPrompt.length) / 1024} KB`);
     
     const response = await axios.post(
@@ -399,7 +399,7 @@ ${JSON.stringify(dataWithEngagementRate, null, 2)}
     usage: response.usage,
     metadata: {
       enriched_at: new Date().toISOString(),
-      model: DEEPSEEK_MODEL,
+      model: AI_MODEL,
       engagement_rate_calculated_locally: true,
       parse_successful: enrichedData !== null,
       normalized_to_content_model: normalizedData !== null

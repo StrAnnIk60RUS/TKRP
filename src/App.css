@@ -20,6 +20,14 @@
   position: relative;
 }
 
+body.theme-light .app-container {
+  background: #ffffff;
+  border-color: #e2e8f0;
+  box-shadow:
+    8px 8px 0 0 #cbd5e1,
+    16px 16px 0 0 rgba(148, 163, 184, 0.4);
+}
+
 .app-container::before {
   content: '';
   position: absolute;

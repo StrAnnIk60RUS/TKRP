@@ -175,6 +175,8 @@
 
   .competitors-select {
     font-size: 0.85rem;
+    padding: 10px 16px;
+    line-height: 1.1;
   }
 
   .competitor-remove-btn,
@@ -414,13 +416,18 @@
   }
 
   /* Прогресс-бар */
-  .form-progress {
+  .wizard-main-nav {
     background: #ffffff;
     padding: 24px 32px;
     border: 2px solid #1a1a2e;
     border-radius: 0;
     margin-bottom: 24px;
     position: relative;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    margin-top: 0;
+    border-top: 2px solid #1a1a2e;
   }
   
   .progress-bar-container {
@@ -463,6 +470,35 @@
     color: #1a1a2e;
     font-weight: 600;
     letter-spacing: 0.3px;
+  }
+
+  .wizard-step-tabs {
+    margin-top: 14px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .wizard-step-tab {
+    border: 2px solid #1a1a2e;
+    background: #ffffff;
+    color: #1a1a2e;
+    font-size: 0.8rem;
+    font-weight: 700;
+    padding: 6px 10px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .wizard-step-tab:hover {
+    background: #1a1a2e;
+    color: #ffffff;
+  }
+
+  .wizard-step-tab.active {
+    background: #ff6b9d;
+    border-color: #ff6b9d;
+    color: #ffffff;
   }
   
   /* Секции */
@@ -864,7 +900,7 @@
       min-width: auto;
     }
   
-    .form-progress {
+    .wizard-main-nav {
       padding: 20px 24px;
     }
 

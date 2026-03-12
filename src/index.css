@@ -18,6 +18,12 @@ body {
   color: #1a1a2e;
 }
 
+body.theme-light {
+  background: #e5e9f0;
+  background-image: none;
+  color: #0f172a;
+}
+
 code {
   font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
 }

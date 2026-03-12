@@ -15,6 +15,7 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEMO_FIXTURE_PATH = path.join(__dirname, '..', 'fixtures', 'demoPrecedents.json');
 const DRAFT_PLAN_PROMPT_PATH = path.join(__dirname, '..', 'prompts', 'articleDraftPlanPrompt.txt');
+const MAX_POSTS_PER_ENRICH_REQUEST = Number(process.env.MAX_POSTS_PER_ENRICH_REQUEST || 60);
 
 const router = Router();
 
@@ -294,10 +295,14 @@ router.post('/enrich', async (req, res) => {
 
     const competitorsCount = competitors_data.competitors.length;
     const postsCount = competitors_data.competitors.reduce((sum, c) => sum + (c.posts?.length || 0), 0);
-    console.log(`[${new Date().toISOString()}] Начало обогащения данных для ${competitorsCount} конкурентов, ${postsCount} постов`);
+    console.log(
+      `[${new Date().toISOString()}] Начало обогащения данных для ${competitorsCount} конкурентов, ${postsCount} постов`
+    );
 
     const result = await enrichCompetitorsData(competitors_data);
-    console.log(`[${new Date().toISOString()}] Обогащение завершено. Использовано токенов: ${result.usage?.total_tokens || 'N/A'}`);
+    console.log(
+      `[${new Date().toISOString()}] Обогащение завершено. Использовано токенов: ${result.usage?.total_tokens || 'N/A'}`
+    );
 
     const persistence =
       result.enriched_data !== null
