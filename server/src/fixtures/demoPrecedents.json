@@ -8,7 +8,15 @@
         "posting_frequency": "3-4 в неделю",
         "dominant_tone": "экспертный",
         "best_performing_topic": "кейсы внедрения",
-        "avg_readability": 2
+        "avg_readability": 2,
+        "dominant_formats": ["text_post", "image_post"],
+        "core_audience_segments": ["B2B", "IT-руководители"],
+        "main_objectives": ["educate", "inform", "convert"]
+      },
+      "ontology_support": {
+        "classes": ["it_project", "audience_segment", "publication_topic", "case_study"],
+        "entities": ["интеллектуальные датчики", "B2B", "внедрение", "умные датчики"],
+        "relations": ["topic->audience", "format->objective", "case_study->evidence"]
       },
       "content_plan_model": {
         "plan_id": "demo_plan_sensors",
@@ -18,11 +26,21 @@
         "planning_horizon_days": 30,
         "posting_frequency_per_week": 3.5,
         "total_publications": 4,
-        "budget": { "currency": "USD", "total_budget": null, "estimation_confidence": "low", "notes": "Демо" },
-        "kpi_estimate": { "avg_engagement_rate": 0.042, "best_engagement_rate": 0.068, "estimated_conversion_potential": 0.15 },
+        "budget": {
+          "currency": "USD",
+          "total_budget": null,
+          "budget_per_publication": null,
+          "estimation_confidence": "low",
+          "notes": "Демо: продвижение IT-продукта (интеллектуальные датчики)"
+        },
+        "kpi_estimate": {
+          "avg_engagement_rate": 0.042,
+          "best_engagement_rate": 0.068,
+          "estimated_conversion_potential": 0.15
+        },
         "publication_schedule": [
-          { "publication_id": "demo_pub_1", "planned_at": "2026-03-01", "topic": "интеллектуальные датчики", "format": "text_post", "objective": "inform", "quality_score": 0.85 },
-          { "publication_id": "demo_pub_2", "planned_at": "2026-03-08", "topic": "кейс внедрения", "format": "text_post", "objective": "educate", "quality_score": 0.9 }
+          { "publication_id": "demo_pub_1", "planned_at": "2026-03-01", "topic": "интеллектуальные датчики", "format": "text_post", "objective": "educate", "quality_score": 0.85 },
+          { "publication_id": "demo_pub_2", "planned_at": "2026-03-08", "topic": "умные датчики обзор", "format": "text_post", "objective": "inform", "quality_score": 0.9 }
         ]
       },
       "posts": [
@@ -47,12 +65,26 @@
             "tone": "expert",
             "funnel_stage": "consideration",
             "objective": "educate",
-            "summary": "Кейс внедрения датчиков, снижение простоев",
-            "key_entities": ["датчики", "B2B", "внедрение"],
-            "kpi_estimate": { "expected_engagement_rate": 0.05, "expected_conversion_potential": 0.1, "expected_lead_generation_potential": 0.08, "expected_reach_potential": 0.3 },
+            "summary": "Кейс внедрения датчиков, снижение простоев на производстве",
+            "key_entities": ["датчики", "B2B", "внедрение", "кейс"],
+            "kpi_estimate": {
+              "expected_engagement_rate": 0.05,
+              "expected_conversion_potential": 0.1,
+              "expected_lead_generation_potential": 0.08,
+              "expected_reach_potential": 0.3
+            },
             "spcj": {
               "scale": "0..1",
-              "dimensions": { "audience_relevance": 0.9, "educational_value": 0.85, "evidence_strength": 0.8, "clarity": 0.9, "engagement_potential": 0.6, "brand_fit": 0.7, "timeliness": 0.8, "cta_strength": 0.4 },
+              "dimensions": {
+                "audience_relevance": 0.9,
+                "educational_value": 0.85,
+                "evidence_strength": 0.8,
+                "clarity": 0.9,
+                "engagement_potential": 0.6,
+                "brand_fit": 0.7,
+                "timeliness": 0.8,
+                "cta_strength": 0.4
+              },
               "vector": [0.9, 0.85, 0.8, 0.9, 0.6, 0.7, 0.8, 0.4]
             }
           }
@@ -78,12 +110,26 @@
             "tone": "expert",
             "funnel_stage": "awareness",
             "objective": "inform",
-            "summary": "Обзор преимуществ умных датчиков",
-            "key_entities": ["датчики", "B2B", "обзор"],
-            "kpi_estimate": { "expected_engagement_rate": 0.055, "expected_conversion_potential": 0.12, "expected_lead_generation_potential": 0.1, "expected_reach_potential": 0.35 },
+            "summary": "Обзор преимуществ умных датчиков для технических директоров",
+            "key_entities": ["датчики", "B2B", "обзор", "внедрение"],
+            "kpi_estimate": {
+              "expected_engagement_rate": 0.055,
+              "expected_conversion_potential": 0.12,
+              "expected_lead_generation_potential": 0.1,
+              "expected_reach_potential": 0.35
+            },
             "spcj": {
               "scale": "0..1",
-              "dimensions": { "audience_relevance": 0.85, "educational_value": 0.9, "evidence_strength": 0.7, "clarity": 0.95, "engagement_potential": 0.65, "brand_fit": 0.75, "timeliness": 0.85, "cta_strength": 0.35 },
+              "dimensions": {
+                "audience_relevance": 0.85,
+                "educational_value": 0.9,
+                "evidence_strength": 0.7,
+                "clarity": 0.95,
+                "engagement_potential": 0.65,
+                "brand_fit": 0.75,
+                "timeliness": 0.85,
+                "cta_strength": 0.35
+              },
               "vector": [0.85, 0.9, 0.7, 0.95, 0.65, 0.75, 0.85, 0.35]
             }
           }
@@ -91,27 +137,45 @@
       ]
     },
     {
-      "competitor_id": "demo_iot_lab",
-      "name": "IoT Lab",
-      "platform": "linkedin",
+      "competitor_id": "demo_datchiki_vk",
+      "name": "Датчики Про",
+      "platform": "vk",
       "content_strategy": {
         "posting_frequency": "2-3 в неделю",
         "dominant_tone": "дружеский",
-        "best_performing_topic": "лайфхаки",
-        "avg_readability": 1
+        "best_performing_topic": "лайфхаки и обзоры",
+        "avg_readability": 1,
+        "dominant_formats": ["text_post", "image_post"],
+        "core_audience_segments": ["B2B", "разработчики"],
+        "main_objectives": ["educate", "engage"]
+      },
+      "ontology_support": {
+        "classes": ["it_project", "audience_segment", "how_to"],
+        "entities": ["IoT", "датчики", "облако", "подключение"],
+        "relations": ["topic->audience", "format->how_to"]
       },
       "content_plan_model": {
-        "plan_id": "demo_plan_iot",
+        "plan_id": "demo_plan_vk",
         "plan_type": "observed_competitor_content_plan",
-        "platform": "linkedin",
+        "platform": "vk",
         "audience_segments": ["B2B", "разработчики"],
         "planning_horizon_days": 14,
-        "posting_frequency_per_week": 2,
+        "posting_frequency_per_week": 2.5,
         "total_publications": 2,
-        "budget": { "currency": "USD", "total_budget": null, "estimation_confidence": "low", "notes": "Демо" },
-        "kpi_estimate": { "avg_engagement_rate": 0.038, "best_engagement_rate": 0.05, "estimated_conversion_potential": 0.08 },
+        "budget": {
+          "currency": "RUB",
+          "total_budget": null,
+          "budget_per_publication": null,
+          "estimation_confidence": "low",
+          "notes": "Демо: VK-сообщество по IT-датчикам"
+        },
+        "kpi_estimate": {
+          "avg_engagement_rate": 0.038,
+          "best_engagement_rate": 0.05,
+          "estimated_conversion_potential": 0.08
+        },
         "publication_schedule": [
-          { "publication_id": "demo_pub_3", "planned_at": "2026-03-05", "topic": "датчики IoT", "format": "text_post", "objective": "engage", "quality_score": 0.75 }
+          { "publication_id": "demo_pub_3", "planned_at": "2026-03-05", "topic": "датчики IoT", "format": "text_post", "objective": "educate", "quality_score": 0.75 }
         ]
       },
       "posts": [
@@ -123,11 +187,11 @@
           "content_category": "how_to",
           "tone": "friendly",
           "topic": "датчики IoT",
-          "target_audience": ["разработчики"],
+          "target_audience": ["разработчики", "B2B"],
           "publication_model": {
             "publication_id": "demo_pub_3",
             "source_type": "competitor_post",
-            "platform": "linkedin",
+            "platform": "vk",
             "type": "how_to",
             "topic": "датчики IoT",
             "audience_segments": ["разработчики", "B2B"],
@@ -136,12 +200,26 @@
             "tone": "friendly",
             "funnel_stage": "consideration",
             "objective": "educate",
-            "summary": "Инструкция по подключению датчиков к облаку",
-            "key_entities": ["IoT", "датчики", "облако"],
-            "kpi_estimate": { "expected_engagement_rate": 0.04, "expected_conversion_potential": 0.06, "expected_lead_generation_potential": 0.05, "expected_reach_potential": 0.25 },
+            "summary": "Инструкция по подключению датчиков к облаку для разработчиков",
+            "key_entities": ["IoT", "датчики", "облако", "подключение"],
+            "kpi_estimate": {
+              "expected_engagement_rate": 0.04,
+              "expected_conversion_potential": 0.06,
+              "expected_lead_generation_potential": 0.05,
+              "expected_reach_potential": 0.25
+            },
             "spcj": {
               "scale": "0..1",
-              "dimensions": { "audience_relevance": 0.85, "educational_value": 0.9, "evidence_strength": 0.5, "clarity": 0.85, "engagement_potential": 0.7, "brand_fit": 0.6, "timeliness": 0.75, "cta_strength": 0.3 },
+              "dimensions": {
+                "audience_relevance": 0.85,
+                "educational_value": 0.9,
+                "evidence_strength": 0.5,
+                "clarity": 0.85,
+                "engagement_potential": 0.7,
+                "brand_fit": 0.6,
+                "timeliness": 0.75,
+                "cta_strength": 0.3
+              },
               "vector": [0.85, 0.9, 0.5, 0.85, 0.7, 0.6, 0.75, 0.3]
             }
           }

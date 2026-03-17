@@ -61,6 +61,11 @@ function inferTone(post) {
   return asNullableString(publicationModel.tone) || asNullableString(post?.tone) || 'neutral';
 }
 
+function inferObjective(post) {
+  const publicationModel = post?.publication_model || {};
+  return asNullableString(publicationModel.objective) || asNullableString(post?.objective) || 'inform';
+}
+
 function buildSpcjDimensions(post) {
   const publicationModel = post?.publication_model || {};
   const sourceDimensions = publicationModel?.spcj?.dimensions || {};
@@ -143,9 +148,9 @@ export function normalizePublicationModel(post, competitor = {}, index = 0) {
       'other',
     tone: inferTone(post),
     funnel_stage: asNullableString(publicationModel.funnel_stage) || 'unknown',
-    objective: asNullableString(publicationModel.objective) || 'inform',
-    summary: asNullableString(publicationModel.summary),
-    key_entities: asStringArray(publicationModel.key_entities),
+    objective: inferObjective(post),
+    summary: asNullableString(publicationModel.summary) || asNullableString(post?.summary),
+    key_entities: asStringArray(publicationModel.key_entities || post?.key_entities),
     metrics_snapshot: {
       likes: asNumberOrNull(post?.metrics?.likes) ?? 0,
       comments: asNumberOrNull(post?.metrics?.comments) ?? 0,
@@ -212,6 +217,101 @@ function buildContentPlanItems(posts = []) {
         0
     )
   }));
+}
+
+function getMostFrequentValue(values = [], fallback = null) {
+  const counts = new Map();
+
+  values.filter(Boolean).forEach((value) => {
+    counts.set(value, (counts.get(value) || 0) + 1);
+  });
+
+  if (!counts.size) {
+    return fallback;
+  }
+
+  return Array.from(counts.entries()).sort((a, b) => b[1] - a[1])[0][0];
+}
+
+function getTopFrequentValues(values = [], limit = 3) {
+  const counts = new Map();
+
+  values.filter(Boolean).forEach((value) => {
+    counts.set(value, (counts.get(value) || 0) + 1);
+  });
+
+  return Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([value]) => value);
+}
+
+function formatPostingFrequencyLabel(value) {
+  if (!Number.isFinite(value) || value <= 0) {
+    return 'unknown';
+  }
+  if (value < 1) {
+    return 'реже 1 раза в неделю';
+  }
+  if (value <= 2) {
+    return '1-2 в неделю';
+  }
+  if (value <= 4) {
+    return '3-4 в неделю';
+  }
+  return '5+ в неделю';
+}
+
+function buildContentStrategy(competitor = {}, posts = []) {
+  const existing = competitor?.content_strategy || {};
+  const postingFrequencyPerWeek = calculatePostingFrequencyPerWeek(posts);
+  const readabilityValues = posts
+    .map((post) => asNumberOrNull(post?.analysis?.structure?.readability))
+    .filter((value) => value !== null);
+  const topicWithScores = posts
+    .map((post) => ({
+      topic: asNullableString(post?.publication_model?.topic) || asNullableString(post?.topic),
+      engagementRate: Number(post?.engagement_rate) || 0
+    }))
+    .filter((item) => item.topic);
+
+  const bestPerformingTopic = topicWithScores.length
+    ? topicWithScores.sort((a, b) => b.engagementRate - a.engagementRate)[0].topic
+    : null;
+
+  return {
+    posting_frequency:
+      asNullableString(existing.posting_frequency) || formatPostingFrequencyLabel(postingFrequencyPerWeek),
+    dominant_tone:
+      asNullableString(existing.dominant_tone) ||
+      getMostFrequentValue(posts.map((post) => post?.publication_model?.tone || post?.tone), 'neutral'),
+    best_performing_topic:
+      asNullableString(existing.best_performing_topic) || bestPerformingTopic || 'unspecified',
+    avg_readability:
+      asNumberOrNull(existing.avg_readability) ??
+      (readabilityValues.length
+        ? Number(
+            (
+              readabilityValues.reduce((sum, value) => sum + value, 0) / readabilityValues.length
+            ).toFixed(2)
+          )
+        : null),
+    dominant_formats:
+      asStringArray(existing.dominant_formats).length > 0
+        ? asStringArray(existing.dominant_formats)
+        : getTopFrequentValues(posts.map((post) => post?.publication_model?.format), 3),
+    core_audience_segments:
+      asStringArray(existing.core_audience_segments).length > 0
+        ? asStringArray(existing.core_audience_segments)
+        : getTopFrequentValues(
+            posts.flatMap((post) => post?.publication_model?.audience_segments || post?.target_audience || []),
+            5
+          ),
+    main_objectives:
+      asStringArray(existing.main_objectives).length > 0
+        ? asStringArray(existing.main_objectives)
+        : getTopFrequentValues(posts.map((post) => post?.publication_model?.objective || post?.objective), 4)
+  };
 }
 
 export function normalizeContentPlanModel(competitor = {}) {
@@ -281,6 +381,13 @@ export function normalizeCompetitorsContentData(competitorsData) {
     return {
       ...competitor,
       posts: normalizedPosts,
+      content_strategy: buildContentStrategy(
+        {
+          ...competitor,
+          posts: normalizedPosts
+        },
+        normalizedPosts
+      ),
       content_plan_model: normalizeContentPlanModel({
         ...competitor,
         posts: normalizedPosts

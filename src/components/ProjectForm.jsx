@@ -1,13 +1,19 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { ToastContainer } from './Toast'
 import CompetitorsStep from './competitors/CompetitorsStep'
 import { useCompetitorsPipeline } from '../hooks/useCompetitorsPipeline'
-import { getPrecedentsSummary, searchPrecedents, seedDemoPrecedents, generateDraftContentPlan } from '../services/enrichmentService'
+import { getPrecedentsSummary, searchPrecedents, seedDemoPrecedents, generateDraftContentPlan, optimizeDraftContentPlan } from '../services/enrichmentService'
+import PrecedentDetailsModal from './precedents/PrecedentDetailsModal'
 import './ProjectForm.css'
 
 const formatPrecedentScore = (score) => `${Math.round((Number(score) || 0) * 100)}%`
 
-const renderMatchedTokens = (matchedTokens = []) => {
+const renderMatchExplanation = (matchedTokens = [], retrieval = null) => {
+  const type = retrieval?.type
+  if (type === 'embedding_cosine') {
+    return 'Semantic retrieval (эмбеддинги): совпавшие токены не считаются'
+  }
   if (!matchedTokens.length) return 'Без совпавших токенов'
   return matchedTokens.join(', ')
 }
@@ -15,6 +21,7 @@ const renderMatchedTokens = (matchedTokens = []) => {
 const formatDateISO = (date) => date.toISOString().split('T')[0]
 
 const ProjectForm = () => {
+  const navigate = useNavigate()
   const [formData, setFormData] = useState({
     // Сведения о производителе
     producerName: '',
@@ -82,8 +89,29 @@ const ProjectForm = () => {
   const [isSeedingPrecedents, setIsSeedingPrecedents] = useState(false)
   const [isGeneratingDraftPlan, setIsGeneratingDraftPlan] = useState(false)
   const [draftPlanResult, setDraftPlanResult] = useState(null)
+  const [isOptimizingPlan, setIsOptimizingPlan] = useState(false)
+  const [optimizationResult, setOptimizationResult] = useState(null)
   const [currentStep, setCurrentStep] = useState(1)
   const toastCounterRef = useRef(0)
+  const [selectedPrecedentItem, setSelectedPrecedentItem] = useState(null)
+
+  const precedentRetrieval = precedentSearchResults?.retrieval || null
+
+  const retrievalBadge = useMemo(() => {
+    const type = precedentRetrieval?.type
+    if (type === 'embedding_cosine') {
+      return {
+        label: 'Semantic retrieval',
+        hint: precedentRetrieval?.embedding_model ? `${precedentRetrieval.embedding_model}` : 'embeddings',
+        tone: 'success'
+      }
+    }
+    if (type === 'token_overlap_fallback') {
+      return { label: 'Token overlap', hint: 'fallback', tone: 'neutral' }
+    }
+    if (!type) return null
+    return { label: type, hint: '', tone: 'neutral' }
+  }, [precedentRetrieval])
 
   const wizardSteps = [
     'Конкуренты',
@@ -117,9 +145,7 @@ const ProjectForm = () => {
 
   const platformOptions = [
     { value: 'vk', label: 'VK (ВКонтакте)' },
-    { value: 'telegram', label: 'Telegram' },
-    { value: 'linkedin', label: 'LinkedIn' },
-    { value: 'instagram', label: 'Instagram' }
+    { value: 'linkedin', label: 'LinkedIn' }
   ]
 
   // Обязательные поля
@@ -587,6 +613,12 @@ const ProjectForm = () => {
     }
   }
 
+  const handleLoadYearExample = async () => {
+    if (window.confirm('Загрузить годовой пример данных? Текущие данные будут заменены.')) {
+      await loadExample('example_year_plan')
+    }
+  }
+
   const handleLoadExample = () => {
     if (window.confirm('Загрузить пример данных? Текущие данные будут заменены.')) {
       // Пример данных из project_data_example.json
@@ -611,7 +643,7 @@ const ProjectForm = () => {
         maxCostPerPublication: '3500',
         contentFormats: ['text', 'image', 'video'],
         videoDescription: 'Короткие ролики (1-3 минуты) с демонстрацией функционала платформы, интервью с клиентами, объяснение сложных концепций простым языком. Профессиональная съемка, субтитры, брендинг CloudTech Solutions.',
-        platforms: ['linkedin', 'vk', 'telegram'],
+        platforms: ['linkedin', 'vk'],
         evoPopulationSize: '100',
         evoGenerations: '100',
         evoStopCriterion: 'max_generations',
@@ -652,6 +684,7 @@ const ProjectForm = () => {
       })
 
       setDraftPlanResult(response)
+      setOptimizationResult(null)
       // Если LLM вернул черновой контент-план, сохраняем его для страницы просмотра
       if (response?.draft?.draft_content_plan) {
         try {
@@ -672,6 +705,149 @@ const ProjectForm = () => {
       addToast(`Ошибка генерации: ${error.message}`, 'error')
     } finally {
       setIsGeneratingDraftPlan(false)
+    }
+  }
+
+  const buildAlphaByDimension = (precedentPubs = [], optimizationGoal) => {
+    const dims = precedentPubs?.[0]?.publication_model?.spcj?.dimensions
+    const keys = dims && typeof dims === 'object' ? Object.keys(dims) : []
+    if (!keys.length) {
+      return {
+        audience_relevance: 1,
+        educational_value: 1,
+        evidence_strength: 1,
+        clarity: 1,
+        engagement_potential: 1,
+        brand_fit: 1,
+        timeliness: 1,
+        cta_strength: 1
+      }
+    }
+
+    const base = keys.reduce((acc, k) => ({ ...acc, [k]: 1 }), {})
+    if (optimizationGoal === 'max_engagement') {
+      if (base.engagement_potential !== undefined) base.engagement_potential = 2
+      if (base.cta_strength !== undefined) base.cta_strength = 1.5
+      if (base.audience_relevance !== undefined) base.audience_relevance = 1.25
+    } else if (optimizationGoal === 'max_reach') {
+      if (base.timeliness !== undefined) base.timeliness = 2
+      if (base.audience_relevance !== undefined) base.audience_relevance = 1.5
+      if (base.clarity !== undefined) base.clarity = 1.25
+    } else if (optimizationGoal === 'balanced') {
+      if (base.audience_relevance !== undefined) base.audience_relevance = 1.2
+      if (base.clarity !== undefined) base.clarity = 1.2
+      if (base.brand_fit !== undefined) base.brand_fit = 1.1
+    }
+
+    return base
+  }
+
+  const parseNumberOrNull = (value) => {
+    if (value === null || value === undefined) return null
+    if (typeof value === 'string' && value.trim() === '') return null
+    const n = Number(value)
+    return Number.isFinite(n) ? n : null
+  }
+
+  const buildGaConfigFromForm = () => {
+    const seed = formData.evoRandomSeed && formData.evoRandomSeed.trim() ? formData.evoRandomSeed.trim() : null
+    return {
+      seed,
+      populationSize: parseNumberOrNull(formData.evoPopulationSize) ?? 100,
+      maxGenerations: parseNumberOrNull(formData.evoGenerations) ?? 100,
+      stagnationGenerations: parseNumberOrNull(formData.evoStagnationGenerations) ?? 20,
+      eliteSize: parseNumberOrNull(formData.evoEliteSize) ?? 2,
+      tournamentSize: parseNumberOrNull(formData.evoTournamentSize) ?? 3,
+      crossoverProbability: parseNumberOrNull(formData.evoCrossoverProbability) ?? 0.8,
+      mutationProbability: parseNumberOrNull(formData.evoMutationProbability) ?? 0.05,
+      crossoverMethod: formData.evoCrossoverMethod === 'order' ? 'order' : 'one_point'
+    }
+  }
+
+  const handleOptimizeDraftPlan = async () => {
+    const draft = draftPlanResult?.draft?.draft_content_plan
+    if (!draft) {
+      addToast('Сначала сформируйте черновой контент-план (RAG → LLM)', 'error')
+      return
+    }
+
+    const precedentPubs = Array.isArray(precedentSearchResults?.publications)
+      ? precedentSearchResults.publications.map((item) => item.data).filter(Boolean)
+      : []
+
+    const alphaByDimension = buildAlphaByDimension(precedentPubs, formData.evoOptimizationGoal)
+    const gaConfig = buildGaConfigFromForm()
+
+    const totalBudget =
+      parseNumberOrNull(formData.evoBudgetLimit) ??
+      parseNumberOrNull(formData.totalBudget) ??
+      parseNumberOrNull(draft?.constraints?.total_budget) ??
+      null
+    const maxCost =
+      parseNumberOrNull(formData.maxCostPerPublication) ??
+      parseNumberOrNull(draft?.constraints?.max_cost_per_publication) ??
+      null
+    const minPubs =
+      parseNumberOrNull(formData.minPublications) ??
+      parseNumberOrNull(draft?.constraints?.min_publications) ??
+      null
+
+    const qualityMin =
+      parseNumberOrNull(draft?.kpi_targets?.avg_engagement_rate) ??
+      0
+
+    const payload = {
+      draft_content_plan: draft,
+      stage1: {
+        precedentPublications: precedentPubs,
+        alphaByDimension,
+        constraints: {
+          date_min: formData.contentPlanStartDate || draft?.planning_horizon?.start_date || null,
+          date_max: formData.contentPlanEndDate || draft?.planning_horizon?.end_date || null,
+          quality_min: qualityMin,
+          quality_max: null
+        },
+        ga: gaConfig
+      },
+      stage2: {
+        constraints: {
+          min_publications: minPubs,
+          total_budget: totalBudget,
+          max_cost_per_publication: maxCost,
+          quality_min: qualityMin
+        },
+        ga: {
+          ...gaConfig,
+          crossoverMethod: gaConfig.crossoverMethod
+        }
+      }
+    }
+
+    setIsOptimizingPlan(true)
+    addToast('Запуск эволюционной оптимизации (2 уровня ГА)...', 'info')
+    try {
+      const response = await optimizeDraftContentPlan(payload)
+      setOptimizationResult(response)
+
+      if (response?.optimized_content_plan) {
+        try {
+          localStorage.setItem('currentContentPlan', JSON.stringify(response.optimized_content_plan))
+          localStorage.setItem('currentContentPlanOptimization', JSON.stringify({
+            optimized_at: new Date().toISOString(),
+            stage1: response.stage1 || null,
+            stage2: response.stage2 || null
+          }))
+        } catch (e) {
+          console.error('Не удалось сохранить оптимизированный план в localStorage:', e)
+        }
+      }
+
+      addToast('Оптимизация завершена: план обновлён', 'success')
+    } catch (error) {
+      console.error('Ошибка оптимизации:', error)
+      addToast(`Ошибка оптимизации: ${error.message}`, 'error')
+    } finally {
+      setIsOptimizingPlan(false)
     }
   }
 
@@ -1515,6 +1691,15 @@ const ProjectForm = () => {
           <button
             type="button"
             className="submit-button secondary"
+            onClick={handleLoadYearExample}
+            disabled={isSubmitting || isProcessing || isGeneratingDraftPlan || isEnrichmentServerAvailable === false}
+            title="Загрузить пример заполнения формы для генерации контент-плана на 12 месяцев"
+          >
+            <span>ЗАГРУЗИТЬ ПРИМЕР (НА ГОД)</span>
+          </button>
+          <button
+            type="button"
+            className="submit-button secondary"
             onClick={handleSeedDemoPrecedents}
             disabled={
               isSubmitting ||
@@ -1592,6 +1777,19 @@ const ProjectForm = () => {
                   Поиск выполнен по {precedentSearchResults.total_publications_searched || 0} публикациям и{' '}
                   {precedentSearchResults.total_content_plans_searched || 0} планам
                 </span>
+                {!!retrievalBadge && (
+                  <div className="precedent-retrieval-banner" title="Как именно выполнялся поиск прецедентов">
+                    <span className={`precedent-retrieval-pill precedent-retrieval-${retrievalBadge.tone}`}>
+                      {retrievalBadge.label}
+                    </span>
+                    <span className="precedent-retrieval-hint">
+                      {retrievalBadge.hint}
+                      {precedentRetrieval?.type === 'token_overlap_fallback' && precedentRetrieval?.error
+                        ? ` · причина: ${precedentRetrieval.error}`
+                        : ''}
+                    </span>
+                  </div>
+                )}
               </div>
 
               {(precedentSearchResults.publications?.length || 0) > 0 && (
@@ -1599,7 +1797,17 @@ const ProjectForm = () => {
                   <h3 className="precedent-section-title precedent-section-title-light">Публикации</h3>
                   <div className="precedent-cards">
                     {precedentSearchResults.publications.map((item) => (
-                      <div key={item.data.publication_id} className="precedent-card">
+                      <div
+                        key={item.data.publication_id}
+                        className="precedent-card precedent-card-clickable"
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setSelectedPrecedentItem(item)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') setSelectedPrecedentItem(item)
+                        }}
+                        title="Открыть детали прецедента"
+                      >
                         <div className="precedent-card-header">
                           <span className="precedent-card-title">
                             {item.data.publication_model?.topic || 'Без темы'}
@@ -1618,7 +1826,7 @@ const ProjectForm = () => {
                             Аудитория:{' '}
                             {(item.data.publication_model?.audience_segments || []).join(', ') || 'не указана'}
                           </div>
-                          <div>Совпадения: {renderMatchedTokens(item.matched_tokens)}</div>
+                          <div>Почему найдено: {renderMatchExplanation(item.matched_tokens, precedentRetrieval)}</div>
                         </div>
                       </div>
                     ))}
@@ -1631,7 +1839,17 @@ const ProjectForm = () => {
                   <h3 className="precedent-section-title precedent-section-title-light">Контент-планы</h3>
                   <div className="precedent-cards">
                     {precedentSearchResults.content_plans.map((item) => (
-                      <div key={item.data.plan_id} className="precedent-card">
+                      <div
+                        key={item.data.plan_id}
+                        className="precedent-card precedent-card-clickable"
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setSelectedPrecedentItem(item)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') setSelectedPrecedentItem(item)
+                        }}
+                        title="Открыть детали прецедента"
+                      >
                         <div className="precedent-card-header">
                           <span className="precedent-card-title">
                             {item.data.competitor_name || item.data.plan_id}
@@ -1656,7 +1874,7 @@ const ProjectForm = () => {
                             Avg engagement:{' '}
                             {formatPrecedentScore(item.data.content_plan_model?.kpi_estimate?.avg_engagement_rate)}
                           </div>
-                          <div>Совпадения: {renderMatchedTokens(item.matched_tokens)}</div>
+                          <div>Почему найдено: {renderMatchExplanation(item.matched_tokens, precedentRetrieval)}</div>
                         </div>
                       </div>
                     ))}
@@ -1700,8 +1918,43 @@ const ProjectForm = () => {
                   Публикаций в черновике: {draftPlanResult.draft.draft_content_plan.publications?.length || 0}
                 </div>
               </div>
+              <div className="draft-plan-actions">
+                <button
+                  type="button"
+                  className="submit-button primary"
+                  onClick={() => navigate('/content-plan')}
+                >
+                  <span>Перейти к готовому контент-плану</span>
+                </button>
+                <button
+                  type="button"
+                  className="submit-button"
+                  onClick={handleOptimizeDraftPlan}
+                  disabled={isOptimizingPlan}
+                  title="Запустить 2-уровневую оптимизацию (ГА) по параметрам evo*"
+                >
+                  <span>{isOptimizingPlan ? 'Оптимизация...' : 'Оптимизировать (ГА)'}</span>
+                </button>
+              </div>
+
+              {!!optimizationResult?.optimized_content_plan && (
+                <div className="precedent-summary-panel" style={{ marginTop: 12 }}>
+                  <div className="precedent-summary-line">
+                    <strong>Оптимизация (ГА) завершена</strong>
+                  </div>
+                  <div className="precedent-summary-line">
+                    Публикаций после оптимизации: {optimizationResult.optimized_content_plan.publications?.length || 0}
+                  </div>
+                  <div className="precedent-summary-line">
+                    Этап 2: F_kp (стоимость) = {optimizationResult.stage2?.f_kp ?? '—'}; stop={optimizationResult.stage2?.ga?.stop_reason ?? '—'}; gen={optimizationResult.stage2?.ga?.generations ?? '—'}
+                  </div>
+                  <div className="precedent-summary-line">
+                    Ограничения: {optimizationResult.stage2?.constraints_check?.valid ? 'OK' : 'есть нарушения'}
+                  </div>
+                </div>
+              )}
               <div className="analysis-view">
-                <pre>{JSON.stringify(draftPlanResult.draft.draft_content_plan, null, 2)}</pre>
+                <pre>{JSON.stringify(optimizationResult?.optimized_content_plan || draftPlanResult.draft.draft_content_plan, null, 2)}</pre>
               </div>
             </div>
           )}
@@ -1726,6 +1979,14 @@ const ProjectForm = () => {
           </button>
         </div>
       </form>
+
+      {!!selectedPrecedentItem && (
+        <PrecedentDetailsModal
+          item={selectedPrecedentItem}
+          retrieval={precedentRetrieval}
+          onClose={() => setSelectedPrecedentItem(null)}
+        />
+      )}
     </>
   )
 }

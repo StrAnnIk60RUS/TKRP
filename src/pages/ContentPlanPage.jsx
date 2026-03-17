@@ -1,20 +1,51 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import './ContentPlanPage.css'
+
+const ensureUniquePublicationIds = (plan) => {
+  if (!plan || typeof plan !== 'object') return plan
+  const pubs = Array.isArray(plan.publications) ? plan.publications : []
+  if (!pubs.length) return plan
+
+  const used = new Set()
+  const normalized = pubs.map((pub, idx) => {
+    const base = typeof pub?.publication_id === 'string' ? pub.publication_id.trim() : ''
+    let next = base || `pub_${String(idx + 1).padStart(3, '0')}`
+    while (used.has(next)) next = `${next}_${idx + 1}`
+    used.add(next)
+    return { ...pub, publication_id: next }
+  })
+
+  return { ...plan, publications: normalized }
+}
 
 const ContentPlanPage = () => {
   const navigate = useNavigate()
   const [contentPlan, setContentPlan] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [optimizationMeta, setOptimizationMeta] = useState(null)
+  const safePlan = useMemo(() => ensureUniquePublicationIds(contentPlan), [contentPlan])
+  const publications = Array.isArray(safePlan?.publications) ? safePlan.publications : []
+  const platforms = Array.isArray(safePlan?.platforms) ? safePlan.platforms : []
 
   useEffect(() => {
     // Загрузка чернового контент-плана из localStorage
     const savedPlan = localStorage.getItem('currentContentPlan')
     if (savedPlan) {
       try {
-        setContentPlan(JSON.parse(savedPlan))
+        const parsed = JSON.parse(savedPlan)
+        setContentPlan(ensureUniquePublicationIds(parsed))
       } catch (e) {
         console.error('Ошибка загрузки контент-плана:', e)
+      }
+    }
+
+    const savedOptimization = localStorage.getItem('currentContentPlanOptimization')
+    if (savedOptimization) {
+      try {
+        setOptimizationMeta(JSON.parse(savedOptimization))
+      } catch (e) {
+        console.error('Ошибка загрузки метаданных оптимизации:', e)
       }
     }
     setLoading(false)
@@ -60,9 +91,6 @@ const ContentPlanPage = () => {
     )
   }
 
-  const publications = Array.isArray(contentPlan.publications) ? contentPlan.publications : []
-  const platforms = Array.isArray(contentPlan.platforms) ? contentPlan.platforms : []
-
   const groupedByPlatform = platforms.reduce((acc, platform) => {
     acc[platform] = publications
       .filter((p) => p.platform === platform)
@@ -78,7 +106,7 @@ const ContentPlanPage = () => {
     <div className="content-plan-page">
       <div className="page-header">
         <div className="header-actions">
-          <h1>Черновой контент-план</h1>
+          <h1>{optimizationMeta ? 'Оптимизированный контент-план' : 'Черновой контент-план'}</h1>
           <div className="action-buttons">
             <button className="secondary-btn" onClick={() => navigate('/')}>
               Назад
@@ -91,6 +119,12 @@ const ContentPlanPage = () => {
         <p className="page-subtitle">
           ID плана: <strong>{contentPlan.plan_id || 'Неизвестно'}</strong>
         </p>
+        {optimizationMeta && (
+          <p className="page-subtitle">
+            Оптимизация: F_kp = <strong>{optimizationMeta.stage2?.f_kp ?? '—'}</strong>; ограничения:{' '}
+            <strong>{optimizationMeta.stage2?.constraints_check?.valid ? 'OK' : 'есть нарушения'}</strong>
+          </p>
+        )}
       </div>
 
       <div className="content-plan-content">
@@ -157,7 +191,10 @@ const ContentPlanPage = () => {
           {publications.length > 0 && platforms.length === 0 && (
             <div className="posts-list">
               {publications.map((post, idx) => (
-                <div key={post.publication_id || idx} className="post-card">
+                <div
+                  key={`${post.publication_id || 'pub'}_${post.platform || 'na'}_${post.planned_date || 'na'}_${idx}`}
+                  className="post-card"
+                >
                   <div className="post-header">
                     <span className="post-date">
                       {post.planned_date
@@ -204,7 +241,10 @@ const ContentPlanPage = () => {
                     <h3 className="platform-name">{platform.toUpperCase()}</h3>
                     <div className="posts-list">
                       {posts.map((post, idx) => (
-                        <div key={post.publication_id || idx} className="post-card">
+                        <div
+                          key={`${post.publication_id || 'pub'}_${platform}_${post.planned_date || 'na'}_${idx}`}
+                          className="post-card"
+                        >
                           <div className="post-header">
                             <span className="post-date">
                               {post.planned_date

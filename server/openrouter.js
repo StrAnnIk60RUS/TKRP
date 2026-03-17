@@ -5,9 +5,18 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { applyDeterministicPostProcessing } from './src/services/postDeterministicFeatures.js';
 import {
-  CONTENT_MODEL_SPEC,
   normalizeCompetitorsContentData
 } from './src/models/contentModels.js';
+import {
+  buildSemanticEnrichmentBatches,
+  buildSemanticUserPrompt,
+  extractJsonObjectFromContent,
+  getEnrichmentConfig,
+  mergeSemanticBatchResults,
+  summarizeEnrichmentLimits,
+  validateAndNormalizeSemanticBatchResult,
+  validateNormalizedEnrichmentResult
+} from './src/services/semanticEnrichmentPipeline.js';
 
 // Загружаем единый .env из корня проекта
 const __filename = fileURLToPath(import.meta.url);
@@ -17,6 +26,12 @@ dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const AI_MODEL = process.env.AI_MODEL;
+const SEMANTIC_ENRICHMENT_PROMPT_PATH = path.join(
+  __dirname,
+  'src',
+  'prompts',
+  'articleStage1SemanticEnrichmentPrompt.txt'
+);
 
 // Экспортируем для проверки в server.js
 export { OPENROUTER_API_KEY, AI_MODEL };
@@ -57,6 +72,64 @@ export function enrichWithEngagementRate(competitorsData) {
   }
   
   return enriched;
+}
+
+function readPromptFile(filePath) {
+  return fs.readFileSync(filePath, 'utf-8');
+}
+
+function mergeUsageStats(usageItems = []) {
+  return usageItems.reduce(
+    (acc, usage) => ({
+      prompt_tokens: acc.prompt_tokens + (Number(usage?.prompt_tokens) || 0),
+      completion_tokens: acc.completion_tokens + (Number(usage?.completion_tokens) || 0),
+      total_tokens: acc.total_tokens + (Number(usage?.total_tokens) || 0)
+    }),
+    {
+      prompt_tokens: 0,
+      completion_tokens: 0,
+      total_tokens: 0
+    }
+  );
+}
+
+function buildLimitsErrorMessage(summary) {
+  return [
+    'Запрос на обогащение слишком большой для текущих ограничений сервера.',
+    `competitors=${summary.competitors_count}`,
+    `posts=${summary.posts_count}`,
+    `payload_bytes=${summary.payload_bytes}`,
+    `max_request_bytes=${summary.limits.max_request_bytes}`
+  ].join(' ');
+}
+
+async function enrichSemanticBatch(batch, systemPrompt, options = {}) {
+  const compact = options.compact === true;
+  const llmResponse = await callDeepSeekAPI(
+    systemPrompt,
+    buildSemanticUserPrompt(batch.payload, { compact }),
+    {
+      temperature: compact ? 0.1 : 0.2,
+      maxTokens: compact ? 4000 : 8000,
+      responseFormat: null
+    }
+  );
+
+  const parsed = extractJsonObjectFromContent(llmResponse.content || '');
+  const validation = validateAndNormalizeSemanticBatchResult(batch.payload, parsed);
+
+  if (!validation.valid) {
+    const error = new Error(`Невалидный семантический ответ LLM: ${validation.errors.join('; ')}`);
+    error.validation_errors = validation.errors;
+    error.raw_content = llmResponse.content || null;
+    throw error;
+  }
+
+  return {
+    postsById: validation.posts_by_id,
+    rawContent: llmResponse.content || '',
+    usage: llmResponse.usage || null
+  };
 }
 
 /**
@@ -134,21 +207,22 @@ export async function callDeepSeekAPI(systemPrompt, userPrompt, options = {}) {
     };
   } catch (error) {
     console.error('Ошибка при вызове OpenRouter API:', error.response?.data || error.message);
-    
+
     let errorMessage = 'Ошибка при обращении к OpenRouter API';
-    
     if (error.response?.data?.error) {
       errorMessage = error.response.data.error.message || JSON.stringify(error.response.data.error);
     } else if (error.message) {
       errorMessage = error.message;
     }
-    
-    // Добавляем дополнительную информацию для отладки
-    if (error.response?.status) {
-      errorMessage += ` (HTTP ${error.response.status})`;
+    const status = error.response?.status;
+    if (status) {
+      errorMessage += ` (HTTP ${status})`;
     }
-    
-    throw new Error(errorMessage);
+
+    const err = new Error(errorMessage);
+    err.responseStatus = status;
+    err.responseData = error.response?.data;
+    throw err;
   }
 }
 
@@ -158,251 +232,159 @@ export async function callDeepSeekAPI(systemPrompt, userPrompt, options = {}) {
  * @returns {Promise<Object>} - обогащенные данные
  */
 export async function enrichCompetitorsData(competitorsData) {
-  // Сначала вычисляем engagement_rate
+  const config = getEnrichmentConfig();
   const dataWithEngagementRate = enrichWithEngagementRate(competitorsData);
+  const limitsSummary = summarizeEnrichmentLimits(dataWithEngagementRate, config);
+  const dataSizeKb = (limitsSummary.payload_bytes / 1024).toFixed(2);
+  console.log(`Размер исходных данных для enrichment: ${dataSizeKb} KB`);
 
-  // Читаем системный промпт из файла
-  const __filename = fileURLToPath(import.meta.url);
-  const __dirname = path.dirname(__filename);
-  
-  const stage1PromptPath = path.join(
-    __dirname,
-    'src',
-    'prompts',
-    'articleStage1EnrichmentPrompt.txt'
-  );
-  let systemPrompt;
-  
-  const fileContent = fs.readFileSync(stage1PromptPath, 'utf-8');
-  systemPrompt = fileContent;
-  // Проверяем размер данных
-  const dataSize = JSON.stringify(dataWithEngagementRate).length;
-  console.log(`Размер данных для отправки: ${(dataSize / 1024).toFixed(2)} KB`);
-  
-  if (dataSize > 1000000) { // Больше 1MB
-    console.warn('Внимание: данные очень большие, это может вызвать проблемы с API');
+  if (limitsSummary.payload_bytes > config.maxRequestBytes) {
+    throw new Error(buildLimitsErrorMessage(limitsSummary));
   }
 
-  // Формируем пользовательский промпт
-  const userPrompt = `Обогати следующие данные конкурентов и приведи результат к формальной модели публикации и контент-плана.
-
-ТРЕБУЕМАЯ СХЕМА:
-${JSON.stringify(CONTENT_MODEL_SPEC, null, 2)}
-
-Данные:
-${JSON.stringify(dataWithEngagementRate, null, 2)}
-
-КРИТИЧЕСКИ ВАЖНО:
-1. Верни ТОЛЬКО валидный JSON объект.
-2. НЕ используй markdown блоки (тройные обратные кавычки).
-3. НЕ добавляй никакого текста до или после JSON.
-4. НЕ удаляй существующие поля у competitors и posts.
-5. Для каждого post ОБЯЗАТЕЛЬНО добавь:
-   - content_category
-   - tone
-   - topic
-   - target_audience
-   - publication_model
-6. Для каждого competitor ОБЯЗАТЕЛЬНО добавь:
-   - content_strategy
-   - content_plan_model
-7. В publication_model.spcj.dimensions все значения должны быть числами в диапазоне 0..1.
-8. В publication_model.spcj.vector верни массив чисел в том же порядке, что и required schema.
-
-Просто верни чистый JSON объект, начинающийся с { и заканчивающийся }.`;
-
-  // Вызываем API
-  let response;
-  try {
-    // DeepSeek может не поддерживать response_format, пробуем без него сначала
-    response = await callDeepSeekAPI(systemPrompt, userPrompt, {
-      temperature: 0.4,
-      maxTokens: 100000, // Ограничено доступными кредитами OpenRouter (доступно ~24732)
-      responseFormat: null // Не используем response_format, так как DeepSeek может не поддерживать
-    });
-  } catch (error) {
-    console.error('Ошибка при вызове DeepSeek API:', error);
-    throw error;
-  }
-  
-  if (!response || !response.success) {
-    throw new Error('API вернул неуспешный ответ');
+  if (
+    !config.autoBatch &&
+    (limitsSummary.posts_count > config.maxPostsPerBatch ||
+      limitsSummary.payload_bytes > config.maxPayloadBytes)
+  ) {
+    throw new Error(
+      `Запрос превышает лимиты enrichment и auto-batch выключен. posts=${limitsSummary.posts_count}, payload_bytes=${limitsSummary.payload_bytes}`
+    );
   }
 
-  // Парсим JSON ответ
-  let enrichedData = null;
-  let parseError = null;
-  let rawContent = null;
-  
-  try {
-    if (!response.content) {
-      throw new Error('LLM не вернул контент в ответе. Проверьте API ключ и модель.');
-    }
-    
-    const content = response.content.trim();
-    rawContent = content;
-    
-    if (!content) {
-      throw new Error('LLM вернул пустой ответ.');
-    }
-    
-    // Улучшенное извлечение JSON из markdown блоков
-    let jsonString = content;
-    
-    // Вариант 1: ```json ... ``` (ищем от первого ```json до последнего ```)
-    const jsonStartMarker = content.indexOf('```json');
-    if (jsonStartMarker !== -1) {
-      const startPos = jsonStartMarker + 7; // Позиция после ```json
-      const endPos = content.lastIndexOf('```');
-      if (endPos > startPos) {
-        jsonString = content.substring(startPos, endPos).trim();
+  const batches = buildSemanticEnrichmentBatches(dataWithEngagementRate, config);
+  const systemPrompt = readPromptFile(SEMANTIC_ENRICHMENT_PROMPT_PATH);
+
+  if (!batches.length) {
+    const normalizedData = normalizeCompetitorsContentData(
+      applyDeterministicPostProcessing(dataWithEngagementRate)
+    );
+    return {
+      enriched_data: normalizedData,
+      raw_response: '',
+      parse_error: null,
+      usage: null,
+      metadata: {
+        enriched_at: new Date().toISOString(),
+        model: AI_MODEL,
+        engagement_rate_calculated_locally: true,
+        parse_successful: true,
+        normalized_to_content_model: true,
+        batching: {
+          total_batches: 0,
+          auto_batched: false
+        },
+        request_limits: limitsSummary
       }
-    } else {
-      // Вариант 2: ``` ... ``` (без указания языка)
-      const codeBlockStart = content.indexOf('```');
-      if (codeBlockStart !== -1) {
-        const startPos = content.indexOf('\n', codeBlockStart);
-        const endPos = content.lastIndexOf('```');
-        if (startPos !== -1 && endPos > startPos) {
-          jsonString = content.substring(startPos + 1, endPos).trim();
-          // Убираем возможный "json" в начале строки
-          if (jsonString.startsWith('json\n') || jsonString.startsWith('json\r\n')) {
-            jsonString = jsonString.replace(/^json[\r\n]+/, '');
-          }
-        }
-      } else {
-        // Вариант 3: Ищем JSON объект напрямую (начинается с { и заканчивается })
-        const jsonStart = content.indexOf('{');
-        const jsonEnd = content.lastIndexOf('}');
-        if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
-          jsonString = content.substring(jsonStart, jsonEnd + 1);
-        }
-      }
-    }
-    
-    // Очищаем jsonString от возможных лишних символов
-    jsonString = jsonString.trim();
-    
-    // Убираем возможные префиксы/суффиксы еще раз
-    jsonString = jsonString.replace(/^```[a-z]*\s*/i, '').replace(/\s*```$/i, '');
-    jsonString = jsonString.replace(/^json[\r\n]+/i, '').trim();
-    
-    try {
-      enrichedData = JSON.parse(jsonString);
-      console.log('✅ JSON успешно распарсен, размер:', jsonString.length, 'символов');
-    } catch (parseErr) {
-      // Попытка восстановить неполный JSON (если обрезан)
-      let fixedJson = jsonString;
-      const errorMsg = parseErr.message.toLowerCase();
-      
-      // Если ошибка связана с неполным JSON (ожидается ',' или '}' после значения)
-      if (errorMsg.includes('expected') && (errorMsg.includes("'}'") || errorMsg.includes("','"))) {
-        console.log('⚠️ Попытка восстановить неполный JSON...');
-        
-        // Подсчитываем открывающие и закрывающие скобки
-        const openBraces = (jsonString.match(/\{/g) || []).length;
-        const closeBraces = (jsonString.match(/\}/g) || []).length;
-        const openBrackets = (jsonString.match(/\[/g) || []).length;
-        const closeBrackets = (jsonString.match(/\]/g) || []).length;
-        
-        // Если JSON обрезан, добавляем недостающие закрывающие скобки
-        if (openBraces > closeBraces || openBrackets > closeBrackets) {
-          // Удаляем последнюю незавершенную запись (если есть запятая в конце)
-          fixedJson = jsonString.replace(/,\s*$/, '');
-          
-          // Добавляем недостающие закрывающие скобки
-          for (let i = 0; i < openBrackets - closeBrackets; i++) {
-            fixedJson += ']';
-          }
-          for (let i = 0; i < openBraces - closeBraces; i++) {
-            fixedJson += '}';
-          }
-          
-          // Пробуем распарсить восстановленный JSON
-          try {
-            enrichedData = JSON.parse(fixedJson);
-            console.log('✅ JSON успешно восстановлен и распарсен!');
-            parseError = {
-              message: 'JSON был обрезан, но успешно восстановлен',
-              was_fixed: true,
-              original_error: parseErr.message
-            };
-          } catch (fixErr) {
-            // Восстановление не помогло, сохраняем оригинальную ошибку
-            console.error('❌ Не удалось восстановить JSON:', fixErr.message);
-            parseError = {
-              message: parseErr.message,
-              fix_attempted: true,
-              fix_error: fixErr.message,
-              raw_content: content.substring(0, 3000),
-              json_string_attempt: jsonString.substring(0, 2000),
-              json_string_length: jsonString.length,
-              content_length: content.length,
-              json_start_index: content.indexOf('{'),
-              json_end_index: content.lastIndexOf('}'),
-              open_braces: openBraces,
-              close_braces: closeBraces,
-              open_brackets: openBrackets,
-              close_brackets: closeBrackets
-            };
-          }
-        } else {
-          // Обычная ошибка парсинга (не обрезанный JSON)
-          parseError = {
-            message: parseErr.message,
-            raw_content: content.substring(0, 3000),
-            json_string_attempt: jsonString.substring(0, 2000),
-            json_string_length: jsonString.length,
-            content_length: content.length,
-            json_start_index: content.indexOf('{'),
-            json_end_index: content.lastIndexOf('}')
-          };
-        }
-      } else {
-        // Другая ошибка парсинга
-        parseError = {
-          message: parseErr.message,
-          raw_content: content.substring(0, 3000),
-          json_string_attempt: jsonString.substring(0, 2000),
-          json_string_length: jsonString.length,
-          content_length: content.length,
-          json_start_index: content.indexOf('{'),
-          json_end_index: content.lastIndexOf('}')
-        };
-      }
-      
-      if (!enrichedData) {
-        console.error('❌ Ошибка парсинга JSON ответа:', parseErr.message);
-        console.log('📝 Первые 500 символов сырого контента:', content.substring(0, 500));
-        console.log('📝 Первые 500 символов попытки парсинга:', jsonString.substring(0, 500));
-        console.log('📝 Последние 200 символов попытки парсинга:', jsonString.substring(Math.max(0, jsonString.length - 200)));
-      }
-    }
-  } catch (error) {
-    console.error('Ошибка обработки ответа:', error);
-    parseError = {
-      message: error.message,
-      raw_content: response.content ? response.content.substring(0, 2000) : null
     };
   }
 
-  // ВСЕГДА возвращаем результат, даже если JSON невалидный
+  const semanticMaps = [];
+  const rawResponses = [];
+  const usageItems = [];
+  const batchStats = [];
+  let parseError = null;
+
+  const isRetryableApiError = (err) =>
+    typeof err.responseStatus === 'number' && err.responseStatus >= 500 && err.responseStatus < 600;
+
+  for (let index = 0; index < batches.length; index += 1) {
+    const batch = batches[index];
+    const totalAttempts = config.retryOnInvalid ? config.maxRetries + 1 : 1;
+    let lastError = null;
+    const maxApiRetries = 1; // один повтор при 5xx
+    let apiAttempt = 0;
+
+    for (let attempt = 0; attempt < totalAttempts; attempt += 1) {
+      const compact = attempt > 0;
+      try {
+        console.log(
+          `[OpenRouter] Enrichment batch ${index + 1}/${batches.length}, posts=${batch.stats.posts_count}, bytes=${batch.stats.payload_bytes}, attempt=${attempt + 1}/${totalAttempts}${apiAttempt > 0 ? ` (api retry ${apiAttempt})` : ''}`
+        );
+        const batchResult = await enrichSemanticBatch(batch, systemPrompt, { compact });
+        semanticMaps.push(batchResult.postsById);
+        rawResponses.push(batchResult.rawContent);
+        if (batchResult.usage) {
+          usageItems.push(batchResult.usage);
+        }
+        batchStats.push({
+          batch_index: index + 1,
+          posts_count: batch.stats.posts_count,
+          payload_bytes: batch.stats.payload_bytes,
+          attempts_used: attempt + 1,
+          compact_retry_used: compact,
+          api_retries: apiAttempt
+        });
+        lastError = null;
+        break;
+      } catch (error) {
+        lastError = error;
+        console.error(
+          `[OpenRouter] Ошибка enrichment batch ${index + 1}/${batches.length}:`,
+          error.message
+        );
+
+        if (isRetryableApiError(error) && apiAttempt < maxApiRetries) {
+          apiAttempt += 1;
+          const delayMs = 2000;
+          console.log(`[OpenRouter] Повтор запроса через ${delayMs} мс из-за ошибки API (${error.responseStatus})...`);
+          await new Promise((r) => setTimeout(r, delayMs));
+          attempt -= 1; // не считать эту итерацию как validation attempt
+          continue;
+        }
+      }
+    }
+
+    if (lastError) {
+      const isApi = isRetryableApiError(lastError) || (typeof lastError.responseStatus === 'number' && lastError.responseStatus >= 400);
+      parseError = {
+        message: lastError.message,
+        batch_index: index + 1,
+        total_batches: batches.length,
+        validation_errors: lastError.validation_errors || null,
+        raw_content: typeof lastError.raw_content === 'string' ? lastError.raw_content.slice(0, 3000) : null,
+        error_type: isApi ? 'api_error' : 'validation_error',
+        response_status: lastError.responseStatus ?? null
+      };
+      break;
+    }
+  }
+
+  const enrichedData = !parseError
+    ? mergeSemanticBatchResults(dataWithEngagementRate, semanticMaps)
+    : null;
   const postProcessedData = enrichedData ? applyDeterministicPostProcessing(enrichedData) : null;
   const normalizedData = postProcessedData
     ? normalizeCompetitorsContentData(postProcessedData)
     : null;
+  const normalizedValidation = normalizedData
+    ? validateNormalizedEnrichmentResult(normalizedData)
+    : { valid: false, errors: ['normalized_data is null'] };
+
+  if (!parseError && !normalizedValidation.valid) {
+    parseError = {
+      message: 'Нормализованный результат enrichment не прошел валидацию',
+      validation_errors: normalizedValidation.errors
+    };
+  }
 
   return {
-    enriched_data: normalizedData, // null если не удалось распарсить
-    raw_response: rawContent, // Сырой ответ от LLM для отладки
-    parse_error: parseError, // Информация об ошибке парсинга, если была
-    usage: response.usage,
+    enriched_data: parseError ? null : normalizedData,
+    raw_response: rawResponses.join('\n\n--- batch separator ---\n\n'),
+    parse_error: parseError,
+    usage: usageItems.length ? mergeUsageStats(usageItems) : null,
     metadata: {
       enriched_at: new Date().toISOString(),
       model: AI_MODEL,
       engagement_rate_calculated_locally: true,
-      parse_successful: enrichedData !== null,
-      normalized_to_content_model: normalizedData !== null
+      parse_successful: parseError === null,
+      normalized_to_content_model: parseError === null && normalizedData !== null,
+      batching: {
+        total_batches: batches.length,
+        auto_batched: batches.length > 1,
+        batch_stats: batchStats
+      },
+      request_limits: limitsSummary
     }
   };
 }

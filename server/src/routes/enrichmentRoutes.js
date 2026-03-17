@@ -3,7 +3,6 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { enrichCompetitorsData } from '../../openrouter.js';
-import { callDeepSeekAPI } from '../../openrouter.js';
 import { parseAndEnrichByUrl, parseOnlyByUrl } from '../services/parserPipeline.js';
 import {
   getPrecedentsSnapshot,
@@ -11,27 +10,132 @@ import {
   persistPrecedents,
   searchPrecedents
 } from '../repositories/precedentRepository.js';
+import {
+  getEnrichmentConfig,
+  summarizeEnrichmentLimits
+} from '../services/semanticEnrichmentPipeline.js';
+import { runHierarchicalOptimization } from '../services/evolutionary/hierarchicalGa.js';
+import { generateDraftPlanBatched } from '../services/draftPlanGenerationPipeline.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEMO_FIXTURE_PATH = path.join(__dirname, '..', 'fixtures', 'demoPrecedents.json');
-const DRAFT_PLAN_PROMPT_PATH = path.join(__dirname, '..', 'prompts', 'articleDraftPlanPrompt.txt');
-const MAX_POSTS_PER_ENRICH_REQUEST = Number(process.env.MAX_POSTS_PER_ENRICH_REQUEST || 60);
 
 const router = Router();
 
-function extractJsonFromLlmContent(content) {
-  if (!content || typeof content !== 'string') {
-    throw new Error('Пустой ответ от LLM');
+function isIsoDateString(value) {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function toIsoDateOnly(value) {
+  if (!value) return null;
+  if (isIsoDateString(value)) return value;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString().slice(0, 10);
+}
+
+function daysBetweenInclusive(startDate, endDate) {
+  const start = new Date(`${startDate}T00:00:00Z`);
+  const end = new Date(`${endDate}T00:00:00Z`);
+  const diff = Math.floor((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000));
+  return diff >= 0 ? diff + 1 : 0;
+}
+
+function addDaysIso(startDate, daysToAdd) {
+  const date = new Date(`${startDate}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + daysToAdd);
+  return date.toISOString().slice(0, 10);
+}
+
+function normalizeDraftPlanResponse(parsedDraft, formInput) {
+  if (!parsedDraft || typeof parsedDraft !== 'object') return parsedDraft;
+  const plan = parsedDraft?.draft_content_plan;
+  if (!plan || typeof plan !== 'object') return parsedDraft;
+
+  const requestedStart = toIsoDateOnly(formInput?.contentPlanStartDate) || null;
+  const requestedEnd = toIsoDateOnly(formInput?.contentPlanEndDate) || null;
+  const requestedPlatforms = Array.isArray(formInput?.platforms) ? formInput.platforms : [];
+
+  const normalized = JSON.parse(JSON.stringify(parsedDraft));
+  const normalizedPlan = normalized.draft_content_plan;
+
+  if (requestedStart && requestedEnd) {
+    normalizedPlan.planning_horizon = { start_date: requestedStart, end_date: requestedEnd };
+  } else {
+    const start = toIsoDateOnly(normalizedPlan?.planning_horizon?.start_date);
+    const end = toIsoDateOnly(normalizedPlan?.planning_horizon?.end_date);
+    normalizedPlan.planning_horizon = {
+      start_date: start || (requestedStart ?? null),
+      end_date: end || (requestedEnd ?? null)
+    };
   }
 
-  const trimmed = content.trim();
-  const start = trimmed.indexOf('{');
-  const end = trimmed.lastIndexOf('}');
-  if (start === -1 || end === -1 || end <= start) {
-    throw new Error('LLM не вернул JSON объект');
+  if (requestedPlatforms.length) {
+    normalizedPlan.platforms = requestedPlatforms;
   }
 
-  return JSON.parse(trimmed.slice(start, end + 1));
+  const publications = Array.isArray(normalizedPlan.publications) ? normalizedPlan.publications : [];
+
+  // 1) dedupe by stable key
+  const seen = new Set();
+  const deduped = [];
+  publications.forEach((pub) => {
+    if (!pub || typeof pub !== 'object') return;
+    const key = [
+      String(pub.platform || '').toLowerCase(),
+      toIsoDateOnly(pub.planned_date) || '',
+      String(pub.topic || '').trim().toLowerCase(),
+      String(pub.format || '').trim().toLowerCase(),
+      String(pub.objective || '').trim().toLowerCase()
+    ].join('|');
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    deduped.push(pub);
+  });
+
+  // 2) ensure unique publication_id
+  const usedIds = new Set();
+  deduped.forEach((pub, idx) => {
+    const current = typeof pub.publication_id === 'string' ? pub.publication_id.trim() : '';
+    let nextId = current;
+    if (!nextId || usedIds.has(nextId)) {
+      nextId = `plan_pub_${idx + 1}`;
+    }
+    while (usedIds.has(nextId)) {
+      nextId = `${nextId}_${Math.floor(Math.random() * 10000)}`;
+    }
+    usedIds.add(nextId);
+    pub.publication_id = nextId;
+  });
+
+  // 3) clamp planned_date into horizon and distribute if everything collapsed to one day
+  const startDate = normalizedPlan?.planning_horizon?.start_date;
+  const endDate = normalizedPlan?.planning_horizon?.end_date;
+  if (isIsoDateString(startDate) && isIsoDateString(endDate) && deduped.length) {
+    const spanDays = daysBetweenInclusive(startDate, endDate);
+    const hasValidSpan = spanDays > 0;
+    const normalizedDates = deduped.map((p) => toIsoDateOnly(p.planned_date)).filter(Boolean);
+    const uniqueDates = new Set(normalizedDates);
+
+    deduped.forEach((pub) => {
+      const d = toIsoDateOnly(pub.planned_date);
+      if (!d) return;
+      if (d < startDate) pub.planned_date = startDate;
+      if (d > endDate) pub.planned_date = endDate;
+    });
+
+    // If LLM returned effectively one repeated date, spread evenly across horizon
+    if (hasValidSpan && uniqueDates.size <= 1) {
+      const step = Math.max(1, Math.floor(spanDays / Math.max(1, deduped.length)));
+      deduped.forEach((pub, idx) => {
+        const offset = Math.min(spanDays - 1, idx * step);
+        pub.planned_date = addDaysIso(startDate, offset);
+      });
+    }
+  }
+
+  normalizedPlan.publications = deduped;
+  return normalized;
 }
 
 function buildRagQueryFromForm(formInput = {}) {
@@ -97,12 +201,22 @@ router.post('/precedents/seed', (req, res) => {
         error: 'Неверный формат фикстуры: ожидается массив competitors'
       });
     }
-    const persistence = persistPrecedents(fixture, { source: 'demo_seed' });
-    return res.json({
-      success: true,
-      message: 'Демо-база прецедентов загружена',
-      persistence
-    });
+    // persistPrecedents теперь включает индексацию эмбеддингов, поэтому async
+    persistPrecedents(fixture, { source: 'demo_seed' })
+      .then((persistence) =>
+        res.json({
+          success: true,
+          message: 'Демо-база прецедентов загружена',
+          persistence
+        })
+      )
+      .catch((error) => {
+        console.error('Ошибка в /api/precedents/seed:', error);
+        res.status(500).json({
+          success: false,
+          error: error.message || 'Внутренняя ошибка сервера в /api/precedents/seed'
+        });
+      });
   } catch (error) {
     console.error('Ошибка в /api/precedents/seed:', error);
     return res.status(500).json({
@@ -112,7 +226,7 @@ router.post('/precedents/seed', (req, res) => {
   }
 });
 
-router.post('/precedents/search', (req, res) => {
+router.post('/precedents/search', async (req, res) => {
   try {
     const { query, limit, platform, audience_segments } = req.body || {};
 
@@ -123,7 +237,7 @@ router.post('/precedents/search', (req, res) => {
       });
     }
 
-    const results = searchPrecedents(query, {
+    const results = await searchPrecedents(query, {
       limit,
       platform,
       audience_segments
@@ -162,46 +276,98 @@ router.post('/plan/generate', async (req, res) => {
       });
     }
 
-    const ragResults = searchPrecedents(query, {
+    const ragResults = await searchPrecedents(query, {
       limit: rag_limit || 8,
       platform: Array.isArray(form_input.platforms) ? form_input.platforms[0] : undefined,
       audience_segments: form_input.consumerCategory ? [form_input.consumerCategory] : []
     });
-
-    const systemPrompt = fs.readFileSync(DRAFT_PLAN_PROMPT_PATH, 'utf-8');
-    const userPrompt = `Сформируй черновой контент-план на основании требований проекта и найденных прецедентов.
-
-Требования проекта:
-${JSON.stringify(form_input, null, 2)}
-
-RAG query:
-${query}
-
-Найденные публикации-прецеденты:
-${JSON.stringify(ragResults.publications, null, 2)}
-
-Найденные прецеденты контент-планов:
-${JSON.stringify(ragResults.content_plans, null, 2)}
-`;
-
-    const llmResponse = await callDeepSeekAPI(systemPrompt, userPrompt, {
-      temperature: 0.3,
-      maxTokens: 100000,
-      responseFormat: null
+    const generated = await generateDraftPlanBatched({
+      formInput: form_input,
+      query,
+      ragResults,
+      ragLimit: rag_limit || 8
     });
-    const parsed = extractJsonFromLlmContent(llmResponse.content || '');
+    const normalizedDraft = normalizeDraftPlanResponse(generated.draft, form_input);
 
     return res.json({
       success: true,
       rag: ragResults,
-      draft: parsed,
-      usage: llmResponse.usage || null
+      draft: normalizedDraft,
+      usage: generated.usage || null,
+      generation_metadata: generated.generation_metadata || null
     });
   } catch (error) {
     console.error('Ошибка в /api/plan/generate:', error);
     return res.status(500).json({
       success: false,
       error: error.message || 'Внутренняя ошибка сервера в /api/plan/generate'
+    });
+  }
+});
+
+router.post('/plan/generate-batched', async (req, res) => {
+  try {
+    const { form_input, rag_query, rag_limit } = req.body || {};
+    if (!form_input || typeof form_input !== 'object') {
+      return res.status(400).json({
+        success: false,
+        error: 'Отсутствует или некорректное поле form_input'
+      });
+    }
+
+    const query = typeof rag_query === 'string' && rag_query.trim()
+      ? rag_query.trim()
+      : buildRagQueryFromForm(form_input);
+    if (!query) {
+      return res.status(400).json({
+        success: false,
+        error: 'Не удалось сформировать rag_query из form_input'
+      });
+    }
+
+    const ragResults = await searchPrecedents(query, {
+      limit: rag_limit || 8,
+      platform: Array.isArray(form_input.platforms) ? form_input.platforms[0] : undefined,
+      audience_segments: form_input.consumerCategory ? [form_input.consumerCategory] : []
+    });
+
+    const generated = await generateDraftPlanBatched({
+      formInput: form_input,
+      query,
+      ragResults,
+      ragLimit: rag_limit || 8
+    });
+    const normalizedDraft = normalizeDraftPlanResponse(generated.draft, form_input);
+
+    return res.json({
+      success: true,
+      rag: ragResults,
+      draft: normalizedDraft,
+      usage: generated.usage || null,
+      generation_metadata: generated.generation_metadata || null
+    });
+  } catch (error) {
+    console.error('Ошибка в /api/plan/generate-batched:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Внутренняя ошибка сервера в /api/plan/generate-batched'
+    });
+  }
+});
+
+router.post('/plan/optimize', (req, res) => {
+  try {
+    const payload = req.body || {};
+    const result = runHierarchicalOptimization(payload);
+    return res.json({
+      success: true,
+      ...result
+    });
+  } catch (error) {
+    console.error('Ошибка в /api/plan/optimize:', error);
+    return res.status(400).json({
+      success: false,
+      error: error.message || 'Некорректный запрос в /api/plan/optimize'
     });
   }
 });
@@ -253,7 +419,7 @@ router.post('/parse-and-enrich', async (req, res) => {
     const result = await parseAndEnrichByUrl(url);
     const persistence =
       result.enriched_data !== null
-        ? persistPrecedents(result.enriched_data, { source: 'api_parse_and_enrich' })
+        ? await persistPrecedents(result.enriched_data, { source: 'api_parse_and_enrich' })
         : null;
 
     console.log(
@@ -293,11 +459,33 @@ router.post('/enrich', async (req, res) => {
       });
     }
 
-    const competitorsCount = competitors_data.competitors.length;
-    const postsCount = competitors_data.competitors.reduce((sum, c) => sum + (c.posts?.length || 0), 0);
+    const config = getEnrichmentConfig();
+    const requestGuardrails = summarizeEnrichmentLimits(competitors_data, config);
     console.log(
-      `[${new Date().toISOString()}] Начало обогащения данных для ${competitorsCount} конкурентов, ${postsCount} постов`
+      `[${new Date().toISOString()}] Начало обогащения данных для ${requestGuardrails.competitors_count} конкурентов, ${requestGuardrails.posts_count} постов, payload=${requestGuardrails.payload_bytes} bytes`
     );
+
+    if (requestGuardrails.payload_bytes > config.maxRequestBytes) {
+      return res.status(413).json({
+        success: false,
+        error:
+          'Входные данные слишком большие для одного запроса. Уменьшите объем данных или повысьте MAX_ENRICH_REQUEST_BYTES.',
+        request_guardrails: requestGuardrails
+      });
+    }
+
+    if (
+      !config.autoBatch &&
+      (requestGuardrails.posts_count > config.maxPostsPerBatch ||
+        requestGuardrails.payload_bytes > config.maxPayloadBytes)
+    ) {
+      return res.status(413).json({
+        success: false,
+        error:
+          'Запрос превышает лимиты enrichment, а автоматический batching отключен. Включите ENRICH_AUTO_BATCH или уменьшите объем данных.',
+        request_guardrails: requestGuardrails
+      });
+    }
 
     const result = await enrichCompetitorsData(competitors_data);
     console.log(
@@ -306,7 +494,7 @@ router.post('/enrich', async (req, res) => {
 
     const persistence =
       result.enriched_data !== null
-        ? persistPrecedents(result.enriched_data, { source: 'api_enrich' })
+        ? await persistPrecedents(result.enriched_data, { source: 'api_enrich' })
         : null;
 
     if (result.parse_error) {
@@ -315,6 +503,7 @@ router.post('/enrich', async (req, res) => {
 
     return res.json({
       success: result.enriched_data !== null,
+      request_guardrails: requestGuardrails,
       persistence,
       ...result
     });

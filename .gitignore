@@ -34,3 +34,10 @@ YANDEX_VERSION/.env
 *.txt
 !server/src/prompts/*.txt
 server/data/*.json
+
+# Python cache / bytecode
+__pycache__/
+*.py[cod]
+
+# Local binary docs (keep only locally)
+*.docx

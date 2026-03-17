@@ -2,7 +2,11 @@ import React from 'react';
 
 const formatScore = (score) => `${Math.round((Number(score) || 0) * 100)}%`;
 
-const renderMatchedTokens = (matchedTokens = []) => {
+const renderMatchExplanation = (matchedTokens = [], retrieval = null) => {
+  const type = retrieval?.type;
+  if (type === 'embedding_cosine') {
+    return 'Semantic retrieval (эмбеддинги): совпавшие токены не считаются';
+  }
   if (!matchedTokens.length) return 'Без совпавших токенов';
   return matchedTokens.join(', ');
 };
@@ -21,6 +25,7 @@ const PrecedentSearchStep = ({
 }) => {
   const publications = precedentResults?.publications || [];
   const contentPlans = precedentResults?.content_plans || [];
+  const retrieval = precedentResults?.retrieval || null;
 
   return (
     <div className="quick-actions precedent-search-step">
@@ -97,6 +102,12 @@ const PrecedentSearchStep = ({
                 Поиск выполнен по {precedentResults.total_publications_searched || 0} публикациям и{' '}
                 {precedentResults.total_content_plans_searched || 0} планам
               </span>
+              {!!retrieval?.type && (
+                <span className="precedent-results-subtitle">
+                  Retrieval: {retrieval.type}
+                  {retrieval.embedding_model ? ` · ${retrieval.embedding_model}` : ''}
+                </span>
+              )}
             </div>
 
             {publications.length > 0 && (
@@ -124,7 +135,7 @@ const PrecedentSearchStep = ({
                           {(item.data.publication_model?.audience_segments || []).join(', ') || 'не указана'}
                         </div>
                         <div>
-                          Совпадения: {renderMatchedTokens(item.matched_tokens)}
+                          Почему найдено: {renderMatchExplanation(item.matched_tokens, retrieval)}
                         </div>
                       </div>
                     </div>
@@ -164,7 +175,7 @@ const PrecedentSearchStep = ({
                           {formatScore(item.data.content_plan_model?.kpi_estimate?.avg_engagement_rate)}
                         </div>
                         <div>
-                          Совпадения: {renderMatchedTokens(item.matched_tokens)}
+                          Почему найдено: {renderMatchExplanation(item.matched_tokens, retrieval)}
                         </div>
                       </div>
                     </div>
