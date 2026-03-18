@@ -1,19 +1,25 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { spawn } from 'child_process';
 import {
   cosineSimilarity,
   embedTexts,
   normalizeCosineToUnitInterval
 } from '../services/embeddingService.js';
+import { trainRelevanceModel } from '../services/relevancePredictionService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const STORAGE_DIR = path.join(__dirname, '..', '..', 'data');
-const STORAGE_PATH = path.join(STORAGE_DIR, 'precedents.json');
+const STORAGE_ROOT = path.join(STORAGE_DIR, 'precedents-store');
+const LEGACY_STORAGE_PATH = path.join(STORAGE_DIR, 'precedents.json');
+const METADATA_PATH = path.join(STORAGE_ROOT, 'metadata.json');
+const INGESTION_RUNS_PATH = path.join(STORAGE_ROOT, 'ingestion_runs.json');
+const PUBLICATIONS_PATH = path.join(STORAGE_ROOT, 'publications.json');
+const CONTENT_PLANS_PATH = path.join(STORAGE_ROOT, 'content_plans.json');
 const EMBEDDING_SCHEMA_VERSION = 2;
 const EMBEDDING_TEXT_MAX_CHARS = 4000;
+let storageMutationQueue = Promise.resolve();
 
 function createEmptyStorage() {
   return {
@@ -28,40 +34,84 @@ function createEmptyStorage() {
   };
 }
 
-function ensureStorageFile() {
+function ensureStorageRoot() {
   if (!fs.existsSync(STORAGE_DIR)) {
     fs.mkdirSync(STORAGE_DIR, { recursive: true });
   }
-
-  if (!fs.existsSync(STORAGE_PATH)) {
-    fs.writeFileSync(STORAGE_PATH, JSON.stringify(createEmptyStorage(), null, 2), 'utf-8');
+  if (!fs.existsSync(STORAGE_ROOT)) {
+    fs.mkdirSync(STORAGE_ROOT, { recursive: true });
   }
 }
 
-function readStorage() {
-  ensureStorageFile();
+function atomicWriteJson(filePath, data) {
+  ensureStorageRoot();
+  const tempPath = `${filePath}.tmp`;
+  fs.writeFileSync(tempPath, JSON.stringify(data, null, 2), 'utf-8');
+  fs.renameSync(tempPath, filePath);
+}
 
+function readJsonFile(filePath, fallbackValue) {
+  if (!fs.existsSync(filePath)) return fallbackValue;
   try {
-    const raw = fs.readFileSync(STORAGE_PATH, 'utf-8');
-    const parsed = JSON.parse(raw);
-
-    return {
-      ...createEmptyStorage(),
-      ...parsed,
-      metadata: {
-        ...(createEmptyStorage().metadata || {}),
-        ...(parsed.metadata || {})
-      },
-      ingestion_runs: Array.isArray(parsed.ingestion_runs) ? parsed.ingestion_runs : [],
-      publications: Array.isArray(parsed.publications) ? parsed.publications : [],
-      content_plans: Array.isArray(parsed.content_plans) ? parsed.content_plans : []
-    };
+    return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
   } catch (error) {
-    console.warn('[precedentRepository] Storage read failed, recreating file:', error.message);
-    const emptyStorage = createEmptyStorage();
-    fs.writeFileSync(STORAGE_PATH, JSON.stringify(emptyStorage, null, 2), 'utf-8');
-    return emptyStorage;
+    console.warn('[precedentRepository] Failed to read JSON file:', filePath, error.message);
+    return fallbackValue;
   }
+}
+
+function splitSnapshotToCollections(snapshot) {
+  const empty = createEmptyStorage();
+  const metadata = {
+    ...empty.metadata,
+    ...(snapshot?.metadata || {}),
+    schema_version: Math.max(
+      Number(snapshot?.metadata?.schema_version) || EMBEDDING_SCHEMA_VERSION,
+      EMBEDDING_SCHEMA_VERSION
+    )
+  };
+  return {
+    metadata,
+    ingestion_runs: Array.isArray(snapshot?.ingestion_runs) ? snapshot.ingestion_runs : [],
+    publications: Array.isArray(snapshot?.publications) ? snapshot.publications : [],
+    content_plans: Array.isArray(snapshot?.content_plans) ? snapshot.content_plans : []
+  };
+}
+
+function migrateLegacySnapshotIfNeeded() {
+  if (fs.existsSync(METADATA_PATH) || !fs.existsSync(LEGACY_STORAGE_PATH)) {
+    return;
+  }
+
+  const legacySnapshot = readJsonFile(LEGACY_STORAGE_PATH, createEmptyStorage());
+  const collections = splitSnapshotToCollections(legacySnapshot);
+  atomicWriteJson(METADATA_PATH, collections.metadata);
+  atomicWriteJson(INGESTION_RUNS_PATH, collections.ingestion_runs);
+  atomicWriteJson(PUBLICATIONS_PATH, collections.publications);
+  atomicWriteJson(CONTENT_PLANS_PATH, collections.content_plans);
+}
+
+function readStorage() {
+  ensureStorageRoot();
+  migrateLegacySnapshotIfNeeded();
+
+  const emptyStorage = createEmptyStorage();
+  const parsed = {
+    metadata: readJsonFile(METADATA_PATH, emptyStorage.metadata),
+    ingestion_runs: readJsonFile(INGESTION_RUNS_PATH, emptyStorage.ingestion_runs),
+    publications: readJsonFile(PUBLICATIONS_PATH, emptyStorage.publications),
+    content_plans: readJsonFile(CONTENT_PLANS_PATH, emptyStorage.content_plans)
+  };
+
+  return {
+    metadata: {
+      ...emptyStorage.metadata,
+      ...(parsed.metadata || {})
+    },
+    ingestion_runs: Array.isArray(parsed.ingestion_runs) ? parsed.ingestion_runs : [],
+    publications: Array.isArray(parsed.publications) ? parsed.publications : [],
+    content_plans: Array.isArray(parsed.content_plans) ? parsed.content_plans : []
+  };
 }
 
 function normalizeText(value) {
@@ -182,8 +232,6 @@ function filterByAudience(items, audienceSegments = [], getter) {
 }
 
 function writeStorage(storage) {
-  ensureStorageFile();
-
   const nextStorage = {
     ...storage,
     metadata: {
@@ -193,7 +241,43 @@ function writeStorage(storage) {
     }
   };
 
-  fs.writeFileSync(STORAGE_PATH, JSON.stringify(nextStorage, null, 2), 'utf-8');
+  atomicWriteJson(METADATA_PATH, nextStorage.metadata);
+  atomicWriteJson(INGESTION_RUNS_PATH, nextStorage.ingestion_runs);
+  atomicWriteJson(PUBLICATIONS_PATH, nextStorage.publications);
+  atomicWriteJson(CONTENT_PLANS_PATH, nextStorage.content_plans);
+}
+
+function runStorageMutation(mutator) {
+  const job = storageMutationQueue.then(async () => {
+    const storage = readStorage();
+    const result = await mutator(storage);
+    writeStorage(storage);
+    return result;
+  });
+
+  storageMutationQueue = job.then(
+    () => undefined,
+    () => undefined
+  );
+
+  return job;
+}
+
+function mergeEmbeddingUpdates(items, updates, idField) {
+  const updatesById = new Map(
+    updates
+      .filter((item) => item?.[idField] && Array.isArray(item?.embedding))
+      .map((item) => [item[idField], item])
+  );
+
+  items.forEach((item) => {
+    const itemId = item?.[idField];
+    if (!itemId || !updatesById.has(itemId)) return;
+    const update = updatesById.get(itemId);
+    item.embedding = update.embedding;
+    item.embedding_model = update.embedding_model;
+    item.embedded_at = update.embedded_at;
+  });
 }
 
 function upsertByKey(items, nextItem, keyName) {
@@ -297,120 +381,96 @@ async function embedMissingItems(items, buildTextFn) {
 }
 
 export async function persistPrecedents(enrichedData, options = {}) {
-  const storage = readStorage();
   const competitors = Array.isArray(enrichedData?.competitors) ? enrichedData.competitors : [];
 
-  const publications = collectPublicationsFromCompetitors(competitors);
-  const contentPlans = collectContentPlansFromCompetitors(competitors);
+  const persistence = await runStorageMutation(async (storage) => {
+    const publications = collectPublicationsFromCompetitors(competitors);
+    const contentPlans = collectContentPlansFromCompetitors(competitors);
 
-  let insertedPublications = 0;
-  let updatedPublications = 0;
-  let insertedContentPlans = 0;
-  let updatedContentPlans = 0;
+    let insertedPublications = 0;
+    let updatedPublications = 0;
+    let insertedContentPlans = 0;
+    let updatedContentPlans = 0;
 
-  publications.forEach((publication) => {
-    const result = upsertByKey(storage.publications, publication, 'publication_id');
-    if (result === 'inserted') insertedPublications += 1;
-    if (result === 'updated') updatedPublications += 1;
-  });
+    publications.forEach((publication) => {
+      const result = upsertByKey(storage.publications, publication, 'publication_id');
+      if (result === 'inserted') insertedPublications += 1;
+      if (result === 'updated') updatedPublications += 1;
+    });
 
-  contentPlans.forEach((contentPlan) => {
-    const result = upsertByKey(storage.content_plans, contentPlan, 'plan_id');
-    if (result === 'inserted') insertedContentPlans += 1;
-    if (result === 'updated') updatedContentPlans += 1;
-  });
+    contentPlans.forEach((contentPlan) => {
+      const result = upsertByKey(storage.content_plans, contentPlan, 'plan_id');
+      if (result === 'inserted') insertedContentPlans += 1;
+      if (result === 'updated') updatedContentPlans += 1;
+    });
 
-  // Embedding-index: пытаемся вычислить эмбеддинги для новых/обновленных элементов.
-  // Если embeddings недоступны (нет ключа/ошибка API), сохраняем данные без эмбеддингов:
-  // retrieval сможет использовать fallback (token overlap) и/или доиндексировать позже.
-  let embeddingStats = {
-    publications_embedded: 0,
-    content_plans_embedded: 0,
-    embedding_model: null,
-    embedding_error: null
-  };
-  try {
-    const pubEmbed = await embedMissingItems(storage.publications, buildEmbeddingTextForPublication);
-    const planEmbed = await embedMissingItems(storage.content_plans, buildEmbeddingTextForContentPlan);
-    embeddingStats = {
-      publications_embedded: pubEmbed.embedded_count,
-      content_plans_embedded: planEmbed.embedded_count,
-      embedding_model: pubEmbed.embedding_model || planEmbed.embedding_model || null,
+    let embeddingStats = {
+      publications_embedded: 0,
+      content_plans_embedded: 0,
+      embedding_model: null,
       embedding_error: null
     };
-  } catch (error) {
-    embeddingStats.embedding_error = error.message || 'embedding_error';
-    console.warn('[precedentRepository] Embedding indexing skipped:', embeddingStats.embedding_error);
-  }
 
-  storage.ingestion_runs.push({
-    run_id: `ingest_${Date.now()}`,
-    created_at: new Date().toISOString(),
-    source: options.source || 'api_enrich',
-    competitors_count: competitors.length,
-    publications_processed: publications.length,
-    content_plans_processed: contentPlans.length,
-    inserted_publications: insertedPublications,
-    updated_publications: updatedPublications,
-    inserted_content_plans: insertedContentPlans,
-    updated_content_plans: updatedContentPlans,
-    embedding: embeddingStats
+    try {
+      const pubEmbed = await embedMissingItems(storage.publications, buildEmbeddingTextForPublication);
+      const planEmbed = await embedMissingItems(storage.content_plans, buildEmbeddingTextForContentPlan);
+      embeddingStats = {
+        publications_embedded: pubEmbed.embedded_count,
+        content_plans_embedded: planEmbed.embedded_count,
+        embedding_model: pubEmbed.embedding_model || planEmbed.embedding_model || null,
+        embedding_error: null
+      };
+    } catch (error) {
+      embeddingStats.embedding_error = error.message || 'embedding_error';
+      console.warn('[precedentRepository] Embedding indexing skipped:', embeddingStats.embedding_error);
+    }
+
+    storage.ingestion_runs.push({
+      run_id: `ingest_${Date.now()}`,
+      created_at: new Date().toISOString(),
+      source: options.source || 'api_enrich',
+      competitors_count: competitors.length,
+      publications_processed: publications.length,
+      content_plans_processed: contentPlans.length,
+      inserted_publications: insertedPublications,
+      updated_publications: updatedPublications,
+      inserted_content_plans: insertedContentPlans,
+      updated_content_plans: updatedContentPlans,
+      embedding: embeddingStats
+    });
+
+    return {
+      storage_path: STORAGE_ROOT,
+      competitors_count: competitors.length,
+      publications_processed: publications.length,
+      content_plans_processed: contentPlans.length,
+      inserted_publications: insertedPublications,
+      updated_publications: updatedPublications,
+      inserted_content_plans: insertedContentPlans,
+      updated_content_plans: updatedContentPlans,
+      total_publications: storage.publications.length,
+      total_content_plans: storage.content_plans.length,
+      embedding: embeddingStats
+    };
   });
 
-  writeStorage(storage);
-
-  // ML-автообучение после ingestion (опционально, чтобы учить модель на новых прецедентах).
-  // Важно: training выполняется в той же python-среде, где запускается backend.
   const autoTrainEnabled = process.env.ML_AUTO_TRAIN_AFTER_INGESTION !== 'false';
-  if (autoTrainEnabled && (insertedPublications + updatedPublications + insertedContentPlans + updatedContentPlans > 0)) {
+  const hasChanges =
+    persistence.inserted_publications +
+      persistence.updated_publications +
+      persistence.inserted_content_plans +
+      persistence.updated_content_plans >
+    0;
+
+  if (autoTrainEnabled && hasChanges) {
     try {
-      const scriptPath = path.join(__dirname, '..', '..', 'ml', 'engagement_model.py');
-      const serverRoot = path.join(__dirname, '..', '..'); // server/
-
-      await new Promise((resolve, reject) => {
-        const pythonProcess = spawn('python', ['-u', scriptPath, 'train'], {
-          cwd: serverRoot,
-          stdio: ['pipe', 'pipe', 'pipe']
-        });
-
-        let stdout = '';
-        let stderr = '';
-
-        pythonProcess.stdout.on('data', (data) => {
-          stdout += data.toString();
-        });
-        pythonProcess.stderr.on('data', (data) => {
-          stderr += data.toString();
-        });
-
-        pythonProcess.on('close', (code) => {
-          if (code !== 0) {
-            reject(new Error(`auto-train failed (exit_code=${code}): ${stderr || 'no stderr'}${stdout ? ` | stdout=${stdout.slice(0, 500)}` : ''}`));
-            return;
-          }
-          resolve();
-        });
-
-        pythonProcess.stdin.end();
-      });
+      await trainRelevanceModel();
     } catch (error) {
       console.warn('[ml:auto-train] Failed to retrain relevance model:', error?.message || error);
     }
   }
 
-  return {
-    storage_path: STORAGE_PATH,
-    competitors_count: competitors.length,
-    publications_processed: publications.length,
-    content_plans_processed: contentPlans.length,
-    inserted_publications: insertedPublications,
-    updated_publications: updatedPublications,
-    inserted_content_plans: insertedContentPlans,
-    updated_content_plans: updatedContentPlans,
-    total_publications: storage.publications.length,
-    total_content_plans: storage.content_plans.length,
-    embedding: embeddingStats
-  };
+  return persistence;
 }
 
 export function getPrecedentsSummary() {
@@ -420,7 +480,7 @@ export function getPrecedentsSummary() {
     : null;
 
   return {
-    storage_path: STORAGE_PATH,
+    storage_path: STORAGE_ROOT,
     schema_version: storage.metadata?.schema_version || 1,
     updated_at: storage.metadata?.updated_at || null,
     ingestion_runs_count: storage.ingestion_runs.length,
@@ -502,7 +562,6 @@ export async function searchPrecedents(query, options = {}) {
     const queryEmbedding = queryEmbeddingResult.embeddings[0];
 
     // Доиндексируем отсутствующие эмбеддинги (лениво) и сразу пишем на диск.
-    let embeddedChanged = false;
     const pubEmbedStats = await ensureEmbeddingsForSearch(
       filteredPublications,
       buildEmbeddingTextForPublication
@@ -512,10 +571,11 @@ export async function searchPrecedents(query, options = {}) {
       buildEmbeddingTextForContentPlan
     );
     if (pubEmbedStats.embedded > 0 || planEmbedStats.embedded > 0) {
-      embeddedChanged = true;
-    }
-    if (embeddedChanged) {
-      writeStorage(storage);
+      await runStorageMutation(async (latestStorage) => {
+        mergeEmbeddingUpdates(latestStorage.publications, filteredPublications, 'publication_id');
+        mergeEmbeddingUpdates(latestStorage.content_plans, filteredContentPlans, 'plan_id');
+        return null;
+      });
     }
 
     const rankedPublications = filteredPublications

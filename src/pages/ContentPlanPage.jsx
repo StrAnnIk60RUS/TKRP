@@ -1,6 +1,29 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
+import PlanHistoryPanel from '../components/plan/PlanHistoryPanel'
+import PlanSummaryBar from '../components/plan/PlanSummaryBar'
+import PlanFilters from '../components/plan/PlanFilters'
+import PlanViewToggle from '../components/plan/PlanViewToggle'
+import PlanPublicationTable from '../components/plan/PlanPublicationTable'
+import PostCard from '../components/plan/PostCard'
+import PostEditModal from '../components/plan/PostEditModal'
+import PlanEditModal from '../components/plan/PlanEditModal'
+import {
+  getCurrentOptimization,
+  getCurrentPlan,
+  getPlanHistory,
+  loadPlanFromHistory,
+  savePlanSnapshot
+} from '../services/planStorage'
 import './ContentPlanPage.css'
+
+const DEFAULT_FILTERS = {
+  search: '',
+  platform: 'all',
+  format: 'all',
+  dateFrom: '',
+  dateTo: ''
+}
 
 const ensureUniquePublicationIds = (plan) => {
   if (!plan || typeof plan !== 'object') return plan
@@ -19,44 +42,49 @@ const ensureUniquePublicationIds = (plan) => {
   return { ...plan, publications: normalized }
 }
 
-const PostCard = ({ post, showPlatformField }) => {
-  const plannedDateLabel = post.planned_date
-    ? new Date(post.planned_date).toLocaleDateString('ru-RU')
-    : 'Дата не указана'
+const getPlatformsFromPublications = (pubs) => {
+  const allowed = new Set(['vk', 'linkedin'])
+  const set = new Set()
+  pubs.forEach((p) => {
+    if (allowed.has(p?.platform)) set.add(p.platform)
+  })
+  return Array.from(set)
+}
 
-  return (
-    <div className="post-card">
-      <div className="post-header">
-        <span className="post-date">{plannedDateLabel}</span>
-        <span className="post-category">{post.topic || 'Без темы'}</span>
-      </div>
-      <div className="post-content">
-        {showPlatformField && <div><strong>Платформа:</strong> {post.platform || 'не указана'}</div>}
-        <div><strong>Формат:</strong> {post.format || 'не указан'}</div>
-        <div><strong>Цель:</strong> {post.objective || 'не указана'}</div>
-        <div><strong>Тон:</strong> {post.tone || 'не указан'}</div>
-        <div><strong>Ключевое сообщение:</strong> {post.key_message || 'не задано'}</div>
-        <div><strong>CTA:</strong> {post.cta || 'не задано'}</div>
-      </div>
-      {post.expected_kpi && (
-        <div className="post-metrics">
-          <span>
-            Вовлечённость:{' '}
-            {((post.expected_kpi.engagement_rate || 0) * 100).toFixed(1)}%
-            {post.expected_kpi.engagement_rate_source === 'ml_relevance_prediction' ? ' (ML)' : ''}
-          </span>
-          <span>
-            Потенциал конверсии:{' '}
-            {((post.expected_kpi.conversion_potential || 0) * 100).toFixed(1)}%
-          </span>
-          <span>
-            Потенциал охвата:{' '}
-            {((post.expected_kpi.reach_potential || 0) * 100).toFixed(1)}%
-          </span>
-        </div>
-      )}
-    </div>
-  )
+const getDateTimestamp = (value) => {
+  if (!value) return 0
+  const timestamp = new Date(value).getTime()
+  return Number.isNaN(timestamp) ? 0 : timestamp
+}
+
+const sortPublicationsByDate = (pubs) =>
+  [...pubs].sort((a, b) => getDateTimestamp(a?.planned_date) - getDateTimestamp(b?.planned_date))
+
+const normalizeText = (value) => (typeof value === 'string' ? value.toLowerCase() : '')
+
+const matchesFilters = (publication, filters) => {
+  if (filters.platform !== 'all' && publication.platform !== filters.platform) return false
+  if (filters.format !== 'all' && publication.format !== filters.format) return false
+
+  const plannedDate = publication.planned_date || ''
+  if (filters.dateFrom && plannedDate && plannedDate < filters.dateFrom) return false
+  if (filters.dateTo && plannedDate && plannedDate > filters.dateTo) return false
+
+  if (filters.search.trim()) {
+    const haystack = [
+      publication.topic,
+      publication.key_message,
+      publication.cta,
+      publication.objective,
+      publication.tone
+    ]
+      .map(normalizeText)
+      .join(' ')
+
+    if (!haystack.includes(filters.search.trim().toLowerCase())) return false
+  }
+
+  return true
 }
 
 const ContentPlanPage = () => {
@@ -64,32 +92,145 @@ const ContentPlanPage = () => {
   const [contentPlan, setContentPlan] = useState(null)
   const [loading, setLoading] = useState(true)
   const [optimizationMeta, setOptimizationMeta] = useState(null)
+  const [planHistory, setPlanHistory] = useState([])
+  const [publicationToEdit, setPublicationToEdit] = useState(null)
+  const [isPlanEditOpen, setIsPlanEditOpen] = useState(false)
+  const [filters, setFilters] = useState(DEFAULT_FILTERS)
+  const [viewMode, setViewMode] = useState('cards')
+
   const safePlan = useMemo(() => ensureUniquePublicationIds(contentPlan), [contentPlan])
-  const publications = Array.isArray(safePlan?.publications) ? safePlan.publications : []
+  const publications = useMemo(
+    () => (Array.isArray(safePlan?.publications) ? sortPublicationsByDate(safePlan.publications) : []),
+    [safePlan]
+  )
   const platforms = Array.isArray(safePlan?.platforms) ? safePlan.platforms : []
+  const formatOptions = useMemo(
+    () => Array.from(new Set(publications.map((item) => item?.format).filter(Boolean))),
+    [publications]
+  )
 
   useEffect(() => {
-    // Загрузка чернового контент-плана из localStorage
-    const savedPlan = localStorage.getItem('currentContentPlan')
-    if (savedPlan) {
-      try {
-        const parsed = JSON.parse(savedPlan)
-        setContentPlan(ensureUniquePublicationIds(parsed))
-      } catch (e) {
-        console.error('Ошибка загрузки контент-плана:', e)
-      }
-    }
-
-    const savedOptimization = localStorage.getItem('currentContentPlanOptimization')
-    if (savedOptimization) {
-      try {
-        setOptimizationMeta(JSON.parse(savedOptimization))
-      } catch (e) {
-        console.error('Ошибка загрузки метаданных оптимизации:', e)
-      }
-    }
+    const savedPlan = getCurrentPlan()
+    if (savedPlan) setContentPlan(ensureUniquePublicationIds(savedPlan))
+    setOptimizationMeta(getCurrentOptimization())
+    setPlanHistory(getPlanHistory())
     setLoading(false)
   }, [])
+
+  const filteredPublications = useMemo(
+    () => publications.filter((publication) => matchesFilters(publication, filters)),
+    [filters, publications]
+  )
+
+  const groupedFilteredByPlatform = useMemo(() => {
+    const platformKeys = Array.from(
+      new Set(filteredPublications.map((item) => item?.platform).filter(Boolean))
+    )
+
+    return platformKeys.reduce((acc, platform) => {
+      acc[platform] = filteredPublications.filter((item) => item.platform === platform)
+      return acc
+    }, {})
+  }, [filteredPublications])
+
+  const summary = useMemo(() => {
+    const engagementValues = filteredPublications
+      .map((item) => Number(item?.expected_kpi?.engagement_rate))
+      .filter((value) => Number.isFinite(value))
+    const avgEngagementRate = engagementValues.length
+      ? engagementValues.reduce((sum, value) => sum + value, 0) / engagementValues.length
+      : 0
+
+    return {
+      totalCount: publications.length,
+      filteredCount: filteredPublications.length,
+      avgEngagementRate,
+      platformsLabel:
+        Array.from(new Set(filteredPublications.map((item) => item.platform).filter(Boolean)))
+          .map((item) => item.toUpperCase())
+          .join(', ') || 'не указаны',
+      dateRangeLabel:
+        filteredPublications.length > 0
+          ? `${filteredPublications[0]?.planned_date || '—'} - ${
+              filteredPublications[filteredPublications.length - 1]?.planned_date || '—'
+            }`
+          : `${safePlan?.planning_horizon?.start_date || '—'} - ${safePlan?.planning_horizon?.end_date || '—'}`
+    }
+  }, [filteredPublications, publications.length, safePlan])
+
+  const currentPlanType = optimizationMeta ? 'optimized' : 'draft'
+  const currentSummary = useMemo(
+    () => ({
+      publications_count: publications.length,
+      platforms,
+      start_date: safePlan?.planning_horizon?.start_date || null,
+      end_date: safePlan?.planning_horizon?.end_date || null,
+      total_budget: safePlan?.constraints?.total_budget ?? null,
+      max_cost_per_publication: safePlan?.constraints?.max_cost_per_publication ?? null,
+      optimization_valid: optimizationMeta?.stage2?.constraints_check?.valid ?? null
+    }),
+    [optimizationMeta, platforms, publications.length, safePlan]
+  )
+
+  const handleFilterChange = (name, value) => {
+    setFilters((prev) => ({ ...prev, [name]: value }))
+  }
+
+  const handleSavePostEdit = (nextPartialPublication) => {
+    if (!publicationToEdit?.publication_id || !safePlan) return
+
+    const nextPublications = Array.isArray(safePlan.publications)
+      ? safePlan.publications.map((p) =>
+          p?.publication_id === publicationToEdit.publication_id ? { ...p, ...nextPartialPublication } : p
+        )
+      : []
+
+    const nextPlan = ensureUniquePublicationIds({
+      ...safePlan,
+      publications: nextPublications,
+      platforms: getPlatformsFromPublications(nextPublications)
+    })
+
+    try {
+      savePlanSnapshot(nextPlan, { type: 'draft', optimization: null })
+      setContentPlan(nextPlan)
+      setOptimizationMeta(null)
+      setPlanHistory(getPlanHistory())
+      setPublicationToEdit(null)
+    } catch (e) {
+      console.error('Не удалось сохранить редактирование поста:', e)
+    }
+  }
+
+  const handleSavePlanEdit = (nextPlanFields) => {
+    if (!safePlan) return
+
+    const nextPlan = ensureUniquePublicationIds({
+      ...safePlan,
+      planning_horizon: nextPlanFields.planning_horizon,
+      kpi_targets: nextPlanFields.kpi_targets,
+      constraints: nextPlanFields.constraints,
+      notes: nextPlanFields.notes
+    })
+
+    try {
+      savePlanSnapshot(nextPlan, { type: 'draft', optimization: null })
+      setContentPlan(nextPlan)
+      setOptimizationMeta(null)
+      setPlanHistory(getPlanHistory())
+      setIsPlanEditOpen(false)
+    } catch (e) {
+      console.error('Не удалось сохранить редактирование параметров плана:', e)
+    }
+  }
+
+  const handleLoadHistoryEntry = (entryId, entryType, savedAt) => {
+    const plan = loadPlanFromHistory(entryId, entryType, savedAt)
+    if (!plan) return
+    setContentPlan(ensureUniquePublicationIds(plan))
+    setOptimizationMeta(getCurrentOptimization())
+    setPlanHistory(getPlanHistory())
+  }
 
   const handleDownload = () => {
     if (!contentPlan) return
@@ -131,17 +272,6 @@ const ContentPlanPage = () => {
     )
   }
 
-  const groupedByPlatform = platforms.reduce((acc, platform) => {
-    acc[platform] = publications
-      .filter((p) => p.platform === platform)
-      .sort((a, b) => {
-        const da = a.planned_date ? new Date(a.planned_date).getTime() : 0
-        const db = b.planned_date ? new Date(b.planned_date).getTime() : 0
-        return da - db
-      })
-    return acc
-  }, {})
-
   return (
     <div className="content-plan-page">
       <div className="page-header">
@@ -150,6 +280,13 @@ const ContentPlanPage = () => {
           <div className="action-buttons">
             <button className="secondary-btn" onClick={() => navigate('/')}>
               Назад
+            </button>
+            <button
+              className="secondary-btn"
+              onClick={() => setIsPlanEditOpen(true)}
+              title="Редактировать параметры плана"
+            >
+              Редактировать параметры
             </button>
             <button className="primary-btn" onClick={handleDownload}>
               Скачать JSON
@@ -167,37 +304,43 @@ const ContentPlanPage = () => {
         )}
       </div>
 
+      <PlanSummaryBar summary={summary} optimizationMeta={optimizationMeta} />
+
       <div className="content-plan-content">
-        {/* Общая информация по плану (человекочитаемая сводка) */}
+        <PlanHistoryPanel
+          history={planHistory}
+          onLoad={handleLoadHistoryEntry}
+          currentPlanId={contentPlan.plan_id}
+          currentPlanType={currentPlanType}
+          currentSummary={currentSummary}
+        />
+
         <section className="plan-section">
           <h2 className="section-title">Параметры плана</h2>
           <div className="plan-summary-grid">
             <div className="plan-summary-item">
-              <span className="plan-summary-label">Период:</span>
+              <span className="plan-summary-label">Период</span>
               <span className="plan-summary-value">
-                {contentPlan.planning_horizon?.start_date || '—'} —{' '}
-                {contentPlan.planning_horizon?.end_date || '—'}
+                {contentPlan.planning_horizon?.start_date || '—'} — {contentPlan.planning_horizon?.end_date || '—'}
               </span>
             </div>
             <div className="plan-summary-item">
-              <span className="plan-summary-label">Платформы:</span>
+              <span className="plan-summary-label">Платформы</span>
               <span className="plan-summary-value">
                 {platforms.length ? platforms.join(', ').toUpperCase() : 'не заданы'}
               </span>
             </div>
             <div className="plan-summary-item">
-              <span className="plan-summary-label">Публикаций:</span>
-              <span className="plan-summary-value">
-                {publications.length}
-              </span>
+              <span className="plan-summary-label">Публикаций</span>
+              <span className="plan-summary-value">{publications.length}</span>
             </div>
             <div className="plan-summary-item">
-              <span className="plan-summary-label">Цели KPI:</span>
+              <span className="plan-summary-label">Цели KPI</span>
               <span className="plan-summary-value">
                 {contentPlan.kpi_targets
-                  ? `ср. вовлечённость ≥ ${
-                      ((contentPlan.kpi_targets.avg_engagement_rate || 0) * 100).toFixed(1)
-                    }%${contentPlan.kpi_targets.avg_engagement_rate_source === 'ml_relevance_prediction' ? ' (ML)' : ''}, конверсии ≈ ${
+                  ? `ср. вовлечённость ≥ ${((contentPlan.kpi_targets.avg_engagement_rate || 0) * 100).toFixed(
+                      1
+                    )}%${contentPlan.kpi_targets.avg_engagement_rate_source === 'ml_relevance_prediction' ? ' (ML)' : ''}, конверсии ≈ ${
                       contentPlan.kpi_targets.estimated_conversions || 0
                     }`
                   : 'не заданы'}
@@ -205,67 +348,105 @@ const ContentPlanPage = () => {
             </div>
             {contentPlan.constraints && (
               <div className="plan-summary-item plan-summary-item-full">
-                <span className="plan-summary-label">Ограничения:</span>
+                <span className="plan-summary-label">Ограничения</span>
                 <span className="plan-summary-value">
-                  мин. публикаций: {contentPlan.constraints.min_publications ?? '—'};
-                  {' '}общий бюджет: {contentPlan.constraints.total_budget ?? '—'};
-                  {' '}макс. стоимость поста: {contentPlan.constraints.max_cost_per_publication ?? '—'}
+                  мин. публикаций: {contentPlan.constraints.min_publications ?? '—'}; общий бюджет:{' '}
+                  {contentPlan.constraints.total_budget ?? '—'}; макс. стоимость поста:{' '}
+                  {contentPlan.constraints.max_cost_per_publication ?? '—'}
                 </span>
               </div>
             )}
             {contentPlan.notes && (
               <div className="plan-summary-item plan-summary-item-full">
-                <span className="plan-summary-label">Заметки:</span>
-                <span className="plan-summary-value">
-                  {contentPlan.notes}
-                </span>
+                <span className="plan-summary-label">Заметки</span>
+                <span className="plan-summary-value">{contentPlan.notes}</span>
               </div>
             )}
           </div>
         </section>
 
-        {/* Список публикаций как контент-календарь по платформам */}
+        <PlanFilters
+          filters={filters}
+          platformOptions={platforms}
+          formatOptions={formatOptions}
+          onChange={handleFilterChange}
+          onReset={() => setFilters(DEFAULT_FILTERS)}
+        />
+
         <section className="plan-section">
-          <h2 className="section-title">Публикации в плане</h2>
-          {publications.length === 0 && (
-            <p className="no-posts">В черновом плане пока нет публикаций.</p>
+          <div className="plan-publications-header">
+            <div>
+              <h2 className="section-title">Публикации в плане</h2>
+              <p className="plan-publications-subtitle">
+                Переключайтесь между карточками и таблицей, чтобы быстро найти нужную публикацию или
+                отредактировать её.
+              </p>
+            </div>
+            <PlanViewToggle
+              viewMode={viewMode}
+              onChange={setViewMode}
+              filteredCount={filteredPublications.length}
+            />
+          </div>
+
+          {filteredPublications.length === 0 && (
+            <p className="no-posts">По текущим фильтрам публикаций не найдено.</p>
           )}
-          {publications.length > 0 && platforms.length === 0 && (
+
+          {filteredPublications.length > 0 && viewMode === 'table' && (
+            <PlanPublicationTable publications={filteredPublications} onEdit={setPublicationToEdit} />
+          )}
+
+          {filteredPublications.length > 0 && viewMode === 'cards' && Object.keys(groupedFilteredByPlatform).length === 0 && (
             <div className="posts-list">
-              {publications.map((post, idx) => (
+              {filteredPublications.map((post, idx) => (
                 <PostCard
                   key={`${post.publication_id || 'pub'}_${post.platform || 'na'}_${post.planned_date || 'na'}_${idx}`}
                   post={post}
                   showPlatformField
+                  onEdit={() => setPublicationToEdit(post)}
                 />
               ))}
             </div>
           )}
 
-          {platforms.length > 0 && (
+          {filteredPublications.length > 0 && viewMode === 'cards' && Object.keys(groupedFilteredByPlatform).length > 0 && (
             <>
-              {platforms.map((platform) => {
-                const posts = groupedByPlatform[platform] || []
-                if (!posts.length) return null
-                return (
-                  <div key={platform} className="platform-block">
-                    <h3 className="platform-name">{platform.toUpperCase()}</h3>
-                    <div className="posts-list">
-                      {posts.map((post, idx) => (
-                        <PostCard
-                          key={`${post.publication_id || 'pub'}_${platform}_${post.planned_date || 'na'}_${idx}`}
-                          post={post}
-                          showPlatformField={false}
-                        />
-                      ))}
-                    </div>
+              {Object.entries(groupedFilteredByPlatform).map(([platform, posts]) => (
+                <div key={platform} className="platform-block">
+                  <h3 className="platform-name">{platform.toUpperCase()}</h3>
+                  <div className="posts-list">
+                    {posts.map((post, idx) => (
+                      <PostCard
+                        key={`${post.publication_id || 'pub'}_${platform}_${post.planned_date || 'na'}_${idx}`}
+                        post={post}
+                        showPlatformField={false}
+                        onEdit={() => setPublicationToEdit(post)}
+                      />
+                    ))}
                   </div>
-                )
-              })}
+                </div>
+              ))}
             </>
           )}
         </section>
       </div>
+
+      {!!publicationToEdit && (
+        <PostEditModal
+          publication={publicationToEdit}
+          onSave={handleSavePostEdit}
+          onCancel={() => setPublicationToEdit(null)}
+        />
+      )}
+
+      {!!isPlanEditOpen && (
+        <PlanEditModal
+          plan={safePlan}
+          onSave={handleSavePlanEdit}
+          onCancel={() => setIsPlanEditOpen(false)}
+        />
+      )}
     </div>
   )
 }

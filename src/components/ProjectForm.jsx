@@ -4,79 +4,41 @@ import { ToastContainer } from './Toast'
 import CompetitorsStep from './competitors/CompetitorsStep'
 import WizardHeader from './WizardHeader'
 import WizardNavActions from './WizardNavActions'
+import WorkflowSummaryPanel from './projectForm/WorkflowSummaryPanel'
+import PrecedentSearchPanel from './projectForm/PrecedentSearchPanel'
+import DraftPlanWorkflowPanel from './projectForm/DraftPlanWorkflowPanel'
+import TechnicalDetailsPanel from './projectForm/TechnicalDetailsPanel'
 import { useCompetitorsPipeline } from '../hooks/useCompetitorsPipeline'
 import { getPrecedentsSummary, searchPrecedents, seedDemoPrecedents, generateDraftContentPlan, optimizeDraftContentPlan } from '../services/enrichmentService'
+import { savePlanSnapshot } from '../services/planStorage'
 import PrecedentDetailsModal from './precedents/PrecedentDetailsModal'
+import {
+  consumerCategoryOptions,
+  contentFormatOptions,
+  demoExampleFormData,
+  demoHorizonExampleOptions,
+  frequencyOptions,
+  initialFormData,
+  platformOptions,
+  requiredFields,
+  wizardSteps
+} from './projectForm/formConfig'
+import {
+  buildAlphaByDimension,
+  buildGaConfigFromForm,
+  buildReviewChecklist,
+  buildSafeFormInputForGeneration,
+  buildSuggestedPrecedentQuery,
+  mapExamplePayloadToFormData,
+  parseNumberOrNull,
+  validateFieldValue,
+  validateFormData
+} from './projectForm/formUtils'
 import './ProjectForm.css'
-
-const formatPrecedentScore = (score) => `${Math.round((Number(score) || 0) * 100)}%`
-
-const renderMatchExplanation = (matchedTokens = [], retrieval = null) => {
-  const type = retrieval?.type
-  if (type === 'embedding_cosine') {
-    return 'Semantic retrieval (эмбеддинги): совпавшие токены не считаются'
-  }
-  if (!matchedTokens.length) return 'Без совпавших токенов'
-  return matchedTokens.join(', ')
-}
-
-const formatDateISO = (date) => date.toISOString().split('T')[0]
 
 const ProjectForm = () => {
   const navigate = useNavigate()
-  const [formData, setFormData] = useState({
-    // Сведения о производителе
-    producerName: '',
-    producerActivitySpecification: '',
-    
-    // Сведения об IT-проекте
-    projectName: '',
-    projectDescription: '',
-    projectGoals: '',
-    projectFeatures: '',
-    projectBenefits: '',
-    
-    // Профиль потребителя
-    consumerCategory: '', // B2B, B2C, B2G
-    consumerDemographics: '',
-    consumerPurchaseGoal: '',
-    consumerLifestyle: '',
-    
-    // Сведения о контент-плане
-    contentPlanStartDate: '',
-    contentPlanEndDate: '',
-    publicationFrequency: '',
-    minPublications: '',
-    keyDates: '',
-    totalBudget: '',
-    maxCostPerPublication: '',
-    contentFormats: [],
-    videoDescription: '',
-    platforms: [],
-
-    // Параметры эволюционного моделирования (опционально)
-    evoPopulationSize: '100',
-    evoGenerations: '100',
-    evoStopCriterion: 'max_generations',
-    evoStagnationGenerations: '20',
-    evoOptimizationGoal: 'max_engagement',
-    evoBudgetLimit: '',
-
-    evoSelectionMethod: 'tournament',
-    evoTournamentSize: '3',
-    evoBestWinProb: '0.9',
-    evoEliteSize: '2',
-
-    evoCrossoverMethod: 'one_point',
-    evoCrossoverProbability: '0.8',
-
-    evoMutationMethod: 'bit_flip',
-    evoMutationProbability: '0.01',
-
-    evoPreserveDiversity: true,
-    evoUseParallel: false,
-    evoRandomSeed: ''
-  })
+  const [formData, setFormData] = useState(initialFormData)
 
   const [errors, setErrors] = useState({})
   const [touched, setTouched] = useState({})
@@ -99,13 +61,6 @@ const ProjectForm = () => {
   const [selectedPrecedentItem, setSelectedPrecedentItem] = useState(null)
   const [demoHorizonExample, setDemoHorizonExample] = useState('example_year_plan')
 
-  const demoHorizonExampleOptions = {
-    example_month_plan: '1 месяц',
-    example_three_month_plan: '3 месяца',
-    example_six_month_plan: '6 месяцев',
-    example_year_plan: '12 месяцев'
-  }
-
   const precedentRetrieval = precedentSearchResults?.retrieval || null
 
   const retrievalBadge = useMemo(() => {
@@ -124,50 +79,6 @@ const ProjectForm = () => {
     return { label: type, hint: '', tone: 'neutral' }
   }, [precedentRetrieval])
 
-  const wizardSteps = [
-    'Конкуренты',
-    'Проект',
-    'Аудитория и план',
-    'Настройки и запуск',
-    'Результаты'
-  ]
-
-  // B2G - Business-to-Government (бизнес для государства)
-  const consumerCategoryOptions = [
-    { value: 'B2B', label: 'B2B (Business-to-Business) - Бизнес для бизнеса' },
-    { value: 'B2C', label: 'B2C (Business-to-Consumer) - Бизнес для потребителя' },
-    { value: 'B2G', label: 'B2G (Business-to-Government) - Бизнес для государства' }
-  ]
-
-  const frequencyOptions = [
-    { value: 'daily', label: 'Ежедневно' },
-    { value: '3-4_per_week', label: '3-4 раза в неделю' },
-    { value: '2-3_per_week', label: '2-3 раза в неделю' },
-    { value: 'weekly', label: 'Еженедельно' },
-    { value: '2_per_week', label: '2 раза в неделю' }
-  ]
-
-  const contentFormatOptions = [
-    { value: 'text', label: 'Текст' },
-    { value: 'video', label: 'Ролик' },
-    { value: 'image', label: 'Изображение' },
-    { value: 'combined', label: 'Комбинированный' }
-  ]
-
-  const platformOptions = [
-    { value: 'vk', label: 'VK (ВКонтакте)' },
-    { value: 'linkedin', label: 'LinkedIn' }
-  ]
-
-  // Обязательные поля
-  const requiredFields = [
-    'producerName', 'producerActivitySpecification',
-    'projectName', 'projectDescription',
-    'consumerCategory',
-    'contentPlanStartDate', 'contentPlanEndDate', 'publicationFrequency',
-    'minPublications', 'totalBudget', 'maxCostPerPublication'
-  ]
-
   const filledRequired = useMemo(() => {
     return requiredFields.filter(field => {
       const value = formData[field]
@@ -176,6 +87,12 @@ const ProjectForm = () => {
   }, [formData])
 
   const progress = (filledRequired / requiredFields.length) * 100
+
+  const isValueFilled = (value) => {
+    if (Array.isArray(value)) return value.length > 0
+    if (typeof value === 'string') return value.trim() !== ''
+    return value !== null && value !== undefined
+  }
 
   const addToast = (message, type = 'success') => {
     toastCounterRef.current += 1
@@ -201,6 +118,85 @@ const ProjectForm = () => {
     clearCompetitors,
     canEnrich
   } = useCompetitorsPipeline(addToast)
+
+  const reviewChecklist = useMemo(
+    () => buildReviewChecklist(formData, competitorsData, precedentSearchResults, draftPlanResult),
+    [formData, competitorsData, precedentSearchResults, draftPlanResult]
+  )
+
+  const stepStatuses = useMemo(() => {
+    const hasCompetitorUrls = competitorUrls.some((url) => typeof url === 'string' && url.trim() !== '')
+    const hasCompetitorData = (competitorsData?.competitors?.length || 0) > 0
+    const projectFields = [
+      'producerName',
+      'producerActivitySpecification',
+      'projectName',
+      'projectDescription'
+    ]
+    const audienceAndPlanFields = [
+      'consumerCategory',
+      'contentPlanStartDate',
+      'contentPlanEndDate',
+      'publicationFrequency',
+      'minPublications',
+      'totalBudget',
+      'maxCostPerPublication'
+    ]
+    const projectCompleted = projectFields.every((field) => isValueFilled(formData[field]))
+    const projectStarted = projectFields.some((field) => isValueFilled(formData[field]))
+    const audienceCompleted =
+      audienceAndPlanFields.every((field) => isValueFilled(formData[field])) &&
+      formData.contentFormats.length > 0 &&
+      formData.platforms.length > 0
+    const audienceStarted =
+      audienceAndPlanFields.some((field) => isValueFilled(formData[field])) ||
+      formData.contentFormats.length > 0 ||
+      formData.platforms.length > 0
+    const hasDraftPlan = Boolean(draftPlanResult?.draft?.draft_content_plan)
+    const hasOptimizedPlan = Boolean(optimizationResult?.optimized_content_plan)
+
+    return [
+      isParsingFromUrls || isEnriching
+        ? 'in_progress'
+        : hasCompetitorData
+        ? 'completed'
+        : hasCompetitorUrls
+        ? 'in_progress'
+        : 'pending',
+      projectCompleted ? 'completed' : projectStarted ? (currentStep > 2 ? 'attention' : 'in_progress') : 'pending',
+      audienceCompleted
+        ? 'completed'
+        : audienceStarted
+        ? currentStep > 3
+          ? 'attention'
+          : 'in_progress'
+        : 'pending',
+      hasDraftPlan || hasOptimizedPlan ? 'completed' : currentStep === 4 ? 'in_progress' : 'pending',
+      isSearchingPrecedents || isSeedingPrecedents || isGeneratingDraftPlan || isOptimizingPlan
+        ? 'in_progress'
+        : hasOptimizedPlan || hasDraftPlan
+        ? 'completed'
+        : currentStep === 5 && filledRequired < requiredFields.length
+        ? 'attention'
+        : currentStep === 5
+        ? 'in_progress'
+        : 'pending'
+    ]
+  }, [
+    competitorUrls,
+    competitorsData,
+    currentStep,
+    draftPlanResult,
+    filledRequired,
+    formData,
+    isEnriching,
+    isGeneratingDraftPlan,
+    isOptimizingPlan,
+    isParsingFromUrls,
+    isSearchingPrecedents,
+    isSeedingPrecedents,
+    optimizationResult
+  ])
 
   useEffect(() => {
     const savedDraft = localStorage.getItem('projectFormDraft')
@@ -300,150 +296,10 @@ const ProjectForm = () => {
   }
 
   const validateField = (name, value) => {
-    let error = ''
-
-    switch (name) {
-      case 'producerName':
-        if (!value.trim()) error = 'Наименование производителя обязательно'
-        else if (value.trim().length < 3) error = 'Минимум 3 символа'
-        break
-      case 'producerActivitySpecification':
-        if (!value.trim()) error = 'Специфика деятельности обязательна'
-        else if (value.trim().length < 10) error = 'Минимум 10 символов'
-        break
-      case 'projectName':
-        if (!value.trim()) error = 'Наименование проекта обязательно'
-        else if (value.trim().length < 3) error = 'Минимум 3 символа'
-        break
-      case 'projectDescription':
-        if (!value.trim()) error = 'Описание проекта обязательно'
-        else if (value.trim().length < 20) error = 'Минимум 20 символов'
-        break
-      case 'consumerCategory':
-        if (!value) error = 'Выберите категорию потребителя'
-        break
-      case 'contentPlanStartDate':
-        if (!value) error = 'Укажите дату начала'
-        else {
-          const start = new Date(value)
-          const today = new Date()
-          today.setHours(0, 0, 0, 0)
-          if (start < today) error = 'Дата не может быть в прошлом'
-        }
-        break
-      case 'contentPlanEndDate':
-        if (!value) error = 'Укажите дату окончания'
-        else {
-          const end = new Date(value)
-          const start = formData.contentPlanStartDate ? new Date(formData.contentPlanStartDate) : null
-          if (start && end < start) error = 'Не может быть раньше даты начала'
-        }
-        break
-      case 'minPublications':
-        if (!value) error = 'Укажите количество'
-        else {
-          const num = parseInt(value)
-          if (isNaN(num) || num < 1 || num > 1000) error = 'От 1 до 1000'
-        }
-        break
-      case 'totalBudget':
-        if (!value) error = 'Укажите бюджет'
-        else {
-          const num = parseFloat(value)
-          if (isNaN(num) || num < 0) error = 'Бюджет должен быть положительным'
-        }
-        break
-      case 'maxCostPerPublication':
-        if (!value) error = 'Укажите стоимость'
-        else {
-          const num = parseFloat(value)
-          if (isNaN(num) || num < 0 || num > 1000000) error = 'От 0 до 1 000 000'
-        }
-        break
-      case 'videoDescription':
-        if (formData.contentFormats.includes('video') && !value.trim()) {
-          error = 'Опишите требования к ролику'
-        }
-        break
-      // Параметры эволюционного моделирования (опционально)
-      case 'evoPopulationSize':
-      case 'evoGenerations':
-        if (value) {
-          const num = parseInt(value)
-          if (isNaN(num) || num < 10 || num > 2000) error = 'От 10 до 2000'
-        }
-        break
-      case 'evoStagnationGenerations':
-        if (value) {
-          const num = parseInt(value)
-          if (isNaN(num) || num < 1 || num > 500) error = 'От 1 до 500'
-        }
-        break
-      case 'evoBudgetLimit':
-        if (value) {
-          const num = parseFloat(value)
-          if (isNaN(num) || num < 0) error = 'Бюджет должен быть положительным'
-        }
-        break
-      case 'evoTournamentSize':
-        if (value) {
-          const num = parseInt(value)
-          if (isNaN(num) || num < 2 || num > 20) error = 'От 2 до 20'
-        }
-        break
-      case 'evoBestWinProb':
-        if (value) {
-          const num = parseFloat(value)
-          if (isNaN(num) || num < 0.5 || num > 1) error = 'От 0.5 до 1.0'
-        }
-        break
-      case 'evoEliteSize':
-        if (value) {
-          const num = parseInt(value)
-          if (isNaN(num) || num < 0 || num > 20) error = 'От 0 до 20'
-        }
-        break
-      case 'evoCrossoverProbability':
-      case 'evoMutationProbability':
-        if (value) {
-          const num = parseFloat(value)
-          if (isNaN(num) || num < 0 || num > 1) error = 'От 0 до 1.0'
-        }
-        break
-      default: break
-    }
-
+    const error = validateFieldValue(name, value ?? '', formData)
     setErrors(prev => ({ ...prev, [name]: error }))
     return !error
   }
-
-  const validateForm = () => {
-    const newErrors = {}
-    let isValid = true
-
-    requiredFields.forEach(field => {
-      if (!validateField(field, formData[field])) {
-        isValid = false
-      }
-    })
-
-    if (formData.contentFormats.length === 0) {
-      newErrors.contentFormats = 'Выберите хотя бы один формат'
-      isValid = false
-    }
-    if (formData.platforms.length === 0) {
-      newErrors.platforms = 'Выберите хотя бы одну платформу'
-      isValid = false
-    }
-    if (formData.contentFormats.includes('video') && !formData.videoDescription.trim()) {
-      newErrors.videoDescription = 'Опишите требования к ролику'
-      isValid = false
-    }
-
-    setErrors(newErrors)
-    return isValid
-  }
-
 
   const loadExample = async (exampleName) => {
     try {
@@ -452,31 +308,7 @@ const ProjectForm = () => {
       const data = await response.json()
       
       // Преобразуем данные из формата экспорта в формат формы
-      const formDataFromExample = {
-        producerName: data.producer_info?.name || '',
-        producerActivitySpecification: data.producer_info?.activity_specification || '',
-        projectName: data.it_project_info?.name || '',
-        projectDescription: data.it_project_info?.description || '',
-        projectGoals: data.it_project_info?.goals || '',
-        projectFeatures: data.it_project_info?.features || '',
-        projectBenefits: data.it_project_info?.benefits || '',
-        consumerCategory: data.consumer_profile?.category || '',
-        consumerDemographics: data.consumer_profile?.demographics || '',
-        consumerPurchaseGoal: data.consumer_profile?.purchase_goal || '',
-        consumerLifestyle: data.consumer_profile?.lifestyle || '',
-        contentPlanStartDate: data.content_plan_info?.timeline?.start_date || '',
-        contentPlanEndDate: data.content_plan_info?.timeline?.end_date || '',
-        publicationFrequency: data.content_plan_info?.publication_frequency || '',
-        minPublications: data.content_plan_info?.min_publications?.toString() || '',
-        keyDates: data.content_plan_info?.key_dates || '',
-        totalBudget: data.content_plan_info?.total_budget?.toString() || '',
-        maxCostPerPublication: data.content_plan_info?.max_cost_per_publication?.toString() || '',
-        contentFormats: data.content_plan_info?.content_formats || [],
-        videoDescription: data.content_plan_info?.video_requirements || '',
-        platforms: data.content_plan_info?.platforms || []
-      }
-      
-      setFormData(formDataFromExample)
+      setFormData(mapExamplePayloadToFormData(data))
       setIsEditMode(true)
       addToast(`Пример "${exampleName.replace('example_', '').replace(/_/g, ' ')}" загружен`, 'success')
     } catch (error) {
@@ -485,51 +317,8 @@ const ProjectForm = () => {
     }
   }
 
-  const buildSuggestedPrecedentQuery = () => {
-    const parts = [
-      formData.projectName ? `IT-проект ${formData.projectName}` : '',
-      formData.projectDescription ? formData.projectDescription : '',
-      formData.consumerCategory ? `аудитория ${formData.consumerCategory}` : '',
-      formData.platforms.length ? `платформы ${formData.platforms.join(', ')}` : '',
-      formData.contentFormats.length ? `форматы ${formData.contentFormats.join(', ')}` : '',
-      formData.projectBenefits ? `ключевые преимущества: ${formData.projectBenefits}` : ''
-    ].filter(Boolean)
-
-    if (parts.length === 0) {
-      return 'продвижение IT-проекта в социальных сетях, B2B, экспертный контент, кейсы внедрения'
-    }
-
-    return parts.join('. ')
-  }
-
-  const buildSafeFormInputForGeneration = () => {
-    const now = new Date()
-    const end = new Date(now)
-    end.setDate(now.getDate() + 30)
-
-    return {
-      ...formData,
-      producerName: formData.producerName || 'Unknown producer',
-      producerActivitySpecification:
-        formData.producerActivitySpecification || 'IT-project development and promotion.',
-      projectName: formData.projectName || 'IT Project',
-      projectDescription:
-        formData.projectDescription ||
-        'Draft generation request for IT project promotion in social networks.',
-      consumerCategory: formData.consumerCategory || 'B2B',
-      contentPlanStartDate: formData.contentPlanStartDate || formatDateISO(now),
-      contentPlanEndDate: formData.contentPlanEndDate || formatDateISO(end),
-      publicationFrequency: formData.publicationFrequency || 'weekly',
-      minPublications: formData.minPublications || '8',
-      totalBudget: formData.totalBudget || '0',
-      maxCostPerPublication: formData.maxCostPerPublication || '0',
-      contentFormats: formData.contentFormats.length ? formData.contentFormats : ['text'],
-      platforms: formData.platforms.length ? formData.platforms : ['linkedin']
-    }
-  }
-
   const handleSearchPrecedents = async () => {
-    const query = buildSuggestedPrecedentQuery().trim()
+    const query = buildSuggestedPrecedentQuery(formData).trim()
 
     setIsSearchingPrecedents(true)
     setPrecedentSearchQuery(query)
@@ -576,46 +365,7 @@ const ProjectForm = () => {
 
   const handleReset = () => {
     if (window.confirm('Вы уверены, что хотите очистить все поля формы?')) {
-      setFormData({
-        producerName: '',
-        producerActivitySpecification: '',
-        projectName: '',
-        projectDescription: '',
-        projectGoals: '',
-        projectFeatures: '',
-        projectBenefits: '',
-        consumerCategory: '',
-        consumerDemographics: '',
-        consumerPurchaseGoal: '',
-        consumerLifestyle: '',
-        contentPlanStartDate: '',
-        contentPlanEndDate: '',
-        publicationFrequency: '',
-        minPublications: '',
-        keyDates: '',
-        totalBudget: '',
-        maxCostPerPublication: '',
-        contentFormats: [],
-        videoDescription: '',
-        platforms: [],
-        evoPopulationSize: '100',
-        evoGenerations: '100',
-        evoStopCriterion: 'max_generations',
-        evoStagnationGenerations: '20',
-        evoOptimizationGoal: 'max_engagement',
-        evoBudgetLimit: '',
-        evoSelectionMethod: 'tournament',
-        evoTournamentSize: '3',
-        evoBestWinProb: '0.9',
-        evoEliteSize: '2',
-        evoCrossoverMethod: 'one_point',
-        evoCrossoverProbability: '0.8',
-        evoMutationMethod: 'bit_flip',
-        evoMutationProbability: '0.01',
-        evoPreserveDiversity: true,
-        evoUseParallel: false,
-        evoRandomSeed: ''
-      })
+      setFormData(initialFormData)
       setErrors({})
       setTouched({})
       clearCompetitors()
@@ -638,48 +388,7 @@ const ProjectForm = () => {
   const handleLoadExample = () => {
     if (window.confirm('Загрузить пример данных? Текущие данные будут заменены.')) {
       // Пример данных из project_data_example.json
-      const exampleData = {
-        producerName: 'CloudTech Solutions',
-        producerActivitySpecification: 'Разработка и внедрение облачных решений для бизнес-аналитики и управления данными. Специализация на SaaS-платформах для среднего и крупного бизнеса.',
-        projectName: 'CloudAnalytics Pro',
-        projectDescription: 'Облачная платформа для бизнес-аналитики с использованием искусственного интеллекта. Позволяет компаниям автоматизировать сбор, обработку и визуализацию данных, создавать интерактивные дашборды и получать прогнозы на основе машинного обучения.',
-        projectGoals: 'За 3 месяца привлечь 50 новых B2B-клиентов, увеличить узнаваемость бренда в IT-сообществе, позиционировать продукт как лидера в сегменте облачной аналитики для среднего бизнеса.',
-        projectFeatures: 'Автоматическая аналитика в реальном времени, интерактивные дашборды, прогнозирование трендов с помощью ML, интеграция с популярными CRM и ERP системами, API для разработчиков, мобильное приложение для iOS и Android.',
-        projectBenefits: 'Сокращение времени на подготовку отчетов с 8 часов до 1 часа, увеличение точности прогнозов на 40%, ROI до 250% за первый год использования, масштабируемость от 10 до 10000+ пользователей.',
-        consumerCategory: 'B2B',
-        consumerDemographics: 'Руководители отделов аналитики, финансовые директора, IT-директора в компаниях среднего бизнеса (50-500 сотрудников). Возраст 35-50 лет, высшее образование, опыт работы с бизнес-аналитикой от 5 лет.',
-        consumerPurchaseGoal: 'Автоматизация процессов аналитики, повышение скорости принятия решений, снижение операционных затрат на подготовку отчетов, улучшение качества прогнозирования.',
-        consumerLifestyle: 'Профессионалы, ценящие эффективность и технологичность. Активно используют LinkedIn для профессионального развития, посещают отраслевые конференции, читают специализированные издания по бизнес-аналитике и IT.',
-        contentPlanStartDate: '2026-03-01',
-        contentPlanEndDate: '2026-05-31',
-        publicationFrequency: '3-4_per_week',
-        minPublications: '70',
-        keyDates: '15 марта - запуск бета-версии, 1 апреля - вебинар по внедрению, 15 апреля - кейс-стади с первым клиентом, 1 мая - обновление функционала, 20 мая - итоговая презентация результатов.',
-        totalBudget: '150000',
-        maxCostPerPublication: '3500',
-        contentFormats: ['text', 'image', 'video'],
-        videoDescription: 'Короткие ролики (1-3 минуты) с демонстрацией функционала платформы, интервью с клиентами, объяснение сложных концепций простым языком. Профессиональная съемка, субтитры, брендинг CloudTech Solutions.',
-        platforms: ['linkedin', 'vk'],
-        evoPopulationSize: '100',
-        evoGenerations: '100',
-        evoStopCriterion: 'max_generations',
-        evoStagnationGenerations: '20',
-        evoOptimizationGoal: 'max_engagement',
-        evoBudgetLimit: '150000',
-        evoSelectionMethod: 'tournament',
-        evoTournamentSize: '3',
-        evoBestWinProb: '0.9',
-        evoEliteSize: '2',
-        evoCrossoverMethod: 'one_point',
-        evoCrossoverProbability: '0.8',
-        evoMutationMethod: 'bit_flip',
-        evoMutationProbability: '0.01',
-        evoPreserveDiversity: true,
-        evoUseParallel: false,
-        evoRandomSeed: ''
-      }
-
-      setFormData(exampleData)
+      setFormData(demoExampleFormData)
       setErrors({})
       setTouched({})
       addToast('Пример данных загружен', 'success')
@@ -687,7 +396,17 @@ const ProjectForm = () => {
   }
 
   const handleGenerateDraftPlan = async () => {
-    const safeFormInput = buildSafeFormInputForGeneration()
+    const formValidation = validateFormData(formData)
+    if (!formValidation.isValid) {
+      setErrors(formValidation.errors)
+      setTouched(
+        Object.keys(formValidation.errors).reduce((acc, key) => ({ ...acc, [key]: true }), {})
+      )
+      addToast('Перед генерацией заполните обязательные поля формы', 'error')
+      return
+    }
+
+    const safeFormInput = buildSafeFormInputForGeneration(formData)
 
     setIsGeneratingDraftPlan(true)
     addToast('Генерация чернового контент-плана по данным формы и прецедентам...', 'info')
@@ -704,10 +423,9 @@ const ProjectForm = () => {
       // Если LLM вернул черновой контент-план, сохраняем его для страницы просмотра
       if (response?.draft?.draft_content_plan) {
         try {
-          localStorage.setItem(
-            'currentContentPlan',
-            JSON.stringify(response.draft.draft_content_plan)
-          )
+          savePlanSnapshot(response.draft.draft_content_plan, {
+            type: 'draft'
+          })
         } catch (e) {
           console.error('Не удалось сохранить контент-план в localStorage:', e)
         }
@@ -724,62 +442,6 @@ const ProjectForm = () => {
     }
   }
 
-  const buildAlphaByDimension = (precedentPubs = [], optimizationGoal) => {
-    const dims = precedentPubs?.[0]?.publication_model?.spcj?.dimensions
-    const keys = dims && typeof dims === 'object' ? Object.keys(dims) : []
-    if (!keys.length) {
-      return {
-        audience_relevance: 1,
-        educational_value: 1,
-        evidence_strength: 1,
-        clarity: 1,
-        engagement_potential: 1,
-        brand_fit: 1,
-        timeliness: 1,
-        cta_strength: 1
-      }
-    }
-
-    const base = keys.reduce((acc, k) => ({ ...acc, [k]: 1 }), {})
-    if (optimizationGoal === 'max_engagement') {
-      if (base.engagement_potential !== undefined) base.engagement_potential = 2
-      if (base.cta_strength !== undefined) base.cta_strength = 1.5
-      if (base.audience_relevance !== undefined) base.audience_relevance = 1.25
-    } else if (optimizationGoal === 'max_reach') {
-      if (base.timeliness !== undefined) base.timeliness = 2
-      if (base.audience_relevance !== undefined) base.audience_relevance = 1.5
-      if (base.clarity !== undefined) base.clarity = 1.25
-    } else if (optimizationGoal === 'balanced') {
-      if (base.audience_relevance !== undefined) base.audience_relevance = 1.2
-      if (base.clarity !== undefined) base.clarity = 1.2
-      if (base.brand_fit !== undefined) base.brand_fit = 1.1
-    }
-
-    return base
-  }
-
-  const parseNumberOrNull = (value) => {
-    if (value === null || value === undefined) return null
-    if (typeof value === 'string' && value.trim() === '') return null
-    const n = Number(value)
-    return Number.isFinite(n) ? n : null
-  }
-
-  const buildGaConfigFromForm = () => {
-    const seed = formData.evoRandomSeed && formData.evoRandomSeed.trim() ? formData.evoRandomSeed.trim() : null
-    return {
-      seed,
-      populationSize: parseNumberOrNull(formData.evoPopulationSize) ?? 100,
-      maxGenerations: parseNumberOrNull(formData.evoGenerations) ?? 100,
-      stagnationGenerations: parseNumberOrNull(formData.evoStagnationGenerations) ?? 20,
-      eliteSize: parseNumberOrNull(formData.evoEliteSize) ?? 2,
-      tournamentSize: parseNumberOrNull(formData.evoTournamentSize) ?? 3,
-      crossoverProbability: parseNumberOrNull(formData.evoCrossoverProbability) ?? 0.8,
-      mutationProbability: parseNumberOrNull(formData.evoMutationProbability) ?? 0.05,
-      crossoverMethod: formData.evoCrossoverMethod === 'order' ? 'order' : 'one_point'
-    }
-  }
-
   const handleOptimizeDraftPlan = async () => {
     const draft = draftPlanResult?.draft?.draft_content_plan
     if (!draft) {
@@ -792,7 +454,7 @@ const ProjectForm = () => {
       : []
 
     const alphaByDimension = buildAlphaByDimension(precedentPubs, formData.evoOptimizationGoal)
-    const gaConfig = buildGaConfigFromForm()
+    const gaConfig = buildGaConfigFromForm(formData)
 
     const totalBudget =
       parseNumberOrNull(formData.evoBudgetLimit) ??
@@ -847,12 +509,14 @@ const ProjectForm = () => {
 
       if (response?.optimized_content_plan) {
         try {
-          localStorage.setItem('currentContentPlan', JSON.stringify(response.optimized_content_plan))
-          localStorage.setItem('currentContentPlanOptimization', JSON.stringify({
-            optimized_at: new Date().toISOString(),
-            stage1: response.stage1 || null,
-            stage2: response.stage2 || null
-          }))
+          savePlanSnapshot(response.optimized_content_plan, {
+            type: 'optimized',
+            optimization: {
+              optimized_at: new Date().toISOString(),
+              stage1: response.stage1 || null,
+              stage2: response.stage2 || null
+            }
+          })
         } catch (e) {
           console.error('Не удалось сохранить оптимизированный план в localStorage:', e)
         }
@@ -890,7 +554,12 @@ const ProjectForm = () => {
       
       <form className="project-form">
         {/* Прогресс-бар */}
-        <WizardHeader currentStep={currentStep} wizardSteps={wizardSteps} onStepClick={goToStep} />
+        <WizardHeader
+          currentStep={currentStep}
+          wizardSteps={wizardSteps}
+          onStepClick={goToStep}
+          stepStatuses={stepStatuses}
+        />
 
         {currentStep === 1 && (
           <>
@@ -1677,288 +1346,66 @@ const ProjectForm = () => {
         </section>}
 
         {currentStep === 5 && (
-        <>
-        <div className="form-actions precedent-actions">
-          <select
-            id="demoHorizonExample"
-            name="demoHorizonExample"
-            value={demoHorizonExample}
-            onChange={(e) => handleLoadHorizonExample(e.target.value)}
-            disabled={isProcessing || isGeneratingDraftPlan || isEnrichmentServerAvailable === false}
-            className="form-select demo-horizon-select"
-            title="Загрузить демо-пример для выбранного горизонта"
-          >
-            <option value="example_month_plan">1 месяц</option>
-            <option value="example_three_month_plan">3 месяца</option>
-            <option value="example_six_month_plan">6 месяцев</option>
-            <option value="example_year_plan">12 месяцев</option>
-          </select>
-          <button
-            type="button"
-            className="submit-button secondary"
-            onClick={handleSeedDemoPrecedents}
-            disabled={
-              isProcessing ||
-              isGeneratingDraftPlan ||
-              isSeedingPrecedents ||
-              isEnrichmentServerAvailable === false
-            }
-            title="Загрузить готовую демо-базу прецедентов, чтобы сразу увидеть рабочий поиск"
-          >
-            <span>{isSeedingPrecedents ? 'ЗАГРУЗКА ДЕМО...' : 'ЗАГРУЗИТЬ ДЕМО-ПРЕЦЕДЕНТЫ'}</span>
-          </button>
-          <button
-            type="button"
-            className="submit-button secondary"
-            onClick={handleSearchPrecedents}
-            disabled={
-              isProcessing ||
-              isGeneratingDraftPlan ||
-              isSearchingPrecedents ||
-              isEnrichmentServerAvailable === false
-            }
-            title="Подобрать релевантные публикации и контент-планы по данным формы"
-          >
-            <span>{isSearchingPrecedents ? 'ПОИСК ПРЕЦЕДЕНТОВ...' : 'ПОДОБРАТЬ ПРЕЦЕДЕНТЫ'}</span>
-          </button>
-          <button
-            type="button"
-            className="submit-button primary"
-            onClick={handleGenerateDraftPlan}
-            disabled={
-              isProcessing || isGeneratingDraftPlan || isEnrichmentServerAvailable === false
-            }
-          >
-            <span>{isGeneratingDraftPlan ? 'ГЕНЕРАЦИЯ...' : 'СФОРМИРОВАТЬ ЧЕРНОВОЙ ПЛАН'}</span>
-          </button>
-        </div>
+          <>
+            <WorkflowSummaryPanel
+              filledRequired={filledRequired}
+              requiredCount={requiredFields.length}
+              progress={progress}
+              competitorsCount={competitorsData?.competitors?.length || 0}
+              precedentsSummary={precedentsSummary}
+              reviewChecklist={reviewChecklist}
+              isEnrichmentServerAvailable={isEnrichmentServerAvailable}
+              hasDraftPlan={Boolean(draftPlanResult?.draft?.draft_content_plan)}
+              hasOptimizedPlan={Boolean(optimizationResult?.optimized_content_plan)}
+            />
 
-        <section className="form-section precedent-workflow-section">
-          <h2 className="section-title">Подобранные прецеденты</h2>
+            <PrecedentSearchPanel
+              precedentsSummary={precedentsSummary}
+              precedentSearchQuery={precedentSearchQuery}
+              precedentSearchResults={precedentSearchResults}
+              demoHorizonExample={demoHorizonExample}
+              onLoadHorizonExample={handleLoadHorizonExample}
+              onSeedDemoPrecedents={handleSeedDemoPrecedents}
+              onSearchPrecedents={handleSearchPrecedents}
+              isProcessing={isProcessing}
+              isGeneratingDraftPlan={isGeneratingDraftPlan}
+              isSeedingPrecedents={isSeedingPrecedents}
+              isSearchingPrecedents={isSearchingPrecedents}
+              isEnrichmentServerAvailable={isEnrichmentServerAvailable}
+              retrievalBadge={retrievalBadge}
+              precedentRetrieval={precedentRetrieval}
+              onSelectPrecedent={setSelectedPrecedentItem}
+            />
 
-          <div className="precedent-summary-panel">
-            <div className="precedent-summary-line">
-              В базе сейчас: {precedentsSummary?.publications_count || 0} публикаций и{' '}
-              {precedentsSummary?.content_plans_count || 0} контент-планов.
-            </div>
-            <div className="precedent-summary-line">
-              Источник запроса: данные текущей формы проекта, аудитории, платформ и преимуществ.
-            </div>
-            {precedentSearchQuery && (
-              <div className="precedent-query-box">
-                <strong>Последний автоматически собранный запрос:</strong> {precedentSearchQuery}
-              </div>
-            )}
-          </div>
+            <DraftPlanWorkflowPanel
+              draftPlanResult={draftPlanResult}
+              optimizationResult={optimizationResult}
+              onGenerateDraftPlan={handleGenerateDraftPlan}
+              onOptimizeDraftPlan={handleOptimizeDraftPlan}
+              onOpenPlan={() => navigate('/content-plan')}
+              isGeneratingDraftPlan={isGeneratingDraftPlan}
+              isOptimizingPlan={isOptimizingPlan}
+              isProcessing={isProcessing}
+              isEnrichmentServerAvailable={isEnrichmentServerAvailable}
+            />
 
-          {!precedentSearchResults && (
-            <div className="precedent-empty-state precedent-empty-state-light">
-              Сначала нажмите `Подобрать прецеденты`.
-              {precedentsSummary?.publications_count
-                ? ' Поиск выполнится по уже накопленной базе.'
-                : ' Если база пустая, можно загрузить демо-прецеденты или сначала обогатить конкурентов.'}
-            </div>
-          )}
-
-          {!!precedentSearchResults && (
-            <div className="precedent-results precedent-results-light">
-              <div className="precedent-results-header precedent-results-header-light">
-                <span className="precedent-results-title precedent-results-title-light">
-                  Найдено: {precedentSearchResults.publications?.length || 0} публикаций и{' '}
-                  {precedentSearchResults.content_plans?.length || 0} планов
-                </span>
-                <span className="precedent-results-subtitle precedent-results-subtitle-light">
-                  Поиск выполнен по {precedentSearchResults.total_publications_searched || 0} публикациям и{' '}
-                  {precedentSearchResults.total_content_plans_searched || 0} планам
-                </span>
-                {!!retrievalBadge && (
-                  <div className="precedent-retrieval-banner" title="Как именно выполнялся поиск прецедентов">
-                    <span className={`precedent-retrieval-pill precedent-retrieval-${retrievalBadge.tone}`}>
-                      {retrievalBadge.label}
-                    </span>
-                    <span className="precedent-retrieval-hint">
-                      {retrievalBadge.hint}
-                      {precedentRetrieval?.type === 'token_overlap_fallback' && precedentRetrieval?.error
-                        ? ` · причина: ${precedentRetrieval.error}`
-                        : ''}
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              {(precedentSearchResults.publications?.length || 0) > 0 && (
-                <div className="precedent-section">
-                  <h3 className="precedent-section-title precedent-section-title-light">Публикации</h3>
-                  <div className="precedent-cards">
-                    {precedentSearchResults.publications.map((item) => (
-                      <div
-                        key={item.data.publication_id}
-                        className="precedent-card precedent-card-clickable"
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => setSelectedPrecedentItem(item)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') setSelectedPrecedentItem(item)
-                        }}
-                        title="Открыть детали прецедента"
-                      >
-                        <div className="precedent-card-header">
-                          <span className="precedent-card-title">
-                            {item.data.publication_model?.topic || 'Без темы'}
-                          </span>
-                          <span className="precedent-card-score">{formatPrecedentScore(item.score)}</span>
-                        </div>
-                        <div className="precedent-card-meta">
-                          <span>{item.data.competitor_name || 'Неизвестный конкурент'}</span>
-                          <span>{item.data.platform || 'unknown'}</span>
-                          <span>{item.data.publication_model?.format || 'unknown'}</span>
-                        </div>
-                        <div className="precedent-card-body">
-                          <div>Тип: {item.data.publication_model?.type || 'other'}</div>
-                          <div>Категория: {item.data.publication_model?.content_category || 'other'}</div>
-                          <div>
-                            Аудитория:{' '}
-                            {(item.data.publication_model?.audience_segments || []).join(', ') || 'не указана'}
-                          </div>
-                          <div>Почему найдено: {renderMatchExplanation(item.matched_tokens, precedentRetrieval)}</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {(precedentSearchResults.content_plans?.length || 0) > 0 && (
-                <div className="precedent-section">
-                  <h3 className="precedent-section-title precedent-section-title-light">Контент-планы</h3>
-                  <div className="precedent-cards">
-                    {precedentSearchResults.content_plans.map((item) => (
-                      <div
-                        key={item.data.plan_id}
-                        className="precedent-card precedent-card-clickable"
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => setSelectedPrecedentItem(item)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') setSelectedPrecedentItem(item)
-                        }}
-                        title="Открыть детали прецедента"
-                      >
-                        <div className="precedent-card-header">
-                          <span className="precedent-card-title">
-                            {item.data.competitor_name || item.data.plan_id}
-                          </span>
-                          <span className="precedent-card-score">{formatPrecedentScore(item.score)}</span>
-                        </div>
-                        <div className="precedent-card-meta">
-                          <span>{item.data.platform || 'unknown'}</span>
-                          <span>
-                            {item.data.content_plan_model?.posting_frequency_per_week || 0} постов/неделю
-                          </span>
-                          <span>
-                            {item.data.content_plan_model?.total_publications || 0} публикаций
-                          </span>
-                        </div>
-                        <div className="precedent-card-body">
-                          <div>
-                            Аудитория:{' '}
-                            {(item.data.content_plan_model?.audience_segments || []).join(', ') || 'не указана'}
-                          </div>
-                          <div>
-                            Avg engagement:{' '}
-                            {formatPrecedentScore(item.data.content_plan_model?.kpi_estimate?.avg_engagement_rate)}
-                          </div>
-                          <div>Почему найдено: {renderMatchExplanation(item.matched_tokens, precedentRetrieval)}</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {(precedentSearchResults.publications?.length || 0) === 0 &&
-                (precedentSearchResults.content_plans?.length || 0) === 0 && (
-                  <div className="precedent-empty-state precedent-empty-state-light">
-                    По текущим данным формы ничего не найдено. Попробуйте точнее заполнить описание
-                    проекта, платформы и преимущества или загрузите демо-прецеденты.
-                  </div>
-                )}
-            </div>
-          )}
-        </section>
-        </>
+            <TechnicalDetailsPanel
+              precedentSearchQuery={precedentSearchQuery}
+              precedentSearchResults={precedentSearchResults}
+              draftPlanResult={draftPlanResult}
+              optimizationResult={optimizationResult}
+            />
+          </>
         )}
-
-        {currentStep === 5 && <section className="form-section precedent-workflow-section">
-          <h2 className="section-title">Черновой контент-план (RAG → LLM)</h2>
-          {!draftPlanResult?.draft?.draft_content_plan && (
-            <div className="precedent-empty-state precedent-empty-state-light">
-              После нажатия `Сформировать черновой план` здесь появится структура плана с датами,
-              темами, форматами, KPI и ссылками на использованные прецеденты.
-            </div>
-          )}
-
-          {!!draftPlanResult?.draft?.draft_content_plan && (
-            <div className="draft-plan-section">
-              <div className="precedent-summary-panel">
-                <div className="precedent-summary-line">
-                  План: {draftPlanResult.draft.draft_content_plan.plan_id}
-                </div>
-                <div className="precedent-summary-line">
-                  Период: {draftPlanResult.draft.draft_content_plan.planning_horizon?.start_date} -{' '}
-                  {draftPlanResult.draft.draft_content_plan.planning_horizon?.end_date}
-                </div>
-                <div className="precedent-summary-line">
-                  Публикаций в черновике: {draftPlanResult.draft.draft_content_plan.publications?.length || 0}
-                </div>
-              </div>
-              <div className="draft-plan-actions">
-                <button
-                  type="button"
-                  className="submit-button primary"
-                  onClick={() => navigate('/content-plan')}
-                >
-                  <span>Перейти к готовому контент-плану</span>
-                </button>
-                <button
-                  type="button"
-                  className="submit-button"
-                  onClick={handleOptimizeDraftPlan}
-                  disabled={isOptimizingPlan}
-                  title="Запустить 2-уровневую оптимизацию (ГА) по параметрам evo*"
-                >
-                  <span>{isOptimizingPlan ? 'Оптимизация...' : 'Оптимизировать (ГА)'}</span>
-                </button>
-              </div>
-
-              {!!optimizationResult?.optimized_content_plan && (
-                <div className="precedent-summary-panel" style={{ marginTop: 12 }}>
-                  <div className="precedent-summary-line">
-                    <strong>Оптимизация (ГА) завершена</strong>
-                  </div>
-                  <div className="precedent-summary-line">
-                    Публикаций после оптимизации: {optimizationResult.optimized_content_plan.publications?.length || 0}
-                  </div>
-                  <div className="precedent-summary-line">
-                    Этап 2: F_kp (стоимость) = {optimizationResult.stage2?.f_kp ?? '—'}; stop={optimizationResult.stage2?.ga?.stop_reason ?? '—'}; gen={optimizationResult.stage2?.ga?.generations ?? '—'}
-                  </div>
-                  <div className="precedent-summary-line">
-                    Ограничения: {optimizationResult.stage2?.constraints_check?.valid ? 'OK' : 'есть нарушения'}
-                  </div>
-                </div>
-              )}
-              <div className="analysis-view">
-                <pre>{JSON.stringify(optimizationResult?.optimized_content_plan || draftPlanResult.draft.draft_content_plan, null, 2)}</pre>
-              </div>
-            </div>
-          )}
-        </section>}
 
         <WizardNavActions
           goToPrevStep={goToPrevStep}
           goToNextStep={goToNextStep}
           isFirstStep={isFirstStep}
           isLastStep={isLastStep}
+          currentStep={currentStep}
+          wizardSteps={wizardSteps}
+          stepStatuses={stepStatuses}
         />
       </form>
 

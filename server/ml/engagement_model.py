@@ -26,7 +26,7 @@ def get_repo_paths():
     # server/ml -> server/data
     server_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     data_dir = os.path.join(server_dir, "data")
-    precedents_path = os.path.join(data_dir, "precedents.json")
+    precedents_path = os.path.join(data_dir, "precedents-store")
     ml_dir = os.path.join(data_dir, "ml")
     model_path = os.path.join(ml_dir, "engagement_model.joblib")
     metadata_path = os.path.join(ml_dir, "engagement_model_metadata.json")
@@ -36,11 +36,14 @@ def get_repo_paths():
 def load_training_data(precedents_path: str):
     if not os.path.exists(precedents_path):
         raise FileNotFoundError(f"precedents file not found: {precedents_path}")
-
-    with open(precedents_path, "r", encoding="utf-8") as f:
-        payload = json.load(f)
-
-    publications = payload.get("publications") or []
+    if os.path.isdir(precedents_path):
+        publications_path = os.path.join(precedents_path, "publications.json")
+        with open(publications_path, "r", encoding="utf-8") as f:
+            publications = json.load(f) or []
+    else:
+        with open(precedents_path, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+        publications = payload.get("publications") or []
     embeddings = []
     targets = []
 

@@ -1,15 +1,16 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { spawn } from 'child_process';
 import { enrichCompetitorsData } from '../../openrouter.js';
+import { runPythonProcess } from './pythonRuntime.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PROJECT_ROOT = path.join(__dirname, '..', '..', '..');
 const PARSER_DIR = path.join(PROJECT_ROOT, 'parser');
 const PYTHON_SCRIPT_PATH = path.join(PARSER_DIR, 'main.py');
-const PARSER_OUTPUT_PATH = path.join(PARSER_DIR, 'posts.json');
+const PARSER_RUNTIME_DIR = path.join(PROJECT_ROOT, 'server', 'data', 'runtime', 'parser-jobs');
+const PARSER_TIMEOUT_MS = Number(process.env.PARSER_TIMEOUT_MS || 120000);
 
 // Parser writes to a single shared file: `parser/posts.json`.
 // To avoid race conditions between concurrent requests, serialize executions in-process.
@@ -23,6 +24,12 @@ function enqueueParserExecution(jobFn) {
     () => undefined
   );
   return jobPromise;
+}
+
+function ensureParserRuntimeDir() {
+  if (!fs.existsSync(PARSER_RUNTIME_DIR)) {
+    fs.mkdirSync(PARSER_RUNTIME_DIR, { recursive: true });
+  }
 }
 
 function detectPlatform(url) {
@@ -95,43 +102,33 @@ function mapPostsToCompetitorsData(url, posts) {
 
 async function runPythonParser(url) {
   return enqueueParserExecution(async () => {
-    try {
-      if (fs.existsSync(PARSER_OUTPUT_PATH)) {
-        fs.unlinkSync(PARSER_OUTPUT_PATH);
-      }
-    } catch (e) {
-      console.warn('Не удалось удалить старый posts.json:', e.message);
-    }
-
-    const pythonProcess = spawn('python', ['-u', PYTHON_SCRIPT_PATH], {
+    ensureParserRuntimeDir();
+    const outputPath = path.join(PARSER_RUNTIME_DIR, `posts-${Date.now()}.json`);
+    const result = await runPythonProcess({
+      scriptPath: PYTHON_SCRIPT_PATH,
       cwd: PARSER_DIR,
-      stdio: ['pipe', 'pipe', 'pipe']
+      input: `${url}\n`,
+      timeoutMs: PARSER_TIMEOUT_MS,
+      description: 'parser/main.py',
+      env: {
+        PARSER_OUTPUT_PATH: outputPath
+      }
     });
 
-    let stdout = '';
-    let stderr = '';
-
-    pythonProcess.stdout.on('data', (data) => {
-      const text = data.toString();
-      stdout += text;
-      process.stdout.write(`[PYTHON STDOUT] ${text}`);
-    });
-
-    pythonProcess.stderr.on('data', (data) => {
-      const text = data.toString();
-      stderr += text;
-      process.stderr.write(`[PYTHON STDERR] ${text}`);
-    });
-
-    pythonProcess.stdin.write(url + '\n');
-    pythonProcess.stdin.end();
-
-    const exitCode = await new Promise((resolve) => {
-      pythonProcess.on('close', resolve);
-    });
-
-    return { exitCode, stdout, stderr };
+    return {
+      ...result,
+      outputPath
+    };
   });
+}
+
+function cleanupParserOutput(outputPath) {
+  if (!outputPath) return;
+  try {
+    fs.rmSync(outputPath, { force: true });
+  } catch (error) {
+    console.warn('Не удалось удалить временный output парсера:', error.message);
+  }
 }
 
 function applyPostsLimit(allPosts, limit) {
@@ -156,58 +153,61 @@ export async function parseAndEnrichByUrl(url, limit) {
     };
   }
 
-  if (!fs.existsSync(PARSER_OUTPUT_PATH)) {
+  if (!fs.existsSync(runResult.outputPath)) {
     return {
       success: false,
       pipeline: 'parse_and_enrich',
       error:
-        'Python-скрипт завершился без файла posts.json (парсер не сохранил результат). Проверьте настройки парсера и доступ к VK.',
+        'Python-скрипт завершился без выходного JSON-файла. Проверьте настройки парсера и доступ к VK.',
       parser_stdout: runResult.stdout,
       parser_stderr: runResult.stderr
     };
   }
 
-  const rawPostsJson = fs.readFileSync(PARSER_OUTPUT_PATH, 'utf-8');
-  let parsed;
   try {
-    parsed = JSON.parse(rawPostsJson);
-  } catch (e) {
+    const rawPostsJson = fs.readFileSync(runResult.outputPath, 'utf-8');
+    let parsed;
+    try {
+      parsed = JSON.parse(rawPostsJson);
+    } catch (e) {
+      return {
+        success: false,
+        pipeline: 'parse_and_enrich',
+        error: `Не удалось распарсить JSON output парсера: ${e.message}`,
+        parser_stdout: runResult.stdout,
+        parser_stderr: runResult.stderr,
+        raw_sample: rawPostsJson.slice(0, 1000)
+      };
+    }
+
+    const allPosts = Array.isArray(parsed.posts) ? parsed.posts : [];
+    if (!allPosts.length) {
+      return {
+        success: false,
+        pipeline: 'parse_and_enrich',
+        error:
+          'Парсер не вернул ни одного поста (posts пуст). Возможно, требуется авторизация или обновление cookies.',
+        parser_stdout: runResult.stdout,
+        parser_stderr: runResult.stderr,
+        raw_parser_output: parsed
+      };
+    }
+
+    const posts = applyPostsLimit(allPosts, limit);
+    const competitorsData = mapPostsToCompetitorsData(url, posts);
+    const enrichmentResult = await enrichCompetitorsData(competitorsData);
+
     return {
-      success: false,
+      success: enrichmentResult.enriched_data !== null,
       pipeline: 'parse_and_enrich',
-      error: `Не удалось распарсить posts.json: ${e.message}`,
       parser_stdout: runResult.stdout,
       parser_stderr: runResult.stderr,
-      raw_sample: rawPostsJson.slice(0, 1000)
+      raw_parsed_posts: posts,
+      ...enrichmentResult
     };
+  } finally {
+    cleanupParserOutput(runResult.outputPath);
   }
-
-  const allPosts = Array.isArray(parsed.posts) ? parsed.posts : [];
-  if (!allPosts.length) {
-    return {
-      success: false,
-      pipeline: 'parse_and_enrich',
-      error:
-        'Парсер не вернул ни одного поста (posts пуст). Возможно, требуется авторизация или обновление cookies.',
-      parser_stdout: runResult.stdout,
-      parser_stderr: runResult.stderr,
-      raw_parser_output: parsed
-    };
-  }
-
-  const posts = applyPostsLimit(allPosts, limit);
-
-  const competitorsData = mapPostsToCompetitorsData(url, posts);
-  const enrichmentResult = await enrichCompetitorsData(competitorsData);
-
-  return {
-    success: enrichmentResult.enriched_data !== null,
-    pipeline: 'parse_and_enrich',
-    parser_stdout: runResult.stdout,
-    parser_stderr: runResult.stderr,
-    raw_parsed_posts: posts,
-    ...enrichmentResult
-  };
 }
 
 export async function parseOnlyByUrl(url, limit) {
@@ -223,55 +223,58 @@ export async function parseOnlyByUrl(url, limit) {
     };
   }
 
-  if (!fs.existsSync(PARSER_OUTPUT_PATH)) {
+  if (!fs.existsSync(runResult.outputPath)) {
     return {
       success: false,
       pipeline: 'parse_only',
       error:
-        'Python-скрипт завершился без файла posts.json (парсер не сохранил результат). Проверьте настройки парсера и доступ к VK.',
+        'Python-скрипт завершился без выходного JSON-файла. Проверьте настройки парсера и доступ к VK.',
       parser_stdout: runResult.stdout,
       parser_stderr: runResult.stderr
     };
   }
 
-  const rawPostsJson = fs.readFileSync(PARSER_OUTPUT_PATH, 'utf-8');
-  let parsed;
   try {
-    parsed = JSON.parse(rawPostsJson);
-  } catch (e) {
+    const rawPostsJson = fs.readFileSync(runResult.outputPath, 'utf-8');
+    let parsed;
+    try {
+      parsed = JSON.parse(rawPostsJson);
+    } catch (e) {
+      return {
+        success: false,
+        pipeline: 'parse_only',
+        error: `Не удалось распарсить JSON output парсера: ${e.message}`,
+        parser_stdout: runResult.stdout,
+        parser_stderr: runResult.stderr,
+        raw_sample: rawPostsJson.slice(0, 1000)
+      };
+    }
+
+    const allPosts = Array.isArray(parsed.posts) ? parsed.posts : [];
+    if (!allPosts.length) {
+      return {
+        success: false,
+        pipeline: 'parse_only',
+        error:
+          'Парсер не вернул ни одного поста (posts пуст). Возможно, требуется авторизация или обновление cookies.',
+        parser_stdout: runResult.stdout,
+        parser_stderr: runResult.stderr,
+        raw_parser_output: parsed
+      };
+    }
+
+    const posts = applyPostsLimit(allPosts, limit);
+    const competitorsData = mapPostsToCompetitorsData(url, posts);
+
     return {
-      success: false,
+      success: true,
       pipeline: 'parse_only',
-      error: `Не удалось распарсить posts.json: ${e.message}`,
+      competitors_data: competitorsData,
       parser_stdout: runResult.stdout,
       parser_stderr: runResult.stderr,
-      raw_sample: rawPostsJson.slice(0, 1000)
+      raw_parsed_posts: posts
     };
+  } finally {
+    cleanupParserOutput(runResult.outputPath);
   }
-
-  const allPosts = Array.isArray(parsed.posts) ? parsed.posts : [];
-  if (!allPosts.length) {
-    return {
-      success: false,
-      pipeline: 'parse_only',
-      error:
-        'Парсер не вернул ни одного поста (posts пуст). Возможно, требуется авторизация или обновление cookies.',
-      parser_stdout: runResult.stdout,
-      parser_stderr: runResult.stderr,
-      raw_parser_output: parsed
-    };
-  }
-
-  const posts = applyPostsLimit(allPosts, limit);
-
-  const competitorsData = mapPostsToCompetitorsData(url, posts);
-
-  return {
-    success: true,
-    pipeline: 'parse_only',
-    competitors_data: competitorsData,
-    parser_stdout: runResult.stdout,
-    parser_stderr: runResult.stderr,
-    raw_parsed_posts: posts
-  };
 }

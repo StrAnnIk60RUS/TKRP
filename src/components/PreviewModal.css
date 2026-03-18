@@ -124,6 +124,102 @@
   font-weight: 600;
 }
 
+.precedent-modal-hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.precedent-modal-eyebrow {
+  color: #718096;
+  font-size: 0.8rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 8px;
+}
+
+.precedent-modal-title {
+  margin: 0 0 6px;
+  color: #1a1a2e;
+  font-size: 1.25rem;
+}
+
+.precedent-modal-subtitle {
+  margin: 0;
+  color: #2d2d44;
+  line-height: 1.5;
+}
+
+.precedent-modal-score {
+  min-width: 92px;
+  text-align: center;
+  padding: 12px 14px;
+  border: 2px solid #ff6b9d;
+  background: #fff1f6;
+  color: #c2185b;
+  font-size: 1.15rem;
+  font-weight: 900;
+}
+
+.precedent-modal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.precedent-modal-card {
+  border: 2px solid #1a1a2e;
+  background: #fafbfc;
+  padding: 14px 16px;
+}
+
+.precedent-modal-card-label {
+  display: block;
+  margin-bottom: 8px;
+  color: #718096;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.precedent-modal-card-value {
+  color: #1a1a2e;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.precedent-modal-context {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid #cbd5e0;
+}
+
+.precedent-technical-details {
+  border: 2px solid #1a1a2e;
+  background: #ffffff;
+}
+
+.precedent-technical-details summary {
+  cursor: pointer;
+  padding: 14px 16px;
+  font-weight: 800;
+  color: #1a1a2e;
+}
+
+.precedent-technical-details[open] summary {
+  border-bottom: 2px solid #1a1a2e;
+}
+
+.precedent-technical-line {
+  margin: 0 0 12px;
+  color: #1a1a2e;
+  font-weight: 600;
+}
+
 .preview-structure {
   margin-bottom: 24px;
 }
@@ -283,5 +379,9 @@
   
   .json-preview {
     font-size: 0.75rem;
+  }
+
+  .precedent-modal-hero {
+    flex-direction: column;
   }
 }

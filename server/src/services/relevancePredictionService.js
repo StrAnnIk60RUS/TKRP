@@ -1,18 +1,20 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { spawn } from 'child_process';
 
 import { embedTexts } from './embeddingService.js';
+import { runPythonJsonProcess } from './pythonRuntime.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const SCRIPT_PATH = path.join(__dirname, '..', '..', 'ml', 'engagement_model.py');
 const MODEL_DIR = path.join(__dirname, '..', '..', 'data', 'ml');
 const MODEL_PATH = path.join(MODEL_DIR, 'engagement_model.joblib');
+const ML_TIMEOUT_MS = Number(process.env.ML_SCRIPT_TIMEOUT_MS || 180000);
 
 const EMBEDDING_TEXT_MAX_CHARS = 4000;
 const PREDICT_BATCH_SIZE = 64;
+let modelTrainingQueue = Promise.resolve();
 
 function clamp01(value) {
   const numeric = Number(value);
@@ -74,49 +76,14 @@ function chunkArray(arr, size) {
 }
 
 function runPythonEngagementModel(mode, payload) {
-  return new Promise((resolve, reject) => {
-    const pythonProcess = spawn('python', ['-u', SCRIPT_PATH, mode], {
-      cwd: path.join(__dirname, '..', '..'),
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
-
-    let stdout = '';
-    let stderr = '';
-
-    pythonProcess.stdout.on('data', (data) => {
-      stdout += data.toString();
-    });
-
-    pythonProcess.stderr.on('data', (data) => {
-      stderr += data.toString();
-    });
-
-    const jsonPayload = payload ? JSON.stringify(payload) : JSON.stringify({});
-    pythonProcess.stdin.write(jsonPayload);
-    pythonProcess.stdin.end();
-
-    pythonProcess.on('close', (code) => {
-      if (code !== 0) {
-        const err = new Error(
-          `Python engagement_model.py failed (mode=${mode}, exit_code=${code}): ${stderr || 'no stderr'}`
-        );
-        err.stderr = stderr;
-        err.stdout = stdout;
-        reject(err);
-        return;
-      }
-
-      try {
-        const parsed = JSON.parse(stdout || '{}');
-        resolve(parsed);
-      } catch (e) {
-        const err = new Error(`Failed to parse python stdout as JSON (mode=${mode}): ${e.message}`);
-        err.stderr = stderr;
-        err.stdout = stdout;
-        reject(err);
-      }
-    });
-  });
+  return runPythonJsonProcess({
+    scriptPath: SCRIPT_PATH,
+    args: [mode],
+    cwd: path.join(__dirname, '..', '..'),
+    input: payload || {},
+    timeoutMs: ML_TIMEOUT_MS,
+    description: `engagement_model.py (${mode})`
+  }).then((result) => result.parsed);
 }
 
 async function ensureModelTrained() {
@@ -133,8 +100,12 @@ export async function trainRelevanceModel() {
   if (!fs.existsSync(MODEL_DIR)) {
     fs.mkdirSync(MODEL_DIR, { recursive: true });
   }
-
-  return runPythonEngagementModel('train', {});
+  const trainJob = modelTrainingQueue.then(() => runPythonEngagementModel('train', {}));
+  modelTrainingQueue = trainJob.then(
+    () => undefined,
+    () => undefined
+  );
+  return trainJob;
 }
 
 export async function predictEngagementRatesForGeneratedPublications(publications, options = {}) {

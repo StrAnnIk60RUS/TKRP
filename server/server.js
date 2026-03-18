@@ -2,21 +2,34 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { OPENROUTER_API_KEY, AI_MODEL } from './openrouter.js';
-import enrichmentRoutes from './src/routes/enrichmentRoutes.js';
+import apiRoutes from './src/routes/index.js';
+import {
+  attachRequestContext,
+  createCorsOptions,
+  createRateLimitMiddleware
+} from './src/http/security.js';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-app.use(cors());
-app.use(express.json({ limit: '50mb' }));
+app.use(attachRequestContext);
+app.use(cors(createCorsOptions()));
+app.use(express.json({ limit: process.env.API_BODY_LIMIT || '10mb' }));
+app.use(createRateLimitMiddleware());
 
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', service: 'LLM Enrichment Server' });
+  res.json({
+    status: 'ok',
+    service: 'LLM Enrichment Server',
+    request_id: req.requestId,
+    cors_origins: process.env.CORS_ALLOWED_ORIGINS || 'localhost defaults',
+    api_key_protection: Boolean(process.env.SERVER_API_KEY || process.env.ADMIN_API_KEY)
+  });
 });
 
-app.use('/api', enrichmentRoutes);
+app.use('/api', apiRoutes);
 
 app.listen(PORT, () => {
   console.log(`🚀 LLM Enrichment Server запущен на http://localhost:${PORT}`);

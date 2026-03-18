@@ -34,7 +34,12 @@ YANDEX_VERSION/.env
 *.txt
 !requirements.txt
 !server/src/prompts/*.txt
+!README.md
+!.env.example
+!.github/workflows/*.yml
 server/data/*.json
+server/data/runtime/
+server/data/precedents-store/
 
 # Python cache / bytecode
 __pycache__/
