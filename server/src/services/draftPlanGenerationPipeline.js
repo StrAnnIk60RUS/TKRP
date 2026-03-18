@@ -2,6 +2,8 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { callDeepSeekAPI } from '../../openrouter.js';
+import { predictEngagementRatesForGeneratedPublications } from './relevancePredictionService.js';
+import { parseJsonObjectFromLlmContent } from '../utils/llmJsonParsing.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SKELETON_PROMPT_PATH = path.join(
@@ -26,18 +28,7 @@ function readPromptFile(filePath) {
 }
 
 function extractJsonFromLlmContent(content) {
-  if (!content || typeof content !== 'string') {
-    throw new Error('Пустой ответ от LLM');
-  }
-
-  const trimmed = content.trim();
-  const start = trimmed.indexOf('{');
-  const end = trimmed.lastIndexOf('}');
-  if (start === -1 || end === -1 || end <= start) {
-    throw new Error('LLM не вернул JSON объект');
-  }
-
-  return JSON.parse(trimmed.slice(start, end + 1));
+  return parseJsonObjectFromLlmContent(content);
 }
 
 function isIsoDateString(value) {
@@ -871,6 +862,24 @@ export async function generateDraftPlanBatched({
   };
 
   const repairedPlan = rebalancePlanCosts(mergedPlan);
+
+  // ML-предсказание релевантности (engagement_rate) на основе embeddings.
+  // Если модель недоступна/не обучена или произошла ошибка — продолжаем с эвристическими expected_kpi.
+  try {
+    const mlResult = await predictEngagementRatesForGeneratedPublications(repairedPlan.publications, {
+      forceTrain: false
+    });
+
+    repairedPlan.publications = mlResult.updatedPublications;
+    repairedPlan.kpi_targets = {
+      ...(repairedPlan.kpi_targets || {}),
+      avg_engagement_rate: mlResult.avgEngagementRate,
+      avg_engagement_rate_source: 'ml_relevance_prediction'
+    };
+  } catch (error) {
+    console.warn('[relevancePrediction] Failed to predict engagement_rate:', error?.message || error);
+  }
+
   const validation = validateDraftPlan(repairedPlan, formInput);
   if (!validation.valid) {
     const error = new Error(`Итоговый draft_content_plan не прошел валидацию: ${validation.errors.join('; ')}`);

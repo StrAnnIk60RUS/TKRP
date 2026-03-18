@@ -32,6 +32,85 @@ export function useCompetitorsPipeline(addToast) {
     addToast('Данные конкурентов удалены', 'info');
   };
 
+  const buildEnrichmentDownloadPayload = ({
+    resultData,
+    errorData,
+    competitorsData: rawCompetitorsData,
+    competitorsFileName: currentCompetitorsFileName
+  }) => {
+    let dataToDownload;
+    let filename;
+
+    if (resultData && resultData.enriched_data) {
+      dataToDownload = {
+        ...resultData.enriched_data,
+        _metadata: {
+          enriched_at: resultData.metadata?.enriched_at || new Date().toISOString(),
+          model: resultData.metadata?.model || 'deepseek/deepseek-chat',
+          usage: resultData.usage,
+          success: true,
+          parse_successful: true
+        }
+      };
+      filename =
+        currentCompetitorsFileName?.replace('.json', '_enriched.json') ||
+        'competitors_data_enriched.json';
+    } else if (resultData && resultData.raw_response) {
+      dataToDownload = {
+        _warning: 'JSON ответ от LLM невалидный, но данные сохранены для проверки',
+        _parse_error: resultData.parse_error,
+        _raw_response_from_llm: resultData.raw_response,
+        _usage: resultData.usage,
+        _metadata: resultData.metadata,
+        _original_data: rawCompetitorsData,
+        _timestamp: new Date().toISOString()
+      };
+      filename =
+        currentCompetitorsFileName?.replace('.json', '_enriched_INVALID_JSON.json') ||
+        'competitors_data_enriched_INVALID_JSON.json';
+    } else if (resultData) {
+      dataToDownload = {
+        _error: 'Данные невалидные или неполные',
+        _raw_response: resultData,
+        _original_data: rawCompetitorsData,
+        _timestamp: new Date().toISOString()
+      };
+      filename =
+        currentCompetitorsFileName?.replace('.json', '_enriched_ERROR.json') ||
+        'competitors_data_enriched_ERROR.json';
+    } else if (errorData) {
+      dataToDownload = errorData;
+      filename =
+        currentCompetitorsFileName?.replace('.json', '_enrichment_ERROR.json') ||
+        'competitors_data_enrichment_ERROR.json';
+    } else {
+      dataToDownload = {
+        _error: 'Неизвестная ошибка',
+        _original_data: rawCompetitorsData,
+        _timestamp: new Date().toISOString()
+      };
+      filename =
+        currentCompetitorsFileName?.replace('.json', '_enrichment_ERROR.json') ||
+        'competitors_data_enrichment_ERROR.json';
+    }
+
+    return { dataToDownload, filename };
+  };
+
+  const downloadJsonFile = (dataToDownload, filename, onToast) => {
+    const jsonString = JSON.stringify(dataToDownload, null, 2);
+    const blob = new Blob([jsonString], { type: 'application/json' });
+    const downloadUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(downloadUrl);
+    onToast(`Файл ${filename} скачан`, 'info');
+  };
+
   const handleEnrichCompetitorsData = async () => {
     if (!competitorsData) {
       addToast('Сначала загрузите данные конкурентов', 'error');
@@ -85,69 +164,13 @@ export function useCompetitorsPipeline(addToast) {
       setIsEnriching(false);
 
       try {
-        let dataToDownload;
-        let filename;
-
-        if (resultData && resultData.enriched_data) {
-          dataToDownload = {
-            ...resultData.enriched_data,
-            _metadata: {
-              enriched_at: resultData.metadata?.enriched_at || new Date().toISOString(),
-              model: resultData.metadata?.model || 'deepseek/deepseek-chat',
-              usage: resultData.usage,
-              success: true,
-              parse_successful: true
-            }
-          };
-          filename = competitorsFileName?.replace('.json', '_enriched.json') || 'competitors_data_enriched.json';
-        } else if (resultData && resultData.raw_response) {
-          dataToDownload = {
-            _warning: 'JSON ответ от LLM невалидный, но данные сохранены для проверки',
-            _parse_error: resultData.parse_error,
-            _raw_response_from_llm: resultData.raw_response,
-            _usage: resultData.usage,
-            _metadata: resultData.metadata,
-            _original_data: competitorsData,
-            _timestamp: new Date().toISOString()
-          };
-          filename =
-            competitorsFileName?.replace('.json', '_enriched_INVALID_JSON.json') ||
-            'competitors_data_enriched_INVALID_JSON.json';
-        } else if (resultData) {
-          dataToDownload = {
-            _error: 'Данные невалидные или неполные',
-            _raw_response: resultData,
-            _original_data: competitorsData,
-            _timestamp: new Date().toISOString()
-          };
-          filename = competitorsFileName?.replace('.json', '_enriched_ERROR.json') || 'competitors_data_enriched_ERROR.json';
-        } else if (errorData) {
-          dataToDownload = errorData;
-          filename =
-            competitorsFileName?.replace('.json', '_enrichment_ERROR.json') ||
-            'competitors_data_enrichment_ERROR.json';
-        } else {
-          dataToDownload = {
-            _error: 'Неизвестная ошибка',
-            _original_data: competitorsData,
-            _timestamp: new Date().toISOString()
-          };
-          filename =
-            competitorsFileName?.replace('.json', '_enrichment_ERROR.json') ||
-            'competitors_data_enrichment_ERROR.json';
-        }
-
-        const jsonString = JSON.stringify(dataToDownload, null, 2);
-        const blob = new Blob([jsonString], { type: 'application/json' });
-        const downloadUrl = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = downloadUrl;
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(downloadUrl);
-        addToast(`Файл ${filename} скачан`, 'info');
+        const { dataToDownload, filename } = buildEnrichmentDownloadPayload({
+          resultData,
+          errorData,
+          competitorsData,
+          competitorsFileName
+        });
+        downloadJsonFile(dataToDownload, filename, addToast);
       } catch (downloadError) {
         console.error('Ошибка при скачивании файла:', downloadError);
         addToast('Не удалось скачать файл', 'error');

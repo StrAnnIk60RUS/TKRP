@@ -16,6 +16,10 @@ import {
 } from '../services/semanticEnrichmentPipeline.js';
 import { runHierarchicalOptimization } from '../services/evolutionary/hierarchicalGa.js';
 import { generateDraftPlanBatched } from '../services/draftPlanGenerationPipeline.js';
+import {
+  trainRelevanceModel,
+  predictEngagementRatesForGeneratedPublications
+} from '../services/relevancePredictionService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEMO_FIXTURE_PATH = path.join(__dirname, '..', 'fixtures', 'demoPrecedents.json');
@@ -465,7 +469,7 @@ router.post('/enrich', async (req, res) => {
       `[${new Date().toISOString()}] Начало обогащения данных для ${requestGuardrails.competitors_count} конкурентов, ${requestGuardrails.posts_count} постов, payload=${requestGuardrails.payload_bytes} bytes`
     );
 
-    if (requestGuardrails.payload_bytes > config.maxRequestBytes) {
+    if (requestGuardrails.max_batch_payload_bytes > config.maxRequestBytes) {
       return res.status(413).json({
         success: false,
         error:
@@ -476,8 +480,7 @@ router.post('/enrich', async (req, res) => {
 
     if (
       !config.autoBatch &&
-      (requestGuardrails.posts_count > config.maxPostsPerBatch ||
-        requestGuardrails.payload_bytes > config.maxPayloadBytes)
+      requestGuardrails.batches_count > 1
     ) {
       return res.status(413).json({
         success: false,
@@ -517,6 +520,48 @@ router.post('/enrich', async (req, res) => {
       error_type: error.name || 'UnknownError',
       details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
       timestamp: new Date().toISOString()
+    });
+  }
+});
+
+router.post('/ml/relevance/train', async (req, res) => {
+  try {
+    const result = await trainRelevanceModel();
+    return res.json({
+      success: true,
+      model: result?.model_path || undefined,
+      metadata: result?.metadata || null
+    });
+  } catch (error) {
+    console.error('Ошибка в /api/ml/relevance/train:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Internal error in /api/ml/relevance/train'
+    });
+  }
+});
+
+router.post('/ml/relevance/predict', async (req, res) => {
+  try {
+    const { publications } = req.body || {};
+    if (!Array.isArray(publications) || publications.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Некорректное поле publications: ожидается non-empty array'
+      });
+    }
+
+    const result = await predictEngagementRatesForGeneratedPublications(publications, { forceTrain: false });
+    return res.json({
+      success: true,
+      avgEngagementRate: result.avgEngagementRate,
+      updatedPublications: result.updatedPublications
+    });
+  } catch (error) {
+    console.error('Ошибка в /api/ml/relevance/predict:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Internal error in /api/ml/relevance/predict'
     });
   }
 });

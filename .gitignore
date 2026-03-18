@@ -32,6 +32,7 @@ YANDEX_VERSION/.env
 *.MD
 *.markdown
 *.txt
+!requirements.txt
 !server/src/prompts/*.txt
 server/data/*.json
 

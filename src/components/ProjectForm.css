@@ -856,6 +856,35 @@
     color: #1a1a2e;
     font-weight: 500;
   }
+
+  /* Демо-подбор горизонта (1/3/6/12 месяцев) */
+  .demo-horizon-select {
+    min-width: 280px;
+    padding: 18px 56px;
+    font-size: 1.1rem;
+    font-weight: 800;
+    background: #2d2d44;
+    color: #ffffff;
+    border: 3px solid #2d2d44;
+    box-shadow: 6px 6px 0 0 #cbd5e0;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    cursor: pointer;
+  }
+
+  .demo-horizon-select option {
+    background: #ffffff;
+    color: #1a1a2e;
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 600;
+  }
+
+  .demo-horizon-select:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    box-shadow: 3px 3px 0 0 #cbd5e0;
+  }
   
   .form-input:focus,
   .form-textarea:focus,

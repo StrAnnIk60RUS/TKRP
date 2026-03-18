@@ -2,6 +2,8 @@ import React, { useState, useMemo, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ToastContainer } from './Toast'
 import CompetitorsStep from './competitors/CompetitorsStep'
+import WizardHeader from './WizardHeader'
+import WizardNavActions from './WizardNavActions'
 import { useCompetitorsPipeline } from '../hooks/useCompetitorsPipeline'
 import { getPrecedentsSummary, searchPrecedents, seedDemoPrecedents, generateDraftContentPlan, optimizeDraftContentPlan } from '../services/enrichmentService'
 import PrecedentDetailsModal from './precedents/PrecedentDetailsModal'
@@ -78,9 +80,7 @@ const ProjectForm = () => {
 
   const [errors, setErrors] = useState({})
   const [touched, setTouched] = useState({})
-  const [isSubmitting, setIsSubmitting] = useState(false)
   const [toasts, setToasts] = useState([])
-  const isProcessing = false
   const [isEditMode, setIsEditMode] = useState(true)
   const [precedentsSummary, setPrecedentsSummary] = useState(null)
   const [precedentSearchQuery, setPrecedentSearchQuery] = useState('')
@@ -92,8 +92,19 @@ const ProjectForm = () => {
   const [isOptimizingPlan, setIsOptimizingPlan] = useState(false)
   const [optimizationResult, setOptimizationResult] = useState(null)
   const [currentStep, setCurrentStep] = useState(1)
+  // Общий флаг "идет работа" для блокировки неуместных действий.
+  const isProcessing =
+    isSearchingPrecedents || isSeedingPrecedents || isGeneratingDraftPlan || isOptimizingPlan
   const toastCounterRef = useRef(0)
   const [selectedPrecedentItem, setSelectedPrecedentItem] = useState(null)
+  const [demoHorizonExample, setDemoHorizonExample] = useState('example_year_plan')
+
+  const demoHorizonExampleOptions = {
+    example_month_plan: '1 месяц',
+    example_three_month_plan: '3 месяца',
+    example_six_month_plan: '6 месяцев',
+    example_year_plan: '12 месяцев'
+  }
 
   const precedentRetrieval = precedentSearchResults?.retrieval || null
 
@@ -613,10 +624,15 @@ const ProjectForm = () => {
     }
   }
 
-  const handleLoadYearExample = async () => {
-    if (window.confirm('Загрузить годовой пример данных? Текущие данные будут заменены.')) {
-      await loadExample('example_year_plan')
-    }
+  const handleLoadHorizonExample = async (exampleName) => {
+    if (!exampleName) return
+    if (exampleName === demoHorizonExample) return
+
+    const label = demoHorizonExampleOptions[exampleName] || exampleName
+    if (!window.confirm(`Загрузить пример данных (${label})? Текущие данные будут заменены.`)) return
+
+    setDemoHorizonExample(exampleName)
+    await loadExample(exampleName)
   }
 
   const handleLoadExample = () => {
@@ -854,7 +870,6 @@ const ProjectForm = () => {
   const hasError = (fieldName) => touched[fieldName] && errors[fieldName]
   const isFirstStep = currentStep === 1
   const isLastStep = currentStep === wizardSteps.length
-  const wizardProgress = (currentStep / wizardSteps.length) * 100
 
   const goToNextStep = () => {
     if (!isLastStep) setCurrentStep((prev) => prev + 1)
@@ -875,31 +890,7 @@ const ProjectForm = () => {
       
       <form className="project-form">
         {/* Прогресс-бар */}
-        <div className="main-nav wizard-main-nav">
-          <div className="progress-bar-container">
-            <div className="progress-bar-fill" style={{ width: `${wizardProgress}%` }}></div>
-          </div>
-          <span className="progress-text">
-            Шаг {currentStep} из {wizardSteps.length}: {wizardSteps[currentStep - 1]}
-          </span>
-          <div className="wizard-step-tabs">
-            {wizardSteps.map((stepName, idx) => {
-              const stepNumber = idx + 1
-              const isActive = currentStep === stepNumber
-              return (
-                <button
-                  key={stepName}
-                  type="button"
-                  className={`wizard-step-tab ${isActive ? 'active' : ''}`}
-                  onClick={() => goToStep(stepNumber)}
-                  title={`Перейти к этапу: ${stepName}`}
-                >
-                  {stepNumber}. {stepName}
-                </button>
-              )
-            })}
-          </div>
-        </div>
+        <WizardHeader currentStep={currentStep} wizardSteps={wizardSteps} onStepClick={goToStep} />
 
         {currentStep === 1 && (
           <>
@@ -1688,21 +1679,25 @@ const ProjectForm = () => {
         {currentStep === 5 && (
         <>
         <div className="form-actions precedent-actions">
-          <button
-            type="button"
-            className="submit-button secondary"
-            onClick={handleLoadYearExample}
-            disabled={isSubmitting || isProcessing || isGeneratingDraftPlan || isEnrichmentServerAvailable === false}
-            title="Загрузить пример заполнения формы для генерации контент-плана на 12 месяцев"
+          <select
+            id="demoHorizonExample"
+            name="demoHorizonExample"
+            value={demoHorizonExample}
+            onChange={(e) => handleLoadHorizonExample(e.target.value)}
+            disabled={isProcessing || isGeneratingDraftPlan || isEnrichmentServerAvailable === false}
+            className="form-select demo-horizon-select"
+            title="Загрузить демо-пример для выбранного горизонта"
           >
-            <span>ЗАГРУЗИТЬ ПРИМЕР (НА ГОД)</span>
-          </button>
+            <option value="example_month_plan">1 месяц</option>
+            <option value="example_three_month_plan">3 месяца</option>
+            <option value="example_six_month_plan">6 месяцев</option>
+            <option value="example_year_plan">12 месяцев</option>
+          </select>
           <button
             type="button"
             className="submit-button secondary"
             onClick={handleSeedDemoPrecedents}
             disabled={
-              isSubmitting ||
               isProcessing ||
               isGeneratingDraftPlan ||
               isSeedingPrecedents ||
@@ -1717,7 +1712,6 @@ const ProjectForm = () => {
             className="submit-button secondary"
             onClick={handleSearchPrecedents}
             disabled={
-              isSubmitting ||
               isProcessing ||
               isGeneratingDraftPlan ||
               isSearchingPrecedents ||
@@ -1732,7 +1726,7 @@ const ProjectForm = () => {
             className="submit-button primary"
             onClick={handleGenerateDraftPlan}
             disabled={
-              isSubmitting || isProcessing || isGeneratingDraftPlan || isEnrichmentServerAvailable === false
+              isProcessing || isGeneratingDraftPlan || isEnrichmentServerAvailable === false
             }
           >
             <span>{isGeneratingDraftPlan ? 'ГЕНЕРАЦИЯ...' : 'СФОРМИРОВАТЬ ЧЕРНОВОЙ ПЛАН'}</span>
@@ -1960,24 +1954,12 @@ const ProjectForm = () => {
           )}
         </section>}
 
-        <div className="form-actions wizard-nav-actions">
-          <button
-            type="button"
-            className="submit-button secondary"
-            onClick={goToPrevStep}
-            disabled={isFirstStep}
-          >
-            <span>НАЗАД</span>
-          </button>
-          <button
-            type="button"
-            className="submit-button primary"
-            onClick={goToNextStep}
-            disabled={isLastStep}
-          >
-            <span>ДАЛЕЕ</span>
-          </button>
-        </div>
+        <WizardNavActions
+          goToPrevStep={goToPrevStep}
+          goToNextStep={goToNextStep}
+          isFirstStep={isFirstStep}
+          isLastStep={isLastStep}
+        />
       </form>
 
       {!!selectedPrecedentItem && (

@@ -11,6 +11,20 @@ const PARSER_DIR = path.join(PROJECT_ROOT, 'parser');
 const PYTHON_SCRIPT_PATH = path.join(PARSER_DIR, 'main.py');
 const PARSER_OUTPUT_PATH = path.join(PARSER_DIR, 'posts.json');
 
+// Parser writes to a single shared file: `parser/posts.json`.
+// To avoid race conditions between concurrent requests, serialize executions in-process.
+let parserExecutionQueue = Promise.resolve();
+
+function enqueueParserExecution(jobFn) {
+  const jobPromise = parserExecutionQueue.then(jobFn, jobFn);
+  // Ensure the queue keeps moving even if the job rejects.
+  parserExecutionQueue = jobPromise.then(
+    () => undefined,
+    () => undefined
+  );
+  return jobPromise;
+}
+
 function detectPlatform(url) {
   if (url.includes('vk.com')) return 'vk';
   if (url.includes('linkedin.com')) return 'linkedin';
@@ -80,42 +94,44 @@ function mapPostsToCompetitorsData(url, posts) {
 }
 
 async function runPythonParser(url) {
-  try {
-    if (fs.existsSync(PARSER_OUTPUT_PATH)) {
-      fs.unlinkSync(PARSER_OUTPUT_PATH);
+  return enqueueParserExecution(async () => {
+    try {
+      if (fs.existsSync(PARSER_OUTPUT_PATH)) {
+        fs.unlinkSync(PARSER_OUTPUT_PATH);
+      }
+    } catch (e) {
+      console.warn('Не удалось удалить старый posts.json:', e.message);
     }
-  } catch (e) {
-    console.warn('Не удалось удалить старый posts.json:', e.message);
-  }
 
-  const pythonProcess = spawn('python', ['-u', PYTHON_SCRIPT_PATH], {
-    cwd: PARSER_DIR,
-    stdio: ['pipe', 'pipe', 'pipe']
+    const pythonProcess = spawn('python', ['-u', PYTHON_SCRIPT_PATH], {
+      cwd: PARSER_DIR,
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+
+    let stdout = '';
+    let stderr = '';
+
+    pythonProcess.stdout.on('data', (data) => {
+      const text = data.toString();
+      stdout += text;
+      process.stdout.write(`[PYTHON STDOUT] ${text}`);
+    });
+
+    pythonProcess.stderr.on('data', (data) => {
+      const text = data.toString();
+      stderr += text;
+      process.stderr.write(`[PYTHON STDERR] ${text}`);
+    });
+
+    pythonProcess.stdin.write(url + '\n');
+    pythonProcess.stdin.end();
+
+    const exitCode = await new Promise((resolve) => {
+      pythonProcess.on('close', resolve);
+    });
+
+    return { exitCode, stdout, stderr };
   });
-
-  let stdout = '';
-  let stderr = '';
-
-  pythonProcess.stdout.on('data', (data) => {
-    const text = data.toString();
-    stdout += text;
-    process.stdout.write(`[PYTHON STDOUT] ${text}`);
-  });
-
-  pythonProcess.stderr.on('data', (data) => {
-    const text = data.toString();
-    stderr += text;
-    process.stderr.write(`[PYTHON STDERR] ${text}`);
-  });
-
-  pythonProcess.stdin.write(url + '\n');
-  pythonProcess.stdin.end();
-
-  const exitCode = await new Promise((resolve) => {
-    pythonProcess.on('close', resolve);
-  });
-
-  return { exitCode, stdout, stderr };
 }
 
 function applyPostsLimit(allPosts, limit) {

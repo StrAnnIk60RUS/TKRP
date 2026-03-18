@@ -98,7 +98,9 @@ function buildLimitsErrorMessage(summary) {
     'Запрос на обогащение слишком большой для текущих ограничений сервера.',
     `competitors=${summary.competitors_count}`,
     `posts=${summary.posts_count}`,
-    `payload_bytes=${summary.payload_bytes}`,
+    `payload_bytes(total)=${summary.payload_bytes}`,
+    `batches=${summary.batches_count ?? 'N/A'}`,
+    `payload_bytes(max_batch)=${summary.max_batch_payload_bytes ?? 'N/A'}`,
     `max_request_bytes=${summary.limits.max_request_bytes}`
   ].join(' ');
 }
@@ -111,7 +113,8 @@ async function enrichSemanticBatch(batch, systemPrompt, options = {}) {
     {
       temperature: compact ? 0.1 : 0.2,
       maxTokens: compact ? 4000 : 8000,
-      responseFormat: null
+      // Enrichment expects strict JSON; ask the model to return JSON object.
+      responseFormat: 'json'
     }
   );
 
@@ -238,17 +241,16 @@ export async function enrichCompetitorsData(competitorsData) {
   const dataSizeKb = (limitsSummary.payload_bytes / 1024).toFixed(2);
   console.log(`Размер исходных данных для enrichment: ${dataSizeKb} KB`);
 
-  if (limitsSummary.payload_bytes > config.maxRequestBytes) {
+  if (limitsSummary.max_batch_payload_bytes > config.maxRequestBytes) {
     throw new Error(buildLimitsErrorMessage(limitsSummary));
   }
 
   if (
     !config.autoBatch &&
-    (limitsSummary.posts_count > config.maxPostsPerBatch ||
-      limitsSummary.payload_bytes > config.maxPayloadBytes)
+    limitsSummary.batches_count > 1
   ) {
     throw new Error(
-      `Запрос превышает лимиты enrichment и auto-batch выключен. posts=${limitsSummary.posts_count}, payload_bytes=${limitsSummary.payload_bytes}`
+      `Запрос превышает лимиты enrichment и auto-batch выключен (нужно больше 1 батча). posts=${limitsSummary.posts_count}, batches=${limitsSummary.batches_count}`
     );
   }
 
@@ -295,7 +297,8 @@ export async function enrichCompetitorsData(competitorsData) {
     const maxApiRetries = 1; // один повтор при 5xx
     let apiAttempt = 0;
 
-    for (let attempt = 0; attempt < totalAttempts; attempt += 1) {
+    let attempt = 0;
+    while (attempt < totalAttempts) {
       const compact = attempt > 0;
       try {
         console.log(
@@ -329,9 +332,11 @@ export async function enrichCompetitorsData(competitorsData) {
           const delayMs = 2000;
           console.log(`[OpenRouter] Повтор запроса через ${delayMs} мс из-за ошибки API (${error.responseStatus})...`);
           await new Promise((r) => setTimeout(r, delayMs));
-          attempt -= 1; // не считать эту итерацию как validation attempt
           continue;
         }
+
+        // Увеличиваем попытку валидации только когда мы не делаем API retry.
+        attempt += 1;
       }
     }
 

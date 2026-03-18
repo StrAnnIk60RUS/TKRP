@@ -4,6 +4,27 @@
 
 const API_URL = import.meta.env.VITE_ENRICHMENT_API_URL || 'http://localhost:3001';
 
+const buildFetchErrorMessage = async (response) => {
+  let errorMessage = `HTTP ${response.status}: ${response.statusText}`
+  try {
+    const errorData = await response.json()
+    errorMessage = errorData.error || errorData.message || errorMessage
+  } catch (e) {
+    // Если не удалось распарсить JSON, используем текст ответа
+    const text = await response.text().catch(() => 'Неизвестная ошибка')
+    errorMessage = text || errorMessage
+  }
+  return errorMessage
+}
+
+const fetchJsonOrThrow = async (endpoint, options) => {
+  const response = await fetch(endpoint, options)
+  if (!response.ok) {
+    throw new Error(await buildFetchErrorMessage(response))
+  }
+  return await response.json()
+}
+
 /**
  * Обогащает данные конкурентов через DeepSeek API
  * @param {Object} competitorsData - сырые данные конкурентов от парсера
@@ -11,30 +32,13 @@ const API_URL = import.meta.env.VITE_ENRICHMENT_API_URL || 'http://localhost:300
  */
 export async function enrichCompetitorsData(competitorsData) {
   try {
-    const response = await fetch(`${API_URL}/api/enrich`, {
+    const result = await fetchJsonOrThrow(`${API_URL}/api/enrich`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        competitors_data: competitorsData
-      })
-    });
-
-    if (!response.ok) {
-      let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-      try {
-        const errorData = await response.json();
-        errorMessage = errorData.error || errorData.message || errorMessage;
-      } catch (e) {
-        // Если не удалось распарсить JSON, используем текст ответа
-        const text = await response.text().catch(() => 'Неизвестная ошибка');
-        errorMessage = text || errorMessage;
-      }
-      throw new Error(errorMessage);
-    }
-
-    const result = await response.json();
+      body: JSON.stringify({ competitors_data: competitorsData })
+    })
     
     // Если есть ошибка и нет даже raw_response, значит реальная ошибка
     if (!result.success && !result.raw_response && result.error) {
@@ -78,28 +82,13 @@ export async function checkEnrichmentServer() {
  */
 export async function parseCompetitorByUrl(url, limit) {
   try {
-    const response = await fetch(`${API_URL}/api/parse`, {
+    return await fetchJsonOrThrow(`${API_URL}/api/parse`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({ url, limit })
-    });
-
-    if (!response.ok) {
-      let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-      try {
-        const errorData = await response.json();
-        errorMessage = errorData.error || errorData.message || errorMessage;
-      } catch (e) {
-        const text = await response.text().catch(() => 'Неизвестная ошибка');
-        errorMessage = text || errorMessage;
-      }
-      throw new Error(errorMessage);
-    }
-
-    const result = await response.json();
-    return result;
+    })
   } catch (error) {
     console.error('Ошибка в parseCompetitorByUrl:', error);
     throw error;
@@ -113,28 +102,13 @@ export async function parseCompetitorByUrl(url, limit) {
  */
 export async function parseAndEnrichByUrl(url) {
   try {
-    const response = await fetch(`${API_URL}/api/parse-and-enrich`, {
+    return await fetchJsonOrThrow(`${API_URL}/api/parse-and-enrich`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({ url })
-    });
-
-    if (!response.ok) {
-      let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-      try {
-        const errorData = await response.json();
-        errorMessage = errorData.error || errorData.message || errorMessage;
-      } catch (e) {
-        const text = await response.text().catch(() => 'Неизвестная ошибка');
-        errorMessage = text || errorMessage;
-      }
-      throw new Error(errorMessage);
-    }
-
-    const result = await response.json();
-    return result;
+    })
   } catch (error) {
     console.error('Ошибка в parseAndEnrichByUrl:', error);
     throw error;
@@ -147,15 +121,9 @@ export async function parseAndEnrichByUrl(url) {
  */
 export async function getPrecedentsSummary() {
   try {
-    const response = await fetch(`${API_URL}/api/precedents/summary`, {
+    return await fetchJsonOrThrow(`${API_URL}/api/precedents/summary`, {
       method: 'GET'
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
-
-    return await response.json();
+    })
   } catch (error) {
     console.error('Ошибка в getPrecedentsSummary:', error);
     throw error;
@@ -168,16 +136,10 @@ export async function getPrecedentsSummary() {
  */
 export async function seedDemoPrecedents() {
   try {
-    const response = await fetch(`${API_URL}/api/precedents/seed`, {
+    return await fetchJsonOrThrow(`${API_URL}/api/precedents/seed`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' }
-    });
-
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      throw new Error(err.error || `HTTP ${response.status}: ${response.statusText}`);
-    }
-    return await response.json();
+    })
   } catch (error) {
     console.error('Ошибка в seedDemoPrecedents:', error);
     throw error;
@@ -191,27 +153,13 @@ export async function seedDemoPrecedents() {
  */
 export async function searchPrecedents(payload) {
   try {
-    const response = await fetch(`${API_URL}/api/precedents/search`, {
+    return await fetchJsonOrThrow(`${API_URL}/api/precedents/search`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify(payload)
-    });
-
-    if (!response.ok) {
-      let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-      try {
-        const errorData = await response.json();
-        errorMessage = errorData.error || errorData.message || errorMessage;
-      } catch (e) {
-        const text = await response.text().catch(() => 'Неизвестная ошибка');
-        errorMessage = text || errorMessage;
-      }
-      throw new Error(errorMessage);
-    }
-
-    return await response.json();
+    })
   } catch (error) {
     console.error('Ошибка в searchPrecedents:', error);
     throw error;
@@ -225,27 +173,13 @@ export async function searchPrecedents(payload) {
  */
 export async function generateDraftContentPlan(payload) {
   try {
-    const response = await fetch(`${API_URL}/api/plan/generate`, {
+    return await fetchJsonOrThrow(`${API_URL}/api/plan/generate`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify(payload)
-    });
-
-    if (!response.ok) {
-      let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-      try {
-        const errorData = await response.json();
-        errorMessage = errorData.error || errorData.message || errorMessage;
-      } catch (e) {
-        const text = await response.text().catch(() => 'Неизвестная ошибка');
-        errorMessage = text || errorMessage;
-      }
-      throw new Error(errorMessage);
-    }
-
-    return await response.json();
+    })
   } catch (error) {
     console.error('Ошибка в generateDraftContentPlan:', error);
     throw error;
@@ -259,27 +193,13 @@ export async function generateDraftContentPlan(payload) {
  */
 export async function optimizeDraftContentPlan(payload) {
   try {
-    const response = await fetch(`${API_URL}/api/plan/optimize`, {
+    return await fetchJsonOrThrow(`${API_URL}/api/plan/optimize`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify(payload)
-    });
-
-    if (!response.ok) {
-      let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-      try {
-        const errorData = await response.json();
-        errorMessage = errorData.error || errorData.message || errorMessage;
-      } catch (e) {
-        const text = await response.text().catch(() => 'Неизвестная ошибка');
-        errorMessage = text || errorMessage;
-      }
-      throw new Error(errorMessage);
-    }
-
-    return await response.json();
+    })
   } catch (error) {
     console.error('Ошибка в optimizeDraftContentPlan:', error);
     throw error;

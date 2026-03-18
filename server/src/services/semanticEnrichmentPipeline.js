@@ -1,3 +1,5 @@
+import { parseJsonObjectFromLlmContent } from '../utils/llmJsonParsing.js';
+
 const ALLOWED_PLATFORMS = ['vk', 'linkedin'];
 export const ALLOWED_ENRICHMENT_OBJECTIVES = [
   'inform',
@@ -155,7 +157,10 @@ function chunkCompetitorPosts(competitor, competitorIndex, config) {
 
 export function getEnrichmentConfig() {
   return {
-    maxPostsPerBatch: readPositiveNumber(process.env.MAX_POSTS_PER_ENRICH_REQUEST, 60),
+    // Default: keep each LLM call small (10-15 posts typical).
+    // This prevents over-limit prompts and allows the whole enrichment pipeline
+    // to complete by processing multiple batches and merging results.
+    maxPostsPerBatch: readPositiveNumber(process.env.MAX_POSTS_PER_ENRICH_REQUEST, 15),
     maxPayloadBytes: readPositiveNumber(process.env.MAX_ENRICH_PAYLOAD_BYTES, 180000),
     maxRequestBytes: readPositiveNumber(process.env.MAX_ENRICH_REQUEST_BYTES, 2000000),
     maxPostContentChars: readPositiveNumber(process.env.MAX_ENRICH_POST_CONTENT_CHARS, 4000),
@@ -175,10 +180,25 @@ export function measurePayloadBytes(payload) {
 }
 
 export function summarizeEnrichmentLimits(competitorsData, config = getEnrichmentConfig()) {
+  const batches = buildSemanticEnrichmentBatches(competitorsData, config);
+  let maxBatchPayloadBytes = 0;
+  let maxBatchPostsCount = 0;
+
+  batches.forEach((batch) => {
+    const payloadBytes = Number(batch?.stats?.payload_bytes) || 0;
+    const postsCount = Number(batch?.stats?.posts_count) || 0;
+    if (payloadBytes > maxBatchPayloadBytes) maxBatchPayloadBytes = payloadBytes;
+    if (postsCount > maxBatchPostsCount) maxBatchPostsCount = postsCount;
+  });
+
   return {
     competitors_count: Array.isArray(competitorsData?.competitors) ? competitorsData.competitors.length : 0,
     posts_count: countPostsInCompetitorsData(competitorsData),
+    // Raw request size (used only for observability; we gate by per-batch stats below).
     payload_bytes: measurePayloadBytes(competitorsData),
+    batches_count: batches.length,
+    max_batch_posts_count: maxBatchPostsCount,
+    max_batch_payload_bytes: maxBatchPayloadBytes,
     limits: {
       max_posts_per_batch: config.maxPostsPerBatch,
       max_payload_bytes: config.maxPayloadBytes,
@@ -240,18 +260,7 @@ ${JSON.stringify(batchPayload, null, compact ? 0 : 2)}`;
 }
 
 export function extractJsonObjectFromContent(content) {
-  if (!content || typeof content !== 'string') {
-    throw new Error('Пустой ответ от LLM');
-  }
-
-  const trimmed = content.trim();
-  const start = trimmed.indexOf('{');
-  const end = trimmed.lastIndexOf('}');
-  if (start === -1 || end === -1 || end <= start) {
-    throw new Error('LLM не вернул JSON объект');
-  }
-
-  return JSON.parse(trimmed.slice(start, end + 1));
+  return parseJsonObjectFromLlmContent(content);
 }
 
 export function validateAndNormalizeSemanticBatchResult(expectedBatch, parsedResult) {

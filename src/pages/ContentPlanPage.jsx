@@ -19,6 +19,46 @@ const ensureUniquePublicationIds = (plan) => {
   return { ...plan, publications: normalized }
 }
 
+const PostCard = ({ post, showPlatformField }) => {
+  const plannedDateLabel = post.planned_date
+    ? new Date(post.planned_date).toLocaleDateString('ru-RU')
+    : 'Дата не указана'
+
+  return (
+    <div className="post-card">
+      <div className="post-header">
+        <span className="post-date">{plannedDateLabel}</span>
+        <span className="post-category">{post.topic || 'Без темы'}</span>
+      </div>
+      <div className="post-content">
+        {showPlatformField && <div><strong>Платформа:</strong> {post.platform || 'не указана'}</div>}
+        <div><strong>Формат:</strong> {post.format || 'не указан'}</div>
+        <div><strong>Цель:</strong> {post.objective || 'не указана'}</div>
+        <div><strong>Тон:</strong> {post.tone || 'не указан'}</div>
+        <div><strong>Ключевое сообщение:</strong> {post.key_message || 'не задано'}</div>
+        <div><strong>CTA:</strong> {post.cta || 'не задано'}</div>
+      </div>
+      {post.expected_kpi && (
+        <div className="post-metrics">
+          <span>
+            Вовлечённость:{' '}
+            {((post.expected_kpi.engagement_rate || 0) * 100).toFixed(1)}%
+            {post.expected_kpi.engagement_rate_source === 'ml_relevance_prediction' ? ' (ML)' : ''}
+          </span>
+          <span>
+            Потенциал конверсии:{' '}
+            {((post.expected_kpi.conversion_potential || 0) * 100).toFixed(1)}%
+          </span>
+          <span>
+            Потенциал охвата:{' '}
+            {((post.expected_kpi.reach_potential || 0) * 100).toFixed(1)}%
+          </span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 const ContentPlanPage = () => {
   const navigate = useNavigate()
   const [contentPlan, setContentPlan] = useState(null)
@@ -157,7 +197,9 @@ const ContentPlanPage = () => {
                 {contentPlan.kpi_targets
                   ? `ср. вовлечённость ≥ ${
                       ((contentPlan.kpi_targets.avg_engagement_rate || 0) * 100).toFixed(1)
-                    }%, конверсии ≈ ${contentPlan.kpi_targets.estimated_conversions || 0}`
+                    }%${contentPlan.kpi_targets.avg_engagement_rate_source === 'ml_relevance_prediction' ? ' (ML)' : ''}, конверсии ≈ ${
+                      contentPlan.kpi_targets.estimated_conversions || 0
+                    }`
                   : 'не заданы'}
               </span>
             </div>
@@ -191,42 +233,11 @@ const ContentPlanPage = () => {
           {publications.length > 0 && platforms.length === 0 && (
             <div className="posts-list">
               {publications.map((post, idx) => (
-                <div
+                <PostCard
                   key={`${post.publication_id || 'pub'}_${post.platform || 'na'}_${post.planned_date || 'na'}_${idx}`}
-                  className="post-card"
-                >
-                  <div className="post-header">
-                    <span className="post-date">
-                      {post.planned_date
-                        ? new Date(post.planned_date).toLocaleDateString('ru-RU')
-                        : 'Дата не указана'}
-                    </span>
-                    <span className="post-category">{post.topic || 'Без темы'}</span>
-                  </div>
-                  <div className="post-content">
-                    <div><strong>Платформа:</strong> {post.platform || 'не указана'}</div>
-                    <div><strong>Формат:</strong> {post.format || 'не указан'}</div>
-                    <div><strong>Цель:</strong> {post.objective || 'не указана'}</div>
-                    <div><strong>Тон:</strong> {post.tone || 'не указан'}</div>
-                    <div><strong>Ключевое сообщение:</strong> {post.key_message || 'не задано'}</div>
-                    <div><strong>CTA:</strong> {post.cta || 'не задано'}</div>
-                  </div>
-                  {post.expected_kpi && (
-                    <div className="post-metrics">
-                      <span>
-                        Вовлечённость: {((post.expected_kpi.engagement_rate || 0) * 100).toFixed(1)}%
-                      </span>
-                      <span>
-                        Потенциал конверсии:{' '}
-                        {((post.expected_kpi.conversion_potential || 0) * 100).toFixed(1)}%
-                      </span>
-                      <span>
-                        Потенциал охвата:{' '}
-                        {((post.expected_kpi.reach_potential || 0) * 100).toFixed(1)}%
-                      </span>
-                    </div>
-                  )}
-                </div>
+                  post={post}
+                  showPlatformField
+                />
               ))}
             </div>
           )}
@@ -241,42 +252,11 @@ const ContentPlanPage = () => {
                     <h3 className="platform-name">{platform.toUpperCase()}</h3>
                     <div className="posts-list">
                       {posts.map((post, idx) => (
-                        <div
+                        <PostCard
                           key={`${post.publication_id || 'pub'}_${platform}_${post.planned_date || 'na'}_${idx}`}
-                          className="post-card"
-                        >
-                          <div className="post-header">
-                            <span className="post-date">
-                              {post.planned_date
-                                ? new Date(post.planned_date).toLocaleDateString('ru-RU')
-                                : 'Дата не указана'}
-                            </span>
-                            <span className="post-category">{post.topic || 'Без темы'}</span>
-                          </div>
-                          <div className="post-content">
-                            <div><strong>Формат:</strong> {post.format || 'не указан'}</div>
-                            <div><strong>Цель:</strong> {post.objective || 'не указана'}</div>
-                            <div><strong>Тон:</strong> {post.tone || 'не указан'}</div>
-                            <div><strong>Ключевое сообщение:</strong> {post.key_message || 'не задано'}</div>
-                            <div><strong>CTA:</strong> {post.cta || 'не задано'}</div>
-                          </div>
-                          {post.expected_kpi && (
-                            <div className="post-metrics">
-                              <span>
-                                Вовлечённость:{' '}
-                                {((post.expected_kpi.engagement_rate || 0) * 100).toFixed(1)}%
-                              </span>
-                              <span>
-                                Потенциал конверсии:{' '}
-                                {((post.expected_kpi.conversion_potential || 0) * 100).toFixed(1)}%
-                              </span>
-                              <span>
-                                Потенциал охвата:{' '}
-                                {((post.expected_kpi.reach_potential || 0) * 100).toFixed(1)}%
-                              </span>
-                            </div>
-                          )}
-                        </div>
+                          post={post}
+                          showPlatformField={false}
+                        />
                       ))}
                     </div>
                   </div>

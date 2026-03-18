@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { spawn } from 'child_process';
 import {
   cosineSimilarity,
   embedTexts,
@@ -357,6 +358,45 @@ export async function persistPrecedents(enrichedData, options = {}) {
   });
 
   writeStorage(storage);
+
+  // ML-автообучение после ingestion (опционально, чтобы учить модель на новых прецедентах).
+  // Важно: training выполняется в той же python-среде, где запускается backend.
+  const autoTrainEnabled = process.env.ML_AUTO_TRAIN_AFTER_INGESTION !== 'false';
+  if (autoTrainEnabled && (insertedPublications + updatedPublications + insertedContentPlans + updatedContentPlans > 0)) {
+    try {
+      const scriptPath = path.join(__dirname, '..', '..', 'ml', 'engagement_model.py');
+      const serverRoot = path.join(__dirname, '..', '..'); // server/
+
+      await new Promise((resolve, reject) => {
+        const pythonProcess = spawn('python', ['-u', scriptPath, 'train'], {
+          cwd: serverRoot,
+          stdio: ['pipe', 'pipe', 'pipe']
+        });
+
+        let stdout = '';
+        let stderr = '';
+
+        pythonProcess.stdout.on('data', (data) => {
+          stdout += data.toString();
+        });
+        pythonProcess.stderr.on('data', (data) => {
+          stderr += data.toString();
+        });
+
+        pythonProcess.on('close', (code) => {
+          if (code !== 0) {
+            reject(new Error(`auto-train failed (exit_code=${code}): ${stderr || 'no stderr'}${stdout ? ` | stdout=${stdout.slice(0, 500)}` : ''}`));
+            return;
+          }
+          resolve();
+        });
+
+        pythonProcess.stdin.end();
+      });
+    } catch (error) {
+      console.warn('[ml:auto-train] Failed to retrain relevance model:', error?.message || error);
+    }
+  }
 
   return {
     storage_path: STORAGE_PATH,
