@@ -6,7 +6,8 @@ import {
   parseCompetitorByUrl
 } from '../services/enrichmentService';
 
-export function useCompetitorsPipeline(addToast) {
+export function useCompetitorsPipeline(addToast, options = {}) {
+  const { isDeveloper = true } = options
   const [isEnriching, setIsEnriching] = useState(false);
   const [competitorsData, setCompetitorsData] = useState(null);
   const [competitorsFileName, setCompetitorsFileName] = useState(null);
@@ -111,7 +112,8 @@ export function useCompetitorsPipeline(addToast) {
     onToast(`Файл ${filename} скачан`, 'info');
   };
 
-  const handleEnrichCompetitorsData = async () => {
+  const handleEnrichCompetitorsData = async (opts = {}) => {
+    const { skipDownload = false } = opts
     if (!competitorsData) {
       addToast('Сначала загрузите данные конкурентов', 'error');
       return;
@@ -163,17 +165,19 @@ export function useCompetitorsPipeline(addToast) {
     } finally {
       setIsEnriching(false);
 
-      try {
-        const { dataToDownload, filename } = buildEnrichmentDownloadPayload({
-          resultData,
-          errorData,
-          competitorsData,
-          competitorsFileName
-        });
-        downloadJsonFile(dataToDownload, filename, addToast);
-      } catch (downloadError) {
-        console.error('Ошибка при скачивании файла:', downloadError);
-        addToast('Не удалось скачать файл', 'error');
+      if (!skipDownload) {
+        try {
+          const { dataToDownload, filename } = buildEnrichmentDownloadPayload({
+            resultData,
+            errorData,
+            competitorsData,
+            competitorsFileName
+          });
+          downloadJsonFile(dataToDownload, filename, addToast);
+        } catch (downloadError) {
+          console.error('Ошибка при скачивании файла:', downloadError);
+          addToast('Не удалось скачать файл', 'error');
+        }
       }
     }
   };
@@ -270,22 +274,47 @@ export function useCompetitorsPipeline(addToast) {
       'success'
     );
 
-    // Скачиваем сырые спарсенные данные в JSON
-    try {
-      const jsonString = JSON.stringify(merged, null, 2);
-      const blob = new Blob([jsonString], { type: 'application/json' });
-      const downloadUrl = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = 'competitors_from_urls.json';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(downloadUrl);
-      addToast('Файл competitors_from_urls.json скачан', 'info');
-    } catch (downloadError) {
-      console.error('Ошибка при скачивании файла спарсенных данных:', downloadError);
-      addToast('Не удалось скачать файл спарсенных данных', 'error');
+    // Для SMM: автоматическое обогащение после парсинга (без кнопки)
+    if (!isDeveloper) {
+      setIsEnriching(true);
+      addToast('Обогащение данных конкурентов...', 'info');
+      try {
+        const result = await enrichCompetitorsData(merged);
+        if (result.success && result.enriched_data) {
+          setCompetitorsData(result.enriched_data);
+          setCompetitorsFileName('competitors_from_urls_enriched.json');
+          const usageInfo = result.usage ? ` (токенов: ${result.usage.total_tokens || 'N/A'})` : '';
+          addToast(`Данные обогащены автоматически${usageInfo}`, 'success');
+          localStorage.setItem('enrichedCompetitorsData', JSON.stringify(result.enriched_data));
+        } else if (result.error) {
+          addToast(`Обогащение не удалось: ${result.error}`, 'error');
+        }
+      } catch (error) {
+        console.error('Ошибка автообогащения:', error);
+        addToast(`Обогащение не удалось: ${error.message}`, 'error');
+      } finally {
+        setIsEnriching(false);
+      }
+    }
+
+    // Скачиваем сырые спарсенные данные в JSON (только для разработчика)
+    if (isDeveloper) {
+      try {
+        const jsonString = JSON.stringify(merged, null, 2);
+        const blob = new Blob([jsonString], { type: 'application/json' });
+        const downloadUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = 'competitors_from_urls.json';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(downloadUrl);
+        addToast('Файл competitors_from_urls.json скачан', 'info');
+      } catch (downloadError) {
+        console.error('Ошибка при скачивании файла спарсенных данных:', downloadError);
+        addToast('Не удалось скачать файл спарсенных данных', 'error');
+      }
     }
 
     setIsParsingFromUrls(false);

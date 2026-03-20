@@ -12,7 +12,7 @@ function prettyRetrievalType(retrieval) {
   return type || 'unknown'
 }
 
-const PrecedentDetailsModal = ({ item, retrieval, onClose }) => {
+const PrecedentDetailsModal = ({ item, retrieval, onClose, showTechnicalDetails = true }) => {
   const jsonString = useMemo(() => JSON.stringify(item, null, 2), [item])
 
   if (!item) return null
@@ -27,13 +27,24 @@ const PrecedentDetailsModal = ({ item, retrieval, onClose }) => {
       ? `${item.data?.competitor_name || 'Неизвестный конкурент'} · ${item.data?.platform || 'unknown'}`
       : `${item.data?.platform || 'unknown'} · ${item.data?.content_plan_model?.total_publications || 0} публикаций`
 
+  const whyFound =
+    item.type === 'publication'
+      ? Array.isArray(item.matched_tokens) && item.matched_tokens.length > 0
+        ? showTechnicalDetails
+          ? item.matched_tokens.join(', ')
+          : 'По ключевым словам'
+        : showTechnicalDetails
+        ? 'semantic / без токенов'
+        : 'По смыслу'
+      : null
+
   const summaryMetrics =
     item.type === 'publication'
       ? [
           ['Формат', item.data?.publication_model?.format || '—'],
           ['Категория', item.data?.publication_model?.content_category || '—'],
           ['Аудитория', (item.data?.publication_model?.audience_segments || []).join(', ') || 'не указана'],
-          ['Почему найдено', Array.isArray(item.matched_tokens) && item.matched_tokens.length > 0 ? item.matched_tokens.join(', ') : 'semantic / без токенов']
+          ...(whyFound ? [['Почему найдено', whyFound]] : [])
         ]
       : [
           ['Платформа', item.data?.platform || '—'],
@@ -72,32 +83,36 @@ const PrecedentDetailsModal = ({ item, retrieval, onClose }) => {
               ))}
             </div>
 
-            <div className="precedent-modal-context">
-              <p>
-                <strong>Retrieval:</strong> {prettyRetrievalType(retrieval)}
-                {retrieval?.embedding_model ? ` · ${retrieval.embedding_model}` : ''}
-              </p>
-              {retrieval?.type === 'embedding_cosine' && (
+            {showTechnicalDetails && (
+              <div className="precedent-modal-context">
                 <p>
-                  В режиме эмбеддингов релевантность считается по косинусной близости, поэтому список совпавших
-                  токенов может быть пустым.
+                  <strong>Retrieval:</strong> {prettyRetrievalType(retrieval)}
+                  {retrieval?.embedding_model ? ` · ${retrieval.embedding_model}` : ''}
                 </p>
-              )}
-            </div>
+                {retrieval?.type === 'embedding_cosine' && (
+                  <p>
+                    В режиме эмбеддингов релевантность считается по косинусной близости, поэтому список совпавших
+                    токенов может быть пустым.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
-          <details className="precedent-technical-details">
-            <summary>Технические детали и JSON</summary>
-            <div className="preview-json">
-              {Array.isArray(item.matched_tokens) && item.matched_tokens.length > 0 && (
-                <p className="precedent-technical-line">
-                  <strong>Совпавшие токены:</strong> {item.matched_tokens.join(', ')}
-                </p>
-              )}
-              <h4>Детали (JSON)</h4>
-              <pre className="json-preview">{jsonString}</pre>
-            </div>
-          </details>
+          {showTechnicalDetails && (
+            <details className="precedent-technical-details">
+              <summary>Технические детали и JSON</summary>
+              <div className="preview-json">
+                {Array.isArray(item.matched_tokens) && item.matched_tokens.length > 0 && (
+                  <p className="precedent-technical-line">
+                    <strong>Совпавшие токены:</strong> {item.matched_tokens.join(', ')}
+                  </p>
+                )}
+                <h4>Детали (JSON)</h4>
+                <pre className="json-preview">{jsonString}</pre>
+              </div>
+            </details>
+          )}
         </div>
 
         <div className="modal-footer">

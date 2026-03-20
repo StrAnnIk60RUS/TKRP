@@ -1,9 +1,12 @@
 import React, { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
+import { useUserRole } from '../context/UserRoleContext'
+import { ROLES } from '../context/UserRoleContext'
 import './Layout.css'
 
 const Layout = ({ children }) => {
   const location = useLocation()
+  const { role, setRole } = useUserRole()
   const [theme, setTheme] = useState('dark')
 
   useEffect(() => {
@@ -34,13 +37,24 @@ const Layout = ({ children }) => {
                 Создайте контент-план для вашего IT-проекта с помощью ИИ
               </p>
             </div>
-            <button
-              type="button"
-              className="theme-toggle-btn"
-              onClick={toggleTheme}
-            >
-              {theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}
-            </button>
+            <div className="header-controls">
+              <select
+                className="role-select"
+                value={role}
+                onChange={(e) => setRole(e.target.value)}
+                title="Роль пользователя"
+              >
+                <option value={ROLES.SMM}>SMM-специалист</option>
+                <option value={ROLES.DEVELOPER}>Специалист-программист</option>
+              </select>
+              <button
+                type="button"
+                className="theme-toggle-btn"
+                onClick={toggleTheme}
+              >
+                {theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}
+              </button>
+            </div>
           </div>
           <nav className="main-nav">
             <Link 

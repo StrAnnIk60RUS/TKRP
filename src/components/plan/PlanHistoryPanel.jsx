@@ -43,7 +43,14 @@ const buildDiffSummary = (item, currentSummary) => {
   return diffs
 }
 
-const PlanHistoryPanel = ({ history, onLoad, currentPlanId, currentPlanType, currentSummary }) => {
+const PlanHistoryPanel = ({
+  history,
+  onLoad,
+  currentPlanId,
+  currentPlanType,
+  currentSavedAt = null,
+  currentSummary
+}) => {
   if (!Array.isArray(history) || history.length === 0) {
     return (
       <section className="plan-section">
@@ -67,7 +74,10 @@ const PlanHistoryPanel = ({ history, onLoad, currentPlanId, currentPlanType, cur
       </div>
       <div className="precedent-cards">
         {history.map((item) => {
-          const isCurrent = item.id === currentPlanId && item.type === currentPlanType
+          const isCurrent =
+            item.id === currentPlanId &&
+            item.type === currentPlanType &&
+            (!currentSavedAt || item.saved_at === currentSavedAt)
           const diffs = buildDiffSummary(item, currentSummary)
 
           return (

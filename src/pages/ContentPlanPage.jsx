@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useUserRole } from '../context/UserRoleContext'
 import PlanHistoryPanel from '../components/plan/PlanHistoryPanel'
 import PlanSummaryBar from '../components/plan/PlanSummaryBar'
 import PlanFilters from '../components/plan/PlanFilters'
@@ -9,12 +10,14 @@ import PostCard from '../components/plan/PostCard'
 import PostEditModal from '../components/plan/PostEditModal'
 import PlanEditModal from '../components/plan/PlanEditModal'
 import {
+  getCurrentHistoryEntry,
   getCurrentOptimization,
   getCurrentPlan,
   getPlanHistory,
   loadPlanFromHistory,
   savePlanSnapshot
 } from '../services/planStorage'
+import { exportToExcel, exportToPdf } from '../utils/contentPlanExport'
 import './ContentPlanPage.css'
 
 const DEFAULT_FILTERS = {
@@ -89,6 +92,7 @@ const matchesFilters = (publication, filters) => {
 
 const ContentPlanPage = () => {
   const navigate = useNavigate()
+  const { isDeveloper } = useUserRole()
   const [contentPlan, setContentPlan] = useState(null)
   const [loading, setLoading] = useState(true)
   const [optimizationMeta, setOptimizationMeta] = useState(null)
@@ -97,6 +101,7 @@ const ContentPlanPage = () => {
   const [isPlanEditOpen, setIsPlanEditOpen] = useState(false)
   const [filters, setFilters] = useState(DEFAULT_FILTERS)
   const [viewMode, setViewMode] = useState('cards')
+  const [downloadMenuOpen, setDownloadMenuOpen] = useState(false)
 
   const safePlan = useMemo(() => ensureUniquePublicationIds(contentPlan), [contentPlan])
   const publications = useMemo(
@@ -116,6 +121,15 @@ const ContentPlanPage = () => {
     setPlanHistory(getPlanHistory())
     setLoading(false)
   }, [])
+
+  useEffect(() => {
+    if (!downloadMenuOpen) return
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') setDownloadMenuOpen(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [downloadMenuOpen])
 
   const filteredPublications = useMemo(
     () => publications.filter((publication) => matchesFilters(publication, filters)),
@@ -159,6 +173,11 @@ const ContentPlanPage = () => {
   }, [filteredPublications, publications.length, safePlan])
 
   const currentPlanType = optimizationMeta ? 'optimized' : 'draft'
+  const currentHistoryEntry = getCurrentHistoryEntry()
+  const currentSavedAt =
+    currentHistoryEntry?.id === contentPlan?.plan_id && currentHistoryEntry?.type === currentPlanType
+      ? currentHistoryEntry.saved_at
+      : null
   const currentSummary = useMemo(
     () => ({
       publications_count: publications.length,
@@ -232,19 +251,37 @@ const ContentPlanPage = () => {
     setPlanHistory(getPlanHistory())
   }
 
-  const handleDownload = () => {
-    if (!contentPlan) return
+  const baseFilename = `content_plan_${new Date().toISOString().split('T')[0]}`
 
+  const handleDownloadJson = () => {
+    if (!contentPlan) return
     const jsonString = JSON.stringify(contentPlan, null, 2)
     const blob = new Blob([jsonString], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `content_plan_${new Date().toISOString().split('T')[0]}.json`
+    link.download = `${baseFilename}.json`
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
     URL.revokeObjectURL(url)
+    setDownloadMenuOpen(false)
+  }
+
+  const handleDownloadExcel = () => {
+    if (!contentPlan) return
+    exportToExcel(contentPlan, baseFilename)
+    setDownloadMenuOpen(false)
+  }
+
+  const handleDownloadPdf = async () => {
+    if (!contentPlan) return
+    try {
+      await exportToPdf(contentPlan, { filename: baseFilename, isOptimized: !!optimizationMeta })
+    } catch (e) {
+      console.error('Ошибка экспорта PDF:', e)
+    }
+    setDownloadMenuOpen(false)
   }
 
   if (loading) {
@@ -288,9 +325,45 @@ const ContentPlanPage = () => {
             >
               Редактировать параметры
             </button>
-            <button className="primary-btn" onClick={handleDownload}>
-              Скачать JSON
-            </button>
+            <div className="download-dropdown">
+              <button
+                type="button"
+                className="primary-btn"
+                onClick={() => setDownloadMenuOpen((v) => !v)}
+                aria-expanded={downloadMenuOpen}
+                aria-haspopup="true"
+              >
+                Скачать ▼
+              </button>
+              {downloadMenuOpen && (
+                <>
+                  <div
+                    className="download-dropdown-backdrop"
+                    onClick={() => setDownloadMenuOpen(false)}
+                    aria-hidden="true"
+                  />
+                  <ul className="download-dropdown-menu">
+                    <li>
+                      <button type="button" onClick={handleDownloadExcel}>
+                        Excel (.xlsx)
+                      </button>
+                    </li>
+                    <li>
+                      <button type="button" onClick={handleDownloadPdf}>
+                        PDF
+                      </button>
+                    </li>
+                    {isDeveloper && (
+                      <li>
+                        <button type="button" onClick={handleDownloadJson}>
+                          JSON
+                        </button>
+                      </li>
+                    )}
+                  </ul>
+                </>
+              )}
+            </div>
           </div>
         </div>
         <p className="page-subtitle">
@@ -312,6 +385,7 @@ const ContentPlanPage = () => {
           onLoad={handleLoadHistoryEntry}
           currentPlanId={contentPlan.plan_id}
           currentPlanType={currentPlanType}
+          currentSavedAt={currentSavedAt}
           currentSummary={currentSummary}
         />
 

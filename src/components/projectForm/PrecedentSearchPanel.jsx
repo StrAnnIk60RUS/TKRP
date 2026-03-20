@@ -18,8 +18,11 @@ const PrecedentSearchPanel = ({
   demoHorizonExample,
   onLoadHorizonExample,
   onSeedDemoPrecedents,
+  onExportOntologyToExcel,
   onSearchPrecedents,
+  showDemoButtons = true,
   isProcessing,
+  isExportingOntology,
   isGeneratingDraftPlan,
   isSeedingPrecedents,
   isSearchingPrecedents,
@@ -60,33 +63,51 @@ const PrecedentSearchPanel = ({
       </div>
 
       <div className="workflow-action-row">
-        <select
-          id="demoHorizonExample"
-          name="demoHorizonExample"
-          value={demoHorizonExample}
-          onChange={(e) => onLoadHorizonExample(e.target.value)}
-          disabled={isProcessing || isGeneratingDraftPlan || isEnrichmentServerAvailable === false}
-          className="form-select demo-horizon-select"
-          title="Загрузить демо-пример для выбранного горизонта"
-        >
-          <option value="example_month_plan">1 месяц</option>
-          <option value="example_three_month_plan">3 месяца</option>
-          <option value="example_six_month_plan">6 месяцев</option>
-          <option value="example_year_plan">12 месяцев</option>
-        </select>
+        {showDemoButtons && (
+          <>
+            <select
+              id="demoHorizonExample"
+              name="demoHorizonExample"
+              value={demoHorizonExample}
+              onChange={(e) => onLoadHorizonExample(e.target.value)}
+              disabled={isProcessing || isGeneratingDraftPlan || isEnrichmentServerAvailable === false}
+              className="form-select demo-horizon-select"
+              title="Загрузить демо-пример для выбранного горизонта"
+            >
+              <option value="example_month_plan">1 месяц</option>
+              <option value="example_three_month_plan">3 месяца</option>
+              <option value="example_six_month_plan">6 месяцев</option>
+              <option value="example_year_plan">12 месяцев</option>
+            </select>
+            <button
+              type="button"
+              className="submit-button secondary"
+              onClick={onSeedDemoPrecedents}
+              disabled={
+                isProcessing ||
+                isGeneratingDraftPlan ||
+                isSeedingPrecedents ||
+                isEnrichmentServerAvailable === false
+              }
+              title="Загрузить демо-базу прецедентов"
+            >
+              <span>{isSeedingPrecedents ? 'ЗАГРУЗКА ДЕМО...' : 'ЗАГРУЗИТЬ ДЕМО-ПРЕЦЕДЕНТЫ'}</span>
+            </button>
+          </>
+        )}
         <button
           type="button"
           className="submit-button secondary"
-          onClick={onSeedDemoPrecedents}
+          onClick={onExportOntologyToExcel}
           disabled={
             isProcessing ||
             isGeneratingDraftPlan ||
-            isSeedingPrecedents ||
+            isExportingOntology ||
             isEnrichmentServerAvailable === false
           }
-          title="Загрузить демо-базу прецедентов"
+          title="Скачать онтологию (классы, сущности, отношения) в Excel"
         >
-          <span>{isSeedingPrecedents ? 'ЗАГРУЗКА ДЕМО...' : 'ЗАГРУЗИТЬ ДЕМО-ПРЕЦЕДЕНТЫ'}</span>
+          <span>{isExportingOntology ? 'ЭКСПОРТ...' : 'ЭКСПОРТ ОНТОЛОГИИ В EXCEL'}</span>
         </button>
         <button
           type="button"
@@ -106,10 +127,12 @@ const PrecedentSearchPanel = ({
 
       {!hasResults && (
         <div className="precedent-empty-state precedent-empty-state-light">
-          Сначала нажмите `Подобрать прецеденты`.
+          Сначала нажмите «Подобрать прецеденты».
           {precedentsSummary?.publications_count
             ? ' Поиск выполнится по уже накопленной базе.'
-            : ' Если база пустая, загрузите демо-прецеденты или сначала обогатите конкурентов.'}
+            : showDemoButtons
+            ? ' Если база пустая, загрузите демо-прецеденты или сначала обогатите конкурентов.'
+            : ' Если база пустая, сначала обогатите конкурентов на шаге 1.'}
         </div>
       )}
 
@@ -120,7 +143,10 @@ const PrecedentSearchPanel = ({
               <strong>Следующий шаг: сформируйте черновой план на основе найденных прецедентов.</strong>
             )}
             {!hasPublicationResults && !hasPlanResults && (
-              <strong>Результатов нет: уточните описание проекта или загрузите демо-данные.</strong>
+              <strong>
+                Результатов нет: уточните описание проекта
+                {showDemoButtons ? ' или загрузите демо-данные' : ''}.
+              </strong>
             )}
           </div>
 
@@ -230,7 +256,7 @@ const PrecedentSearchPanel = ({
             {!hasPublicationResults && !hasPlanResults && (
               <div className="precedent-empty-state precedent-empty-state-light">
                 По текущим данным формы ничего не найдено. Попробуйте точнее заполнить описание проекта,
-                платформы и преимущества или загрузите демо-прецеденты.
+                платформы и преимущества{showDemoButtons ? ' или загрузите демо-прецеденты' : ''}.
               </div>
             )}
           </div>

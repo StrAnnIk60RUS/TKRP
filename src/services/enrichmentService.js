@@ -167,6 +167,27 @@ export async function searchPrecedents(payload) {
 }
 
 /**
+ * Скачивает Excel-файл с онтологией (классы, сущности, отношения) из базы прецедентов
+ * @returns {Promise<void>}
+ */
+export async function exportOntologyToExcel() {
+  const response = await fetch(`${API_URL}/api/precedents/ontology/export`, { method: 'GET' })
+  if (!response.ok) {
+    const err = await buildFetchErrorMessage(response)
+    throw new Error(err)
+  }
+  const blob = await response.blob()
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `ontology_${new Date().toISOString().slice(0, 10)}.xlsx`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+}
+
+/**
  * Генерирует черновой контент-план на основе формы и прецедентов (RAG -> LLM)
  * @param {Object} payload
  * @returns {Promise<Object>}

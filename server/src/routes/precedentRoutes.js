@@ -2,10 +2,12 @@ import fs from 'fs';
 import path from 'path';
 import { Router } from 'express';
 import { fileURLToPath } from 'url';
+import * as XLSX from 'xlsx';
 
 import {
   getPrecedentsSnapshot,
   getPrecedentsSummary,
+  getOntologyExportData,
   persistPrecedents,
   searchPrecedents
 } from '../repositories/precedentRepository.js';
@@ -102,6 +104,32 @@ router.post('/search', async (req, res) => {
     });
   } catch (error) {
     return sendRouteError(res, req, 500, 'Внутренняя ошибка сервера в /api/precedents/search', error);
+  }
+});
+
+router.get('/ontology/export', (req, res) => {
+  try {
+    const { classesRows, entitiesRows, relationsRows } = getOntologyExportData();
+
+    const wb = XLSX.utils.book_new();
+
+    const wsClasses = XLSX.utils.aoa_to_sheet(classesRows);
+    XLSX.utils.book_append_sheet(wb, wsClasses, 'Классы');
+
+    const wsEntities = XLSX.utils.aoa_to_sheet(entitiesRows);
+    XLSX.utils.book_append_sheet(wb, wsEntities, 'Сущности');
+
+    const wsRelations = XLSX.utils.aoa_to_sheet(relationsRows);
+    XLSX.utils.book_append_sheet(wb, wsRelations, 'Отношения');
+
+    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const filename = `ontology_${new Date().toISOString().slice(0, 10)}.xlsx`;
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    return res.send(buffer);
+  } catch (error) {
+    return sendRouteError(res, req, 500, 'Внутренняя ошибка сервера в /api/precedents/ontology/export', error);
   }
 });
 

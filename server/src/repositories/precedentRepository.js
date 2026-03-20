@@ -19,6 +19,14 @@ const PUBLICATIONS_PATH = path.join(STORAGE_ROOT, 'publications.json');
 const CONTENT_PLANS_PATH = path.join(STORAGE_ROOT, 'content_plans.json');
 const EMBEDDING_SCHEMA_VERSION = 2;
 const EMBEDDING_TEXT_MAX_CHARS = 4000;
+
+/** Порог cosine similarity: >= threshold = семантический дубликат. Default 0.95. */
+const DEDUP_SIMILARITY_THRESHOLD = Math.min(
+  1,
+  Math.max(0.5, Number(process.env.DEDUP_SIMILARITY_THRESHOLD) || 0.95)
+);
+const DEDUP_SEMANTIC_ENABLED = process.env.DEDUP_SEMANTIC_ENABLED !== 'false';
+
 let storageMutationQueue = Promise.resolve();
 
 function createEmptyStorage() {
@@ -199,6 +207,58 @@ function getEmbeddingForItem(item) {
   return Array.isArray(embedding) && embedding.length > 0 ? embedding : null;
 }
 
+/**
+ * Фильтрует семантические дубликаты: исключает из newItems те, чей эмбеддинг
+ * имеет cosine similarity >= threshold с существующими или уже принятыми элементами.
+ * Дедупликация выполняется и против existingItems, и внутри пачки newItems.
+ * @param {Object[]} newItems - новые элементы (должны иметь embedding)
+ * @param {Object[]} existingItems - существующие элементы в хранилище
+ * @param {string} idField - имя поля ID (для совместимости, не используется)
+ * @returns {{ filtered: Object[], skipped: Object[], skipped_count: number }}
+ */
+function filterSemanticDuplicates(newItems, existingItems, idField) {
+  if (!Array.isArray(newItems) || !Array.isArray(existingItems)) {
+    return { filtered: newItems || [], skipped: [], skipped_count: 0 };
+  }
+
+  const keptEmbeddings = existingItems
+    .map((item) => getEmbeddingForItem(item))
+    .filter(Boolean);
+
+  const filtered = [];
+  const skipped = [];
+
+  for (const newItem of newItems) {
+    const newEmb = getEmbeddingForItem(newItem);
+    if (!newEmb) {
+      filtered.push(newItem);
+      continue;
+    }
+
+    let isDuplicate = false;
+    for (const keptEmb of keptEmbeddings) {
+      const sim = cosineSimilarity(newEmb, keptEmb);
+      if (sim >= DEDUP_SIMILARITY_THRESHOLD) {
+        isDuplicate = true;
+        break;
+      }
+    }
+
+    if (isDuplicate) {
+      skipped.push(newItem);
+    } else {
+      filtered.push(newItem);
+      keptEmbeddings.push(newEmb);
+    }
+  }
+
+  return {
+    filtered,
+    skipped,
+    skipped_count: skipped.length
+  };
+}
+
 function buildEmbeddingTextForPublication(publication) {
   const base = collectPublicationSearchText(publication);
   const contentSnippet = typeof publication?.raw_content === 'string' ? publication.raw_content : '';
@@ -340,7 +400,8 @@ function collectContentPlansFromCompetitors(competitors = []) {
       platform: competitor.platform || competitor.content_plan_model.platform || null,
       collected_at: new Date().toISOString(),
       content_plan_model: competitor.content_plan_model,
-      content_strategy_snapshot: competitor.content_strategy || null
+      content_strategy_snapshot: competitor.content_strategy || null,
+      ontology_support: competitor.ontology_support || null
     }));
 }
 
@@ -387,22 +448,14 @@ export async function persistPrecedents(enrichedData, options = {}) {
     const publications = collectPublicationsFromCompetitors(competitors);
     const contentPlans = collectContentPlansFromCompetitors(competitors);
 
-    let insertedPublications = 0;
-    let updatedPublications = 0;
-    let insertedContentPlans = 0;
-    let updatedContentPlans = 0;
-
-    publications.forEach((publication) => {
-      const result = upsertByKey(storage.publications, publication, 'publication_id');
-      if (result === 'inserted') insertedPublications += 1;
-      if (result === 'updated') updatedPublications += 1;
-    });
-
-    contentPlans.forEach((contentPlan) => {
-      const result = upsertByKey(storage.content_plans, contentPlan, 'plan_id');
-      if (result === 'inserted') insertedContentPlans += 1;
-      if (result === 'updated') updatedContentPlans += 1;
-    });
+    let publicationsToUpsert = publications;
+    let contentPlansToUpsert = contentPlans;
+    let dedupStats = {
+      publications_skipped_duplicates: 0,
+      content_plans_skipped_duplicates: 0,
+      dedup_enabled: false,
+      dedup_error: null
+    };
 
     let embeddingStats = {
       publications_embedded: 0,
@@ -412,18 +465,75 @@ export async function persistPrecedents(enrichedData, options = {}) {
     };
 
     try {
-      const pubEmbed = await embedMissingItems(storage.publications, buildEmbeddingTextForPublication);
-      const planEmbed = await embedMissingItems(storage.content_plans, buildEmbeddingTextForContentPlan);
+      const pubStorageRes = await embedMissingItems(
+        storage.publications,
+        buildEmbeddingTextForPublication
+      );
+      const planStorageRes = await embedMissingItems(
+        storage.content_plans,
+        buildEmbeddingTextForContentPlan
+      );
+      const pubNewRes = await embedMissingItems(publications, buildEmbeddingTextForPublication);
+      const planNewRes = await embedMissingItems(contentPlans, buildEmbeddingTextForContentPlan);
+
       embeddingStats = {
-        publications_embedded: pubEmbed.embedded_count,
-        content_plans_embedded: planEmbed.embedded_count,
-        embedding_model: pubEmbed.embedding_model || planEmbed.embedding_model || null,
+        publications_embedded:
+          pubStorageRes.embedded_count + pubNewRes.embedded_count,
+        content_plans_embedded:
+          planStorageRes.embedded_count + planNewRes.embedded_count,
+        embedding_model:
+          pubStorageRes.embedding_model ||
+          planStorageRes.embedding_model ||
+          pubNewRes.embedding_model ||
+          planNewRes.embedding_model ||
+          null,
         embedding_error: null
       };
+
+      if (DEDUP_SEMANTIC_ENABLED) {
+        const pubDedup = filterSemanticDuplicates(
+          publications,
+          storage.publications,
+          'publication_id'
+        );
+        publicationsToUpsert = pubDedup.filtered;
+        dedupStats.publications_skipped_duplicates = pubDedup.skipped_count;
+
+        const planDedup = filterSemanticDuplicates(contentPlans, storage.content_plans, 'plan_id');
+        contentPlansToUpsert = planDedup.filtered;
+        dedupStats.content_plans_skipped_duplicates = planDedup.skipped_count;
+        dedupStats.dedup_enabled = true;
+
+        if (pubDedup.skipped_count > 0 || planDedup.skipped_count > 0) {
+          console.log(
+            `[precedentRepository] Semantic dedup: skipped ${pubDedup.skipped_count} publications, ${planDedup.skipped_count} content plans (threshold=${DEDUP_SIMILARITY_THRESHOLD})`
+          );
+        }
+      }
     } catch (error) {
       embeddingStats.embedding_error = error.message || 'embedding_error';
-      console.warn('[precedentRepository] Embedding indexing skipped:', embeddingStats.embedding_error);
+      dedupStats.dedup_error = error.message || 'embedding_failed';
+      console.warn('[precedentRepository] Embedding/dedup skipped:', embeddingStats.embedding_error);
+      publicationsToUpsert = publications;
+      contentPlansToUpsert = contentPlans;
     }
+
+    let insertedPublications = 0;
+    let updatedPublications = 0;
+    let insertedContentPlans = 0;
+    let updatedContentPlans = 0;
+
+    publicationsToUpsert.forEach((publication) => {
+      const result = upsertByKey(storage.publications, publication, 'publication_id');
+      if (result === 'inserted') insertedPublications += 1;
+      if (result === 'updated') updatedPublications += 1;
+    });
+
+    contentPlansToUpsert.forEach((contentPlan) => {
+      const result = upsertByKey(storage.content_plans, contentPlan, 'plan_id');
+      if (result === 'inserted') insertedContentPlans += 1;
+      if (result === 'updated') updatedContentPlans += 1;
+    });
 
     storage.ingestion_runs.push({
       run_id: `ingest_${Date.now()}`,
@@ -436,6 +546,7 @@ export async function persistPrecedents(enrichedData, options = {}) {
       updated_publications: updatedPublications,
       inserted_content_plans: insertedContentPlans,
       updated_content_plans: updatedContentPlans,
+      dedup: dedupStats,
       embedding: embeddingStats
     });
 
@@ -450,6 +561,7 @@ export async function persistPrecedents(enrichedData, options = {}) {
       updated_content_plans: updatedContentPlans,
       total_publications: storage.publications.length,
       total_content_plans: storage.content_plans.length,
+      dedup: dedupStats,
       embedding: embeddingStats
     };
   });
@@ -675,4 +787,34 @@ export async function searchPrecedents(query, options = {}) {
       }
     };
   }
+}
+
+/**
+ * Aggregates ontology_support from content_plans for Excel export.
+ * Returns arrays of rows for classes, entities, relations sheets.
+ */
+export function getOntologyExportData() {
+  const storage = readStorage();
+  const contentPlans = storage.content_plans || [];
+
+  const classesRows = [['Конкурент', 'Платформа', 'Класс']];
+  const entitiesRows = [['Конкурент', 'Платформа', 'Сущность']];
+  const relationsRows = [['Конкурент', 'Платформа', 'Связь']];
+
+  contentPlans.forEach((plan) => {
+    const competitor = plan.competitor_name || plan.competitor_id || '—';
+    const platform = plan.platform || '—';
+    const ontology = plan.ontology_support || {};
+
+    const classes = Array.isArray(ontology.classes) ? ontology.classes : [];
+    classes.forEach((c) => classesRows.push([competitor, platform, c]));
+
+    const entities = Array.isArray(ontology.entities) ? ontology.entities : [];
+    entities.forEach((e) => entitiesRows.push([competitor, platform, e]));
+
+    const relations = Array.isArray(ontology.relations) ? ontology.relations : [];
+    relations.forEach((r) => relationsRows.push([competitor, platform, r]));
+  });
+
+  return { classesRows, entitiesRows, relationsRows };
 }

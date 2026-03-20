@@ -1,7 +1,9 @@
 const CURRENT_PLAN_KEY = 'currentContentPlan'
 const CURRENT_OPTIMIZATION_KEY = 'currentContentPlanOptimization'
+const CURRENT_HISTORY_ENTRY_KEY = 'currentContentPlanHistoryEntry'
 const PLAN_HISTORY_KEY = 'contentPlanHistory'
 const MAX_HISTORY_ITEMS = 12
+const DEDUP_WINDOW_MS = 15_000 // если та же plan_id+type сохранена повторно в течение 15 сек — заменяем
 
 function safeReadJson(key, fallbackValue) {
   try {
@@ -85,14 +87,38 @@ export function getPlanHistory() {
   return Array.isArray(history) ? history : []
 }
 
+/** @returns {{ id: string, type: string, saved_at: string } | null} */
+export function getCurrentHistoryEntry() {
+  return safeReadJson(CURRENT_HISTORY_ENTRY_KEY, null)
+}
+
 export function savePlanSnapshot(plan, metadata = {}) {
   if (!plan || typeof plan !== 'object') return false
 
   const { currentSaved, optimizationSaved } = saveCurrentSnapshot(plan, metadata)
 
   const entry = buildHistoryEntry(plan, metadata)
-  const nextHistory = [entry, ...getPlanHistory()].slice(0, MAX_HISTORY_ITEMS)
+  const history = getPlanHistory()
+  const now = Date.now()
+  const last = history[0]
 
+  let nextHistory
+  if (
+    last &&
+    last.id === entry.id &&
+    last.type === entry.type &&
+    now - new Date(last.saved_at).getTime() < DEDUP_WINDOW_MS
+  ) {
+    nextHistory = [entry, ...history.slice(1)].slice(0, MAX_HISTORY_ITEMS)
+  } else {
+    nextHistory = [entry, ...history].slice(0, MAX_HISTORY_ITEMS)
+  }
+
+  safeWriteJson(CURRENT_HISTORY_ENTRY_KEY, {
+    id: entry.id,
+    type: entry.type,
+    saved_at: entry.saved_at
+  })
   const historySaved = safeWriteJson(PLAN_HISTORY_KEY, nextHistory)
   return currentSaved && optimizationSaved && historySaved
 }
@@ -109,6 +135,11 @@ export function loadPlanFromHistory(entryId, entryType = null, savedAt = null) {
   saveCurrentSnapshot(entry.plan, {
     type: entry.type || 'draft',
     optimization: entry.optimization || null
+  })
+  safeWriteJson(CURRENT_HISTORY_ENTRY_KEY, {
+    id: entry.id,
+    type: entry.type || 'draft',
+    saved_at: entry.saved_at
   })
   return entry.plan
 }

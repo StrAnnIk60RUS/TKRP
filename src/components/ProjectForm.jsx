@@ -9,19 +9,27 @@ import PrecedentSearchPanel from './projectForm/PrecedentSearchPanel'
 import DraftPlanWorkflowPanel from './projectForm/DraftPlanWorkflowPanel'
 import TechnicalDetailsPanel from './projectForm/TechnicalDetailsPanel'
 import { useCompetitorsPipeline } from '../hooks/useCompetitorsPipeline'
-import { getPrecedentsSummary, searchPrecedents, seedDemoPrecedents, generateDraftContentPlan, optimizeDraftContentPlan } from '../services/enrichmentService'
+import {
+  getPrecedentsSummary,
+  searchPrecedents,
+  seedDemoPrecedents,
+  exportOntologyToExcel,
+  generateDraftContentPlan,
+  optimizeDraftContentPlan
+} from '../services/enrichmentService'
 import { savePlanSnapshot } from '../services/planStorage'
 import PrecedentDetailsModal from './precedents/PrecedentDetailsModal'
+import { useUserRole } from '../context/UserRoleContext'
 import {
   consumerCategoryOptions,
   contentFormatOptions,
   demoExampleFormData,
   demoHorizonExampleOptions,
   frequencyOptions,
+  getWizardSteps,
   initialFormData,
   platformOptions,
-  requiredFields,
-  wizardSteps
+  requiredFields
 } from './projectForm/formConfig'
 import {
   buildAlphaByDimension,
@@ -38,7 +46,10 @@ import './ProjectForm.css'
 
 const ProjectForm = () => {
   const navigate = useNavigate()
+  const { isDeveloper } = useUserRole()
   const [formData, setFormData] = useState(initialFormData)
+
+  const wizardSteps = getWizardSteps(isDeveloper)
 
   const [errors, setErrors] = useState({})
   const [touched, setTouched] = useState({})
@@ -49,6 +60,7 @@ const ProjectForm = () => {
   const [precedentSearchResults, setPrecedentSearchResults] = useState(null)
   const [isSearchingPrecedents, setIsSearchingPrecedents] = useState(false)
   const [isSeedingPrecedents, setIsSeedingPrecedents] = useState(false)
+  const [isExportingOntology, setIsExportingOntology] = useState(false)
   const [isGeneratingDraftPlan, setIsGeneratingDraftPlan] = useState(false)
   const [draftPlanResult, setDraftPlanResult] = useState(null)
   const [isOptimizingPlan, setIsOptimizingPlan] = useState(false)
@@ -56,7 +68,7 @@ const ProjectForm = () => {
   const [currentStep, setCurrentStep] = useState(1)
   // Общий флаг "идет работа" для блокировки неуместных действий.
   const isProcessing =
-    isSearchingPrecedents || isSeedingPrecedents || isGeneratingDraftPlan || isOptimizingPlan
+    isSearchingPrecedents || isSeedingPrecedents || isGeneratingDraftPlan || isOptimizingPlan || isExportingOntology
   const toastCounterRef = useRef(0)
   const [selectedPrecedentItem, setSelectedPrecedentItem] = useState(null)
   const [demoHorizonExample, setDemoHorizonExample] = useState('example_year_plan')
@@ -66,18 +78,22 @@ const ProjectForm = () => {
   const retrievalBadge = useMemo(() => {
     const type = precedentRetrieval?.type
     if (type === 'embedding_cosine') {
-      return {
-        label: 'Semantic retrieval',
-        hint: precedentRetrieval?.embedding_model ? `${precedentRetrieval.embedding_model}` : 'embeddings',
-        tone: 'success'
-      }
+      return isDeveloper
+        ? {
+            label: 'Semantic retrieval',
+            hint: precedentRetrieval?.embedding_model ? `${precedentRetrieval.embedding_model}` : 'embeddings',
+            tone: 'success'
+          }
+        : { label: 'Поиск по смыслу', hint: '', tone: 'success' }
     }
     if (type === 'token_overlap_fallback') {
-      return { label: 'Token overlap', hint: 'fallback', tone: 'neutral' }
+      return isDeveloper
+        ? { label: 'Token overlap', hint: 'fallback', tone: 'neutral' }
+        : { label: 'Поиск по ключевым словам', hint: '', tone: 'neutral' }
     }
     if (!type) return null
     return { label: type, hint: '', tone: 'neutral' }
-  }, [precedentRetrieval])
+  }, [precedentRetrieval, isDeveloper])
 
   const filledRequired = useMemo(() => {
     return requiredFields.filter(field => {
@@ -117,7 +133,7 @@ const ProjectForm = () => {
     handleParseCompetitorsFromUrls,
     clearCompetitors,
     canEnrich
-  } = useCompetitorsPipeline(addToast)
+  } = useCompetitorsPipeline(addToast, { isDeveloper })
 
   const reviewChecklist = useMemo(
     () => buildReviewChecklist(formData, competitorsData, precedentSearchResults, draftPlanResult),
@@ -154,8 +170,22 @@ const ProjectForm = () => {
       formData.platforms.length > 0
     const hasDraftPlan = Boolean(draftPlanResult?.draft?.draft_content_plan)
     const hasOptimizedPlan = Boolean(optimizationResult?.optimized_content_plan)
+    const isOnResultsStep = isDeveloper ? currentStep === 5 : currentStep === 4
 
-    return [
+    const evolutionStatus =
+      hasDraftPlan || hasOptimizedPlan ? 'completed' : currentStep === 4 ? 'in_progress' : 'pending'
+    const resultsStatus =
+      isSearchingPrecedents || isSeedingPrecedents || isGeneratingDraftPlan || isOptimizingPlan
+        ? 'in_progress'
+        : hasOptimizedPlan || hasDraftPlan
+        ? 'completed'
+        : isOnResultsStep && filledRequired < requiredFields.length
+        ? 'attention'
+        : isOnResultsStep
+        ? 'in_progress'
+        : 'pending'
+
+    const base = [
       isParsingFromUrls || isEnriching
         ? 'in_progress'
         : hasCompetitorData
@@ -170,23 +200,20 @@ const ProjectForm = () => {
         ? currentStep > 3
           ? 'attention'
           : 'in_progress'
-        : 'pending',
-      hasDraftPlan || hasOptimizedPlan ? 'completed' : currentStep === 4 ? 'in_progress' : 'pending',
-      isSearchingPrecedents || isSeedingPrecedents || isGeneratingDraftPlan || isOptimizingPlan
-        ? 'in_progress'
-        : hasOptimizedPlan || hasDraftPlan
-        ? 'completed'
-        : currentStep === 5 && filledRequired < requiredFields.length
-        ? 'attention'
-        : currentStep === 5
-        ? 'in_progress'
         : 'pending'
     ]
+    if (isDeveloper) {
+      base.push(evolutionStatus, resultsStatus)
+    } else {
+      base.push(resultsStatus)
+    }
+    return base
   }, [
     competitorUrls,
     competitorsData,
     currentStep,
     draftPlanResult,
+    isDeveloper,
     filledRequired,
     formData,
     isEnriching,
@@ -223,6 +250,10 @@ const ProjectForm = () => {
 
     loadPrecedentsSummary()
   }, [])
+
+  useEffect(() => {
+    setCurrentStep((prev) => Math.min(prev, wizardSteps.length))
+  }, [wizardSteps.length])
 
   useEffect(() => {
     const firstPost = competitorsData?.competitors?.[0]?.posts?.[0]
@@ -360,6 +391,23 @@ const ProjectForm = () => {
       addToast(`Ошибка: ${error.message}`, 'error')
     } finally {
       setIsSeedingPrecedents(false)
+    }
+  }
+
+  const handleExportOntologyToExcel = async () => {
+    if (isEnrichmentServerAvailable === false) {
+      addToast('Сервер недоступен. Запустите backend на порту 3001.', 'error')
+      return
+    }
+    setIsExportingOntology(true)
+    try {
+      await exportOntologyToExcel()
+      addToast('Онтология экспортирована в Excel', 'success')
+    } catch (error) {
+      console.error('Ошибка экспорта онтологии:', error)
+      addToast(`Ошибка: ${error.message}`, 'error')
+    } finally {
+      setIsExportingOntology(false)
     }
   }
 
@@ -573,6 +621,7 @@ const ProjectForm = () => {
               isProcessing={isProcessing}
               isEnrichmentServerAvailable={isEnrichmentServerAvailable}
               canEnrich={canEnrich}
+              showEnrichButton={isDeveloper}
               onUrlChange={handleCompetitorUrlChange}
               onAddUrl={handleAddCompetitorUrl}
               onRemoveUrl={handleRemoveCompetitorUrl}
@@ -1004,8 +1053,8 @@ const ProjectForm = () => {
           </div>
         </section>}
 
-        {/* Параметры эволюционного моделирования (опционально) */}
-        {currentStep === 4 && <section className="form-section">
+        {/* Параметры эволюционного моделирования (опционально) — только для специалиста-программиста */}
+        {currentStep === 4 && isDeveloper && <section className="form-section">
           <h2 className="section-title">Параметры эволюционного моделирования (опционально)</h2>
           
           {/* Основные параметры */}
@@ -1345,7 +1394,7 @@ const ProjectForm = () => {
           </small>
         </section>}
 
-        {currentStep === 5 && (
+        {((isDeveloper && currentStep === 5) || (!isDeveloper && currentStep === 4)) && (
           <>
             <WorkflowSummaryPanel
               filledRequired={filledRequired}
@@ -1366,8 +1415,11 @@ const ProjectForm = () => {
               demoHorizonExample={demoHorizonExample}
               onLoadHorizonExample={handleLoadHorizonExample}
               onSeedDemoPrecedents={handleSeedDemoPrecedents}
+              showDemoButtons={isDeveloper}
+              onExportOntologyToExcel={handleExportOntologyToExcel}
               onSearchPrecedents={handleSearchPrecedents}
               isProcessing={isProcessing}
+              isExportingOntology={isExportingOntology}
               isGeneratingDraftPlan={isGeneratingDraftPlan}
               isSeedingPrecedents={isSeedingPrecedents}
               isSearchingPrecedents={isSearchingPrecedents}
@@ -1389,12 +1441,14 @@ const ProjectForm = () => {
               isEnrichmentServerAvailable={isEnrichmentServerAvailable}
             />
 
-            <TechnicalDetailsPanel
-              precedentSearchQuery={precedentSearchQuery}
-              precedentSearchResults={precedentSearchResults}
-              draftPlanResult={draftPlanResult}
-              optimizationResult={optimizationResult}
-            />
+            {isDeveloper && (
+              <TechnicalDetailsPanel
+                precedentSearchQuery={precedentSearchQuery}
+                precedentSearchResults={precedentSearchResults}
+                draftPlanResult={draftPlanResult}
+                optimizationResult={optimizationResult}
+              />
+            )}
           </>
         )}
 
@@ -1414,6 +1468,7 @@ const ProjectForm = () => {
           item={selectedPrecedentItem}
           retrieval={precedentRetrieval}
           onClose={() => setSelectedPrecedentItem(null)}
+          showTechnicalDetails={isDeveloper}
         />
       )}
     </>

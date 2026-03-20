@@ -47,6 +47,18 @@ export const wizardSteps = [
   'Результаты'
 ]
 
+/** Шаги для SMM (без параметров эволюции). */
+export const wizardStepsSmm = [
+  'Конкуренты',
+  'Проект',
+  'Аудитория и план',
+  'Результаты'
+]
+
+export function getWizardSteps(isDeveloper) {
+  return isDeveloper ? wizardSteps : wizardStepsSmm
+}
+
 export const requiredFields = [
   'producerName',
   'producerActivitySpecification',

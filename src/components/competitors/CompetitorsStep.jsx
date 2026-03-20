@@ -10,6 +10,7 @@ const CompetitorsStep = ({
   isProcessing,
   isEnrichmentServerAvailable,
   canEnrich,
+  showEnrichButton = true,
   onUrlChange,
   onAddUrl,
   onRemoveUrl,
@@ -180,25 +181,27 @@ const CompetitorsStep = ({
               {` — ${competitorsData.competitors?.length || 0} конкурентов`}
             </span>
 
-            <button
-              type="button"
-              className="action-btn competitors-enrich-btn"
-              onClick={onEnrichUploaded}
-              disabled={isEnriching || isProcessing || !canEnrich || isEnrichmentServerAvailable === false}
-              style={{
-                backgroundColor: isEnrichmentServerAvailable === false ? '#666' : undefined,
-                cursor: isEnriching || !canEnrich ? 'not-allowed' : undefined
-              }}
-              title={
-                isEnrichmentServerAvailable === false
-                  ? 'Сервер обогащения недоступен'
-                  : !canEnrich
-                  ? 'Сначала выполните успешный парсинг конкурентов'
-                  : 'Обогатить данные конкурентов'
-              }
-            >
-              {isEnriching ? 'Обогащение...' : 'Обогатить'}
-            </button>
+            {showEnrichButton && (
+              <button
+                type="button"
+                className="action-btn competitors-enrich-btn"
+                onClick={onEnrichUploaded}
+                disabled={isEnriching || isProcessing || !canEnrich || isEnrichmentServerAvailable === false}
+                style={{
+                  backgroundColor: isEnrichmentServerAvailable === false ? '#666' : undefined,
+                  cursor: isEnriching || !canEnrich ? 'not-allowed' : undefined
+                }}
+                title={
+                  isEnrichmentServerAvailable === false
+                    ? 'Сервер обогащения недоступен'
+                    : !canEnrich
+                    ? 'Сначала выполните успешный парсинг конкурентов'
+                    : 'Обогатить данные конкурентов'
+                }
+              >
+                {isEnriching ? 'Обогащение...' : 'Обогатить'}
+              </button>
+            )}
 
             <button
               type="button"
@@ -216,7 +219,9 @@ const CompetitorsStep = ({
             <div className="ui-empty-title">Данных конкурентов пока нет</div>
             <div className="ui-empty-text">
               Добавьте 1–3 ссылки, выберите лимит постов и нажмите <strong>Спарсить</strong>.
-              После этого появится кнопка <strong>Обогатить</strong> и данные будут добавлены в базу прецедентов.
+              {showEnrichButton
+                ? ' После этого появится кнопка Обогатить и данные будут добавлены в базу прецедентов.'
+                : ' Данные будут автоматически обогащены и добавлены в базу прецедентов.'}
             </div>
           </div>
         )}
