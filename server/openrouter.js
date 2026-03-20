@@ -136,7 +136,7 @@ async function enrichSemanticBatch(batch, systemPrompt, options = {}) {
 }
 
 /**
- * Отправляет запрос к DeepSeek через OpenRouter API
+ * Отправляет запрос к LLM API
  * @param {string} systemPrompt - системный промпт
  * @param {string} userPrompt - пользовательский промпт
  * @param {Object} options - дополнительные опции
@@ -144,12 +144,12 @@ async function enrichSemanticBatch(batch, systemPrompt, options = {}) {
  */
 export async function callDeepSeekAPI(systemPrompt, userPrompt, options = {}) {
   if (!OPENROUTER_API_KEY) {
-    throw new Error('OPENROUTER_API_KEY не установлен в переменных окружения');
+    throw new Error('API ключ для LLM не установлен в переменных окружения');
   }
 
   const {
     temperature = 0.4,
-    maxTokens = 100000, // Ограничено доступными кредитами OpenRouter (доступно ~24732)
+    maxTokens = 100000,
     responseFormat = null
   } = options;
 
@@ -175,9 +175,8 @@ export async function callDeepSeekAPI(systemPrompt, userPrompt, options = {}) {
   }
 
   try {
-    console.log(`[OpenRouter] Отправка запроса к ${OPENROUTER_API_URL}`);
-    console.log(`[OpenRouter] Модель: ${AI_MODEL}`);  
-    console.log(`[OpenRouter] Размер промпта: ${(systemPrompt.length + userPrompt.length) / 1024} KB`);
+    console.log(`[LLM] Отправка запроса`);  
+    console.log(`[LLM] Размер промпта: ${(systemPrompt.length + userPrompt.length) / 1024} KB`);
     
     const response = await axios.post(
       OPENROUTER_API_URL,
@@ -193,13 +192,13 @@ export async function callDeepSeekAPI(systemPrompt, userPrompt, options = {}) {
       }
     );
 
-    console.log(`[OpenRouter] Ответ получен. Статус: ${response.status}`);
-    console.log(`[OpenRouter] Использовано токенов: ${response.data.usage?.total_tokens || 'N/A'}`);
+    console.log(`[LLM] Ответ получен. Статус: ${response.status}`);
+    console.log(`[LLM] Использовано токенов: ${response.data.usage?.total_tokens || 'N/A'}`);
     
     const content = response.data.choices?.[0]?.message?.content || null;
     if (!content) {
-      console.warn('[OpenRouter] Внимание: контент отсутствует в ответе');
-      console.log('[OpenRouter] Полный ответ:', JSON.stringify(response.data, null, 2));
+      console.warn('[LLM] Внимание: контент отсутствует в ответе');
+      console.log('[LLM] Полный ответ:', JSON.stringify(response.data, null, 2));
     }
 
     return {
@@ -209,9 +208,9 @@ export async function callDeepSeekAPI(systemPrompt, userPrompt, options = {}) {
       usage: response.data.usage || null
     };
   } catch (error) {
-    console.error('Ошибка при вызове OpenRouter API:', error.response?.data || error.message);
+    console.error('Ошибка при вызове LLM API:', error.response?.data || error.message);
 
-    let errorMessage = 'Ошибка при обращении к OpenRouter API';
+    let errorMessage = 'Ошибка при обращении к LLM API';
     if (error.response?.data?.error) {
       errorMessage = error.response.data.error.message || JSON.stringify(error.response.data.error);
     } else if (error.message) {
@@ -230,7 +229,7 @@ export async function callDeepSeekAPI(systemPrompt, userPrompt, options = {}) {
 }
 
 /**
- * Обогащает данные конкурентов через DeepSeek
+ * Обогащает данные конкурентов через LLM
  * @param {Object} competitorsData - сырые данные от парсера (уже с engagement_rate)
  * @returns {Promise<Object>} - обогащенные данные
  */
@@ -268,7 +267,7 @@ export async function enrichCompetitorsData(competitorsData) {
       usage: null,
       metadata: {
         enriched_at: new Date().toISOString(),
-        model: AI_MODEL,
+        model: 'llm',
         engagement_rate_calculated_locally: true,
         parse_successful: true,
         normalized_to_content_model: true,
@@ -302,7 +301,7 @@ export async function enrichCompetitorsData(competitorsData) {
       const compact = attempt > 0;
       try {
         console.log(
-          `[OpenRouter] Enrichment batch ${index + 1}/${batches.length}, posts=${batch.stats.posts_count}, bytes=${batch.stats.payload_bytes}, attempt=${attempt + 1}/${totalAttempts}${apiAttempt > 0 ? ` (api retry ${apiAttempt})` : ''}`
+          `[LLM] Enrichment batch ${index + 1}/${batches.length}, posts=${batch.stats.posts_count}, bytes=${batch.stats.payload_bytes}, attempt=${attempt + 1}/${totalAttempts}${apiAttempt > 0 ? ` (api retry ${apiAttempt})` : ''}`
         );
         const batchResult = await enrichSemanticBatch(batch, systemPrompt, { compact });
         semanticMaps.push(batchResult.postsById);
@@ -323,14 +322,14 @@ export async function enrichCompetitorsData(competitorsData) {
       } catch (error) {
         lastError = error;
         console.error(
-          `[OpenRouter] Ошибка enrichment batch ${index + 1}/${batches.length}:`,
+          `[LLM] Ошибка enrichment batch ${index + 1}/${batches.length}:`,
           error.message
         );
 
         if (isRetryableApiError(error) && apiAttempt < maxApiRetries) {
           apiAttempt += 1;
           const delayMs = 2000;
-          console.log(`[OpenRouter] Повтор запроса через ${delayMs} мс из-за ошибки API (${error.responseStatus})...`);
+          console.log(`[LLM] Повтор запроса через ${delayMs} мс из-за ошибки API (${error.responseStatus})...`);
           await new Promise((r) => setTimeout(r, delayMs));
           continue;
         }
@@ -380,7 +379,7 @@ export async function enrichCompetitorsData(competitorsData) {
     usage: usageItems.length ? mergeUsageStats(usageItems) : null,
     metadata: {
       enriched_at: new Date().toISOString(),
-      model: AI_MODEL,
+      model: 'llm',
       engagement_rate_calculated_locally: true,
       parse_successful: parseError === null,
       normalized_to_content_model: parseError === null && normalizedData !== null,

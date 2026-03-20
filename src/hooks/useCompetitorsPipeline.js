@@ -47,7 +47,7 @@ export function useCompetitorsPipeline(addToast, options = {}) {
         ...resultData.enriched_data,
         _metadata: {
           enriched_at: resultData.metadata?.enriched_at || new Date().toISOString(),
-          model: resultData.metadata?.model || 'deepseek/deepseek-chat',
+          model: 'llm',
           usage: resultData.usage,
           success: true,
           parse_successful: true
@@ -128,7 +128,7 @@ export function useCompetitorsPipeline(addToast, options = {}) {
     }
 
     setIsEnriching(true);
-    addToast('Начало обогащения данных через DeepSeek...', 'info');
+    addToast('Начало обогащения данных через LLM...', 'info');
 
     let resultData = null;
     let errorData = null;

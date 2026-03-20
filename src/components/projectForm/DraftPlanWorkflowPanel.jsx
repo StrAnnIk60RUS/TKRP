@@ -11,7 +11,9 @@ const DraftPlanWorkflowPanel = ({
   isGeneratingDraftPlan,
   isOptimizingPlan,
   isProcessing,
-  isEnrichmentServerAvailable
+  isEnrichmentServerAvailable,
+  canGenerateDraft = true,
+  smmBlockedReasons = []
 }) => {
   const draftPlan = draftPlanResult?.draft?.draft_content_plan || null
   const optimizedPlan = optimizationResult?.optimized_content_plan || null
@@ -32,7 +34,17 @@ const DraftPlanWorkflowPanel = ({
           type="button"
           className="submit-button primary"
           onClick={onGenerateDraftPlan}
-          disabled={isProcessing || isGeneratingDraftPlan || isEnrichmentServerAvailable === false}
+          disabled={
+            isProcessing ||
+            isGeneratingDraftPlan ||
+            isEnrichmentServerAvailable === false ||
+            !canGenerateDraft
+          }
+          title={
+            smmBlockedReasons.length > 0
+              ? `Сначала выполните: ${smmBlockedReasons.join(', ')}`
+              : 'Сформировать черновой план по данным формы и прецедентам'
+          }
         >
           <span>{isGeneratingDraftPlan ? 'ГЕНЕРАЦИЯ...' : 'СФОРМИРОВАТЬ ЧЕРНОВОЙ ПЛАН'}</span>
         </button>

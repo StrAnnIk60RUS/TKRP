@@ -1,6 +1,6 @@
-# Сервер обогащения данных через DeepSeek (OpenRouter)
+# Сервер обогащения данных через LLM
 
-Node.js сервер для обогащения данных конкурентов через DeepSeek API через OpenRouter.
+Node.js сервер для обогащения данных конкурентов через LLM API.
 
 ## Установка
 
@@ -16,14 +16,10 @@ npm install
 cp .env.example .env
 ```
 
-2. Установите ваш OpenRouter API ключ в `.env`:
+2. Установите API ключ для LLM в `.env` (см. `.env.example`):
 ```
-OPENROUTER_API_KEY=your_openrouter_api_key_here
 PORT=3001
-DEEPSEEK_MODEL=deepseek/deepseek-chat
 ```
-
-Получить API ключ можно на [OpenRouter.ai](https://openrouter.ai/)
 
 ## Запуск
 
@@ -77,7 +73,7 @@ npm start
   },
   "metadata": {
     "enriched_at": "2026-02-25T10:00:00Z",
-    "model": "deepseek/deepseek-chat",
+    "model": "llm",
     "engagement_rate_calculated_locally": true
   }
 }
@@ -86,7 +82,7 @@ npm start
 ## Что делает сервер
 
 1. **Вычисляет `engagement_rate`** для всех постов локально (формула: `(likes + comments + shares) / views`)
-2. **Отправляет данные в DeepSeek** через OpenRouter API для определения:
+2. **Отправляет данные в LLM** для определения:
    - `content_category` - категория контента
    - `tone` - тональность текста
    - `category` (B2B/B2C/B2G/unknown) - категория бизнеса (по возможности)
@@ -95,9 +91,8 @@ npm start
 
 ## Переменные окружения
 
-- `OPENROUTER_API_KEY` - API ключ OpenRouter (обязательно)
+- API ключ для LLM (см. `.env.example`)
 - `PORT` - Порт сервера (по умолчанию: 3001)
-- `DEEPSEEK_MODEL` - Модель DeepSeek (по умолчанию: `deepseek/deepseek-chat`)
 - `APP_URL` - URL приложения для заголовков (опционально)
 
 ## Интеграция с фронтендом

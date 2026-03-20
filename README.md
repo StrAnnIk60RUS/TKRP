@@ -19,8 +19,7 @@ pip install -r requirements.txt
 ```
 
 3. Скопировать `.env.example` в `.env` и заполнить как минимум:
-   - `OPENROUTER_API_KEY`
-   - `AI_MODEL`
+   - API-ключ для LLM (см. `.env.example`)
    - `VITE_ENRICHMENT_API_URL`
    - при необходимости `VK_COOKIE` / `LINKEDIN_COOKIE`
 
@@ -49,6 +48,7 @@ Backend health: `http://localhost:3001/health`
 
 ## Хранение данных
 - Прецеденты теперь сохраняются в `server/data/precedents-store/` как коллекции `metadata`, `ingestion_runs`, `publications`, `content_plans`.
+- Поверх базы прецедентов доступен отдельный этап агрегации онтологии: JSON-слой (`/api/precedents/ontology`), Excel-export и Turtle/RDF-export.
 - История сгенерированных планов хранится в `localStorage` браузера и доступна на странице просмотра плана.
 
 ## CI
@@ -105,7 +105,7 @@ npm run preview
 - ✅ **Toast‑уведомления** вместо `alert`
 - ✅ Интеграция с backend‑сервером обогащения:
   - парсинг конкурентов по URL (VK, LinkedIn) через Python‑парсер
-  - обогащение постов через LLM (DeepSeek/OpenRouter)
+  - обогащение постов через LLM
   - нормализация данных до формальных моделей публикаций и контент‑планов
 - ✅ Накопление **базы прецедентов** (публикации и контент‑планы конкурентов)
 - ✅ **RAG‑поиск** по базе прецедентов (по описанию проекта, аудитории, платформам)

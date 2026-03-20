@@ -1,5 +1,5 @@
 /**
- * Сервис для обогащения данных конкурентов через DeepSeek (OpenRouter)
+ * Сервис для обогащения данных конкурентов через LLM
  */
 
 const API_URL = import.meta.env.VITE_ENRICHMENT_API_URL || 'http://localhost:3001';
@@ -26,7 +26,7 @@ const fetchJsonOrThrow = async (endpoint, options) => {
 }
 
 /**
- * Обогащает данные конкурентов через DeepSeek API
+ * Обогащает данные конкурентов через LLM API
  * @param {Object} competitorsData - сырые данные конкурентов от парсера
  * @returns {Promise<Object>} - обогащенные данные
  */
@@ -167,6 +167,21 @@ export async function searchPrecedents(payload) {
 }
 
 /**
+ * Получает нормализованную агрегированную онтологию из базы прецедентов
+ * @returns {Promise<Object>}
+ */
+export async function getAggregatedOntology() {
+  try {
+    return await fetchJsonOrThrow(`${API_URL}/api/precedents/ontology`, {
+      method: 'GET'
+    })
+  } catch (error) {
+    console.error('Ошибка в getAggregatedOntology:', error);
+    throw error;
+  }
+}
+
+/**
  * Скачивает Excel-файл с онтологией (классы, сущности, отношения) из базы прецедентов
  * @returns {Promise<void>}
  */
@@ -181,6 +196,27 @@ export async function exportOntologyToExcel() {
   const link = document.createElement('a')
   link.href = url
   link.download = `ontology_${new Date().toISOString().slice(0, 10)}.xlsx`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+}
+
+/**
+ * Скачивает онтологию в формате Turtle/RDF
+ * @returns {Promise<void>}
+ */
+export async function exportOntologyToTurtle() {
+  const response = await fetch(`${API_URL}/api/precedents/ontology/export/turtle`, { method: 'GET' })
+  if (!response.ok) {
+    const err = await buildFetchErrorMessage(response)
+    throw new Error(err)
+  }
+  const blob = await response.blob()
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `ontology_${new Date().toISOString().slice(0, 10)}.ttl`
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)

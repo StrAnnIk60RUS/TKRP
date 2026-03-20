@@ -6,6 +6,11 @@ import {
   embedTexts,
   normalizeCosineToUnitInterval
 } from '../services/embeddingService.js';
+import {
+  buildOntologyExportSheets,
+  buildOntologyFromSnapshot,
+  serializeOntologyToTurtle
+} from '../services/ontologyAggregationService.js';
 import { trainRelevanceModel } from '../services/relevancePredictionService.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -789,32 +794,14 @@ export async function searchPrecedents(query, options = {}) {
   }
 }
 
-/**
- * Aggregates ontology_support from content_plans for Excel export.
- * Returns arrays of rows for classes, entities, relations sheets.
- */
+export function getAggregatedOntology() {
+  return buildOntologyFromSnapshot(readStorage());
+}
+
 export function getOntologyExportData() {
-  const storage = readStorage();
-  const contentPlans = storage.content_plans || [];
+  return buildOntologyExportSheets(getAggregatedOntology());
+}
 
-  const classesRows = [['Конкурент', 'Платформа', 'Класс']];
-  const entitiesRows = [['Конкурент', 'Платформа', 'Сущность']];
-  const relationsRows = [['Конкурент', 'Платформа', 'Связь']];
-
-  contentPlans.forEach((plan) => {
-    const competitor = plan.competitor_name || plan.competitor_id || '—';
-    const platform = plan.platform || '—';
-    const ontology = plan.ontology_support || {};
-
-    const classes = Array.isArray(ontology.classes) ? ontology.classes : [];
-    classes.forEach((c) => classesRows.push([competitor, platform, c]));
-
-    const entities = Array.isArray(ontology.entities) ? ontology.entities : [];
-    entities.forEach((e) => entitiesRows.push([competitor, platform, e]));
-
-    const relations = Array.isArray(ontology.relations) ? ontology.relations : [];
-    relations.forEach((r) => relationsRows.push([competitor, platform, r]));
-  });
-
-  return { classesRows, entitiesRows, relationsRows };
+export function getOntologyTurtleData() {
+  return serializeOntologyToTurtle(getAggregatedOntology());
 }

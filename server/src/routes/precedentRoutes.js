@@ -5,9 +5,11 @@ import { fileURLToPath } from 'url';
 import * as XLSX from 'xlsx';
 
 import {
+  getAggregatedOntology,
   getPrecedentsSnapshot,
   getPrecedentsSummary,
   getOntologyExportData,
+  getOntologyTurtleData,
   persistPrecedents,
   searchPrecedents
 } from '../repositories/precedentRepository.js';
@@ -107,9 +109,30 @@ router.post('/search', async (req, res) => {
   }
 });
 
+router.get('/ontology', (req, res) => {
+  try {
+    return res.json({
+      success: true,
+      ontology: getAggregatedOntology(),
+      request_id: req.requestId
+    });
+  } catch (error) {
+    return sendRouteError(res, req, 500, 'Внутренняя ошибка сервера в /api/precedents/ontology', error);
+  }
+});
+
 router.get('/ontology/export', (req, res) => {
   try {
-    const { classesRows, entitiesRows, relationsRows } = getOntologyExportData();
+    const {
+      classesRows,
+      entitiesRows,
+      relationsRows,
+      entityClassRows,
+      templatesRows,
+      hierarchyRows,
+      synonymsRows,
+      metaEntitiesRows
+    } = getOntologyExportData();
 
     const wb = XLSX.utils.book_new();
 
@@ -122,6 +145,21 @@ router.get('/ontology/export', (req, res) => {
     const wsRelations = XLSX.utils.aoa_to_sheet(relationsRows);
     XLSX.utils.book_append_sheet(wb, wsRelations, 'Отношения');
 
+    const wsEntityClasses = XLSX.utils.aoa_to_sheet(entityClassRows);
+    XLSX.utils.book_append_sheet(wb, wsEntityClasses, 'EntityClassLinks');
+
+    const wsTemplates = XLSX.utils.aoa_to_sheet(templatesRows);
+    XLSX.utils.book_append_sheet(wb, wsTemplates, 'RelationTemplates');
+
+    const wsHierarchy = XLSX.utils.aoa_to_sheet(hierarchyRows);
+    XLSX.utils.book_append_sheet(wb, wsHierarchy, 'Hierarchy');
+
+    const wsSynonyms = XLSX.utils.aoa_to_sheet(synonymsRows);
+    XLSX.utils.book_append_sheet(wb, wsSynonyms, 'Synonyms');
+
+    const wsMetaEntities = XLSX.utils.aoa_to_sheet(metaEntitiesRows);
+    XLSX.utils.book_append_sheet(wb, wsMetaEntities, 'MetaEntities');
+
     const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
     const filename = `ontology_${new Date().toISOString().slice(0, 10)}.xlsx`;
 
@@ -130,6 +168,25 @@ router.get('/ontology/export', (req, res) => {
     return res.send(buffer);
   } catch (error) {
     return sendRouteError(res, req, 500, 'Внутренняя ошибка сервера в /api/precedents/ontology/export', error);
+  }
+});
+
+router.get('/ontology/export/turtle', (req, res) => {
+  try {
+    const turtle = getOntologyTurtleData();
+    const filename = `ontology_${new Date().toISOString().slice(0, 10)}.ttl`;
+
+    res.setHeader('Content-Type', 'text/turtle; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    return res.send(turtle);
+  } catch (error) {
+    return sendRouteError(
+      res,
+      req,
+      500,
+      'Внутренняя ошибка сервера в /api/precedents/ontology/export/turtle',
+      error
+    );
   }
 });
 

@@ -1,7 +1,7 @@
 {
   "name": "llm-enrichment-server",
   "version": "1.0.0",
-  "description": "Node.js сервер для обогащения данных конкурентов через DeepSeek (OpenRouter)",
+  "description": "Node.js сервер для обогащения данных конкурентов через LLM",
   "main": "server.js",
   "type": "module",
   "scripts": {

@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { OPENROUTER_API_KEY, AI_MODEL } from './openrouter.js';
+import { OPENROUTER_API_KEY } from './openrouter.js';
 import apiRoutes from './src/routes/index.js';
 import {
   attachRequestContext,
@@ -33,6 +33,5 @@ app.use('/api', apiRoutes);
 
 app.listen(PORT, () => {
   console.log(`🚀 LLM Enrichment Server запущен на http://localhost:${PORT}`);
-  console.log(`📡 OpenRouter API: ${OPENROUTER_API_KEY ? '✅ Настроен' : '❌ Не настроен'}`);
-  console.log(`🤖 Модель: ${AI_MODEL}`);
+  console.log(`📡 LLM API: ${OPENROUTER_API_KEY ? '✅ Настроен' : '❌ Не настроен'}`);
 });

@@ -52,7 +52,7 @@ async function callOpenRouterEmbeddings(texts = [], options = {}) {
   const model = asTrimmedString(options.model, config.model);
 
   if (!OPENROUTER_API_KEY) {
-    const err = new Error('OPENROUTER_API_KEY не установлен: невозможно вычислить эмбеддинги');
+    const err = new Error('API ключ для LLM не установлен: невозможно вычислить эмбеддинги');
     err.code = 'NO_OPENROUTER_KEY';
     throw err;
   }

@@ -1,6 +1,7 @@
 import React from 'react'
 
 const formatPrecedentScore = (score) => `${Math.round((Number(score) || 0) * 100)}%`
+const ONTOLOGY_PREVIEW_LIMIT = 12
 
 const renderMatchExplanation = (matchedTokens = [], retrieval = null) => {
   const type = retrieval?.type
@@ -11,29 +12,88 @@ const renderMatchExplanation = (matchedTokens = [], retrieval = null) => {
   return matchedTokens.join(', ')
 }
 
+const formatOntologyClassLabel = (value) =>
+  String(value || '')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (match) => match.toUpperCase())
+
+const buildOntologyPreview = (ontology) => {
+  const global = ontology?.global || {}
+  const entities = Array.isArray(global.entities) ? global.entities : []
+  const entityLinks = Array.isArray(global.entity_class_links) ? global.entity_class_links : []
+  const triples = Array.isArray(global.triples) ? global.triples : []
+  const hierarchy = Array.isArray(global.hierarchy) ? global.hierarchy : []
+  const templates = Array.isArray(global.relation_templates) ? global.relation_templates : []
+  const metaEntities = Array.isArray(global.meta_entities) ? global.meta_entities : []
+
+  const entitiesById = new Map(entities.map((entity) => [entity.id, entity]))
+  const entityClassRows = entityLinks
+    .map((link) => ({
+      id: link.id,
+      label: entitiesById.get(link.entity_id)?.label || link.entity_id,
+      classId: link.class_id,
+      confidence: Number(link.confidence) || 0
+    }))
+    .sort((a, b) => b.confidence - a.confidence || a.label.localeCompare(b.label, 'ru'))
+
+  return {
+    summary: {
+      contexts: Number(ontology?.source_summary?.contexts_count) || 0,
+      classes: Array.isArray(global.classes) ? global.classes.length : 0,
+      entities: entities.length,
+      triples: triples.length
+    },
+    entityClassRows,
+    triples,
+    hierarchy,
+    templates,
+    metaEntities
+  }
+}
+
 const PrecedentSearchPanel = ({
   precedentsSummary,
   precedentSearchQuery,
   precedentSearchResults,
+  aggregatedOntology,
   demoHorizonExample,
   onLoadHorizonExample,
   onSeedDemoPrecedents,
   onExportOntologyToExcel,
+  onLoadOntology,
   onSearchPrecedents,
   showDemoButtons = true,
   isProcessing,
+  isLoadingOntology,
   isExportingOntology,
   isGeneratingDraftPlan,
   isSeedingPrecedents,
   isSearchingPrecedents,
   isEnrichmentServerAvailable,
+  canSearchPrecedents = true,
+  smmBlockedReasons = [],
   retrievalBadge,
   precedentRetrieval,
   onSelectPrecedent
 }) => {
+  const [isOntologyVisible, setIsOntologyVisible] = React.useState(false)
   const hasResults = Boolean(precedentSearchResults)
   const hasPublicationResults = (precedentSearchResults?.publications?.length || 0) > 0
   const hasPlanResults = (precedentSearchResults?.content_plans?.length || 0) > 0
+  const hasOntology = Boolean(aggregatedOntology?.global)
+  const ontologyPreview = React.useMemo(
+    () => (hasOntology ? buildOntologyPreview(aggregatedOntology) : null),
+    [aggregatedOntology, hasOntology]
+  )
+
+  const handleOpenOntology = async () => {
+    if (!hasOntology) {
+      await onLoadOntology?.()
+      setIsOntologyVisible(true)
+      return
+    }
+    setIsOntologyVisible((prev) => !prev)
+  }
 
   return (
     <section className="form-section precedent-workflow-section">
@@ -98,6 +158,23 @@ const PrecedentSearchPanel = ({
         <button
           type="button"
           className="submit-button secondary"
+          onClick={handleOpenOntology}
+          disabled={isProcessing || isGeneratingDraftPlan || isLoadingOntology || isEnrichmentServerAvailable === false}
+          title="Показать агрегированную JSON-онтологию: сущности, классы, триплеты и иерархию"
+        >
+          <span>
+            {isLoadingOntology
+              ? 'ЗАГРУЗКА ОНТОЛОГИИ...'
+              : hasOntology
+                ? isOntologyVisible
+                  ? 'СКРЫТЬ JSON-ОНТОЛОГИЮ'
+                  : 'ПОКАЗАТЬ JSON-ОНТОЛОГИЮ'
+                : 'ЗАГРУЗИТЬ JSON-ОНТОЛОГИЮ'}
+          </span>
+        </button>
+        <button
+          type="button"
+          className="submit-button secondary"
           onClick={onExportOntologyToExcel}
           disabled={
             isProcessing ||
@@ -117,13 +194,150 @@ const PrecedentSearchPanel = ({
             isProcessing ||
             isGeneratingDraftPlan ||
             isSearchingPrecedents ||
-            isEnrichmentServerAvailable === false
+            isEnrichmentServerAvailable === false ||
+            !canSearchPrecedents
           }
-          title="Подобрать релевантные публикации и контент-планы"
+          title={
+            smmBlockedReasons.length > 0
+              ? `Сначала выполните: ${smmBlockedReasons.join(', ')}`
+              : 'Подобрать релевантные публикации и контент-планы'
+          }
         >
           <span>{isSearchingPrecedents ? 'ПОИСК ПРЕЦЕДЕНТОВ...' : 'ПОДОБРАТЬ ПРЕЦЕДЕНТЫ'}</span>
         </button>
       </div>
+
+      {isOntologyVisible && (
+        <div className="ontology-preview-panel">
+          {!hasOntology && !isLoadingOntology && (
+            <div className="precedent-empty-state precedent-empty-state-light">
+              Онтология пока не загружена. Нажмите «Загрузить JSON-онтологию».
+            </div>
+          )}
+
+          {hasOntology && ontologyPreview && (
+            <>
+              <div className="ontology-preview-header">
+                <div>
+                  <h3 className="precedent-section-title precedent-section-title-light">Шаг 3-6. Онтологический слой</h3>
+                  <p className="ontology-preview-subtitle">
+                    Ниже показана агрегированная онтология по всем контекстам: явная типизация `entity -&gt; class`,
+                    триплеты `subject - predicate - object`, relation templates и иерархия терминов.
+                  </p>
+                </div>
+              </div>
+
+              <div className="ontology-preview-metrics">
+                <div className="ontology-preview-metric">
+                  <span className="ontology-preview-metric-label">Контексты</span>
+                  <strong className="ontology-preview-metric-value">{ontologyPreview.summary.contexts}</strong>
+                </div>
+                <div className="ontology-preview-metric">
+                  <span className="ontology-preview-metric-label">Классы</span>
+                  <strong className="ontology-preview-metric-value">{ontologyPreview.summary.classes}</strong>
+                </div>
+                <div className="ontology-preview-metric">
+                  <span className="ontology-preview-metric-label">Сущности</span>
+                  <strong className="ontology-preview-metric-value">{ontologyPreview.summary.entities}</strong>
+                </div>
+                <div className="ontology-preview-metric">
+                  <span className="ontology-preview-metric-label">Триплеты</span>
+                  <strong className="ontology-preview-metric-value">{ontologyPreview.summary.triples}</strong>
+                </div>
+              </div>
+
+              <div className="ontology-preview-grid">
+                <div className="ontology-preview-card">
+                  <h4 className="ontology-preview-card-title">Entity -&gt; Class</h4>
+                  <div className="ontology-preview-list">
+                    {ontologyPreview.entityClassRows.slice(0, ONTOLOGY_PREVIEW_LIMIT).map((item) => (
+                      <div key={item.id} className="ontology-preview-item">
+                        <div className="ontology-preview-item-main">{item.label}</div>
+                        <div className="ontology-preview-item-meta">
+                          <span>{formatOntologyClassLabel(item.classId)}</span>
+                          <span>{Math.round(item.confidence * 100)}%</span>
+                        </div>
+                      </div>
+                    ))}
+                    {ontologyPreview.entityClassRows.length === 0 && (
+                      <div className="ontology-preview-empty">Типизированные сущности пока не найдены.</div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="ontology-preview-card">
+                  <h4 className="ontology-preview-card-title">Triples</h4>
+                  <div className="ontology-preview-list">
+                    {ontologyPreview.triples.slice(0, ONTOLOGY_PREVIEW_LIMIT).map((item) => (
+                      <div key={item.id} className="ontology-preview-item ontology-preview-item-triple">
+                        <div className="ontology-preview-triple">
+                          <span className="ontology-preview-node">{item.subject_label}</span>
+                          <span className="ontology-preview-edge">{item.predicate}</span>
+                          <span className="ontology-preview-node">{item.object_label}</span>
+                        </div>
+                        {item.evidence && <div className="ontology-preview-item-meta">{item.evidence}</div>}
+                      </div>
+                    ))}
+                    {ontologyPreview.triples.length === 0 && (
+                      <div className="ontology-preview-empty">Явные триплеты пока не сформированы.</div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="ontology-preview-card">
+                  <h4 className="ontology-preview-card-title">Hierarchy</h4>
+                  <div className="ontology-preview-list">
+                    {ontologyPreview.hierarchy.slice(0, ONTOLOGY_PREVIEW_LIMIT).map((item) => (
+                      <div key={item.id} className="ontology-preview-item ontology-preview-item-triple">
+                        <div className="ontology-preview-triple">
+                          <span className="ontology-preview-node">{item.child_label}</span>
+                          <span className="ontology-preview-edge">{item.predicate}</span>
+                          <span className="ontology-preview-node">{item.parent_label}</span>
+                        </div>
+                      </div>
+                    ))}
+                    {ontologyPreview.hierarchy.length === 0 && (
+                      <div className="ontology-preview-empty">Иерархия терминов пока не найдена.</div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="ontology-preview-card">
+                  <h4 className="ontology-preview-card-title">Relation Templates</h4>
+                  <div className="ontology-preview-list">
+                    {ontologyPreview.templates.slice(0, ONTOLOGY_PREVIEW_LIMIT).map((item) => (
+                      <div key={item.id} className="ontology-preview-item ontology-preview-item-triple">
+                        <div className="ontology-preview-triple">
+                          <span className="ontology-preview-node">{formatOntologyClassLabel(item.subject_class)}</span>
+                          <span className="ontology-preview-edge">{item.predicate}</span>
+                          <span className="ontology-preview-node">{formatOntologyClassLabel(item.object_class)}</span>
+                        </div>
+                        {item.source_label && <div className="ontology-preview-item-meta">{item.source_label}</div>}
+                      </div>
+                    ))}
+                    {ontologyPreview.templates.length === 0 && (
+                      <div className="ontology-preview-empty">Шаблоны связей пока не найдены.</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {ontologyPreview.metaEntities.length > 0 && (
+                <div className="ontology-preview-card ontology-preview-card-wide">
+                  <h4 className="ontology-preview-card-title">Meta-entities</h4>
+                  <div className="ontology-preview-tags">
+                    {ontologyPreview.metaEntities.slice(0, ONTOLOGY_PREVIEW_LIMIT).map((item) => (
+                      <span key={item.id} className="ontology-preview-tag">
+                        {item.label} · {formatOntologyClassLabel(item.class_id)} · {item.frequency}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       {!hasResults && (
         <div className="precedent-empty-state precedent-empty-state-light">

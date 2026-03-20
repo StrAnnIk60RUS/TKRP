@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ToastContainer } from './Toast'
 import CompetitorsStep from './competitors/CompetitorsStep'
+import ProcessIndicator from './ProcessIndicator'
 import WizardHeader from './WizardHeader'
 import WizardNavActions from './WizardNavActions'
 import WorkflowSummaryPanel from './projectForm/WorkflowSummaryPanel'
@@ -10,6 +11,7 @@ import DraftPlanWorkflowPanel from './projectForm/DraftPlanWorkflowPanel'
 import TechnicalDetailsPanel from './projectForm/TechnicalDetailsPanel'
 import { useCompetitorsPipeline } from '../hooks/useCompetitorsPipeline'
 import {
+  getAggregatedOntology,
   getPrecedentsSummary,
   searchPrecedents,
   seedDemoPrecedents,
@@ -58,6 +60,8 @@ const ProjectForm = () => {
   const [precedentsSummary, setPrecedentsSummary] = useState(null)
   const [precedentSearchQuery, setPrecedentSearchQuery] = useState('')
   const [precedentSearchResults, setPrecedentSearchResults] = useState(null)
+  const [aggregatedOntology, setAggregatedOntology] = useState(null)
+  const [isLoadingOntology, setIsLoadingOntology] = useState(false)
   const [isSearchingPrecedents, setIsSearchingPrecedents] = useState(false)
   const [isSeedingPrecedents, setIsSeedingPrecedents] = useState(false)
   const [isExportingOntology, setIsExportingOntology] = useState(false)
@@ -139,6 +143,33 @@ const ProjectForm = () => {
     () => buildReviewChecklist(formData, competitorsData, precedentSearchResults, draftPlanResult),
     [formData, competitorsData, precedentSearchResults, draftPlanResult]
   )
+
+  /** Для SMM: блокировка действий до выполнения пунктов проверки перед генерацией. */
+  const { canSearchPrecedents, canGenerateDraft, smmBlockedReasonsForSearch, smmBlockedReasonsForGenerate } =
+    useMemo(() => {
+      const requiredFieldsDone = reviewChecklist[0]?.done
+      const competitorsDone = reviewChecklist[1]?.done
+      const precedentsDone = reviewChecklist[2]?.done
+      const backendOk = isEnrichmentServerAvailable === true
+
+      const reasonsForSearch = []
+      if (!backendOk) reasonsForSearch.push('Backend недоступен')
+      if (!requiredFieldsDone) reasonsForSearch.push('Обязательные поля формы не заполнены')
+      if (!competitorsDone) reasonsForSearch.push('Нет данных конкурентов')
+
+      const reasonsForGenerate = [...reasonsForSearch]
+      if (!precedentsDone) reasonsForGenerate.push('Прецеденты не подобраны')
+
+      const canSearch = backendOk && requiredFieldsDone && competitorsDone
+      const canGen = backendOk && requiredFieldsDone && competitorsDone && precedentsDone
+
+      return {
+        canSearchPrecedents: isDeveloper ? true : canSearch,
+        canGenerateDraft: isDeveloper ? true : canGen,
+        smmBlockedReasonsForSearch: reasonsForSearch,
+        smmBlockedReasonsForGenerate: reasonsForGenerate
+      }
+    }, [reviewChecklist, isEnrichmentServerAvailable, isDeveloper])
 
   const stepStatuses = useMemo(() => {
     const hasCompetitorUrls = competitorUrls.some((url) => typeof url === 'string' && url.trim() !== '')
@@ -231,7 +262,6 @@ const ProjectForm = () => {
       try {
         const draft = JSON.parse(savedDraft)
         setFormData(draft)
-        addToast('Черновик загружен', 'info')
       } catch (e) {
         console.error('Ошибка загрузки черновика:', e)
       }
@@ -385,6 +415,7 @@ const ProjectForm = () => {
       await seedDemoPrecedents()
       const summaryResponse = await getPrecedentsSummary()
       setPrecedentsSummary(summaryResponse.summary || null)
+      setAggregatedOntology(null)
       addToast('Демо-база прецедентов загружена. Можно искать по запросу.', 'success')
     } catch (error) {
       console.error('Ошибка загрузки демо-базы:', error)
@@ -408,6 +439,24 @@ const ProjectForm = () => {
       addToast(`Ошибка: ${error.message}`, 'error')
     } finally {
       setIsExportingOntology(false)
+    }
+  }
+
+  const handleLoadOntology = async () => {
+    if (isEnrichmentServerAvailable === false) {
+      addToast('Сервер недоступен. Запустите backend на порту 3001.', 'error')
+      return
+    }
+    setIsLoadingOntology(true)
+    try {
+      const response = await getAggregatedOntology()
+      setAggregatedOntology(response.ontology || null)
+      addToast('Онтология загружена', 'success')
+    } catch (error) {
+      console.error('Ошибка загрузки онтологии:', error)
+      addToast(`Ошибка загрузки онтологии: ${error.message}`, 'error')
+    } finally {
+      setIsLoadingOntology(false)
     }
   }
 
@@ -452,6 +501,21 @@ const ProjectForm = () => {
       )
       addToast('Перед генерацией заполните обязательные поля формы', 'error')
       return
+    }
+
+    if (!isDeveloper) {
+      const hasCompetitors = Array.isArray(competitorsData?.competitors) && competitorsData.competitors.length > 0
+      const hasPrecedents =
+        (precedentSearchResults?.publications?.length || 0) > 0 ||
+        (precedentSearchResults?.content_plans?.length || 0) > 0
+      if (!hasCompetitors) {
+        addToast('Перед генерацией добавьте и обогатите конкурентов', 'error')
+        return
+      }
+      if (!hasPrecedents) {
+        addToast('Перед генерацией подберите прецеденты (кнопка «Подобрать прецеденты»)', 'error')
+        return
+      }
     }
 
     const safeFormInput = buildSafeFormInputForGeneration(formData)
@@ -581,6 +645,25 @@ const ProjectForm = () => {
 
   const hasError = (fieldName) => touched[fieldName] && errors[fieldName]
   const isFirstStep = currentStep === 1
+
+  const currentProcessId = useMemo(() => {
+    if (isOptimizingPlan) return 'optimizingPlan'
+    if (isGeneratingDraftPlan) return 'generatingPlan'
+    if (isEnriching) return 'enriching'
+    if (isParsingFromUrls) return 'parsing'
+    if (isSearchingPrecedents) return 'searchingPrecedents'
+    if (isSeedingPrecedents) return 'seedingPrecedents'
+    if (isExportingOntology) return 'exportingOntology'
+    return null
+  }, [
+    isOptimizingPlan,
+    isGeneratingDraftPlan,
+    isEnriching,
+    isParsingFromUrls,
+    isSearchingPrecedents,
+    isSeedingPrecedents,
+    isExportingOntology
+  ])
   const isLastStep = currentStep === wizardSteps.length
 
   const goToNextStep = () => {
@@ -599,7 +682,8 @@ const ProjectForm = () => {
   return (
     <>
       <ToastContainer toasts={toasts} removeToast={removeToast} />
-      
+      <ProcessIndicator active={!!currentProcessId} processId={currentProcessId} />
+
       <form className="project-form">
         {/* Прогресс-бар */}
         <WizardHeader
@@ -1412,18 +1496,23 @@ const ProjectForm = () => {
               precedentsSummary={precedentsSummary}
               precedentSearchQuery={precedentSearchQuery}
               precedentSearchResults={precedentSearchResults}
+              aggregatedOntology={aggregatedOntology}
               demoHorizonExample={demoHorizonExample}
               onLoadHorizonExample={handleLoadHorizonExample}
               onSeedDemoPrecedents={handleSeedDemoPrecedents}
               showDemoButtons={isDeveloper}
               onExportOntologyToExcel={handleExportOntologyToExcel}
+              onLoadOntology={handleLoadOntology}
               onSearchPrecedents={handleSearchPrecedents}
               isProcessing={isProcessing}
+              isLoadingOntology={isLoadingOntology}
               isExportingOntology={isExportingOntology}
               isGeneratingDraftPlan={isGeneratingDraftPlan}
               isSeedingPrecedents={isSeedingPrecedents}
               isSearchingPrecedents={isSearchingPrecedents}
               isEnrichmentServerAvailable={isEnrichmentServerAvailable}
+              canSearchPrecedents={canSearchPrecedents}
+              smmBlockedReasons={smmBlockedReasonsForSearch}
               retrievalBadge={retrievalBadge}
               precedentRetrieval={precedentRetrieval}
               onSelectPrecedent={setSelectedPrecedentItem}
@@ -1439,6 +1528,8 @@ const ProjectForm = () => {
               isOptimizingPlan={isOptimizingPlan}
               isProcessing={isProcessing}
               isEnrichmentServerAvailable={isEnrichmentServerAvailable}
+              canGenerateDraft={canGenerateDraft}
+              smmBlockedReasons={smmBlockedReasonsForGenerate}
             />
 
             {isDeveloper && (
