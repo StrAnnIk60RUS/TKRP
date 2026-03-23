@@ -21,14 +21,14 @@ const PlanPublicationTable = ({ publications, onEdit }) => {
         <tbody>
           {publications.map((post, idx) => (
             <tr key={`${post.publication_id || 'pub'}_${post.planned_date || 'na'}_${idx}`}>
-              <td>{post.planned_date || '—'}</td>
-              <td>{post.platform || '—'}</td>
-              <td>{post.topic || 'Без темы'}</td>
-              <td>{post.format || '—'}</td>
-              <td>{post.objective || '—'}</td>
-              <td>{formatPercent(post.expected_kpi?.engagement_rate)}</td>
-              <td>{post.cta || '—'}</td>
-              <td>
+              <td data-label="Дата">{post.planned_date || '—'}</td>
+              <td data-label="Платформа">{post.platform || '—'}</td>
+              <td data-label="Тема">{post.topic || 'Без темы'}</td>
+              <td data-label="Формат">{post.format || '—'}</td>
+              <td data-label="Цель">{post.objective || '—'}</td>
+              <td data-label="Engagement">{formatPercent(post.expected_kpi?.engagement_rate)}</td>
+              <td data-label="CTA">{post.cta || '—'}</td>
+              <td data-label="Действие">
                 <button type="button" className="secondary-btn plan-table-edit-btn" onClick={() => onEdit(post)}>
                   Редактировать
                 </button>

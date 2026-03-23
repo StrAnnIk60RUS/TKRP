@@ -86,7 +86,7 @@ export function createCorsOptions() {
       }
       callback(new Error(`Origin ${origin} is not allowed by CORS`));
     },
-    methods: ['GET', 'POST', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Server-API-Key'],
     maxAge: 600
   };

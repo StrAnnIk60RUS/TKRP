@@ -12,7 +12,7 @@ const Toast = ({ message, type = 'success', onClose, duration = 3000 }) => {
   }, [duration, onClose])
 
   return (
-    <div className={`toast toast-${type}`}>
+    <div className={`toast toast-${type}`} role="status" aria-live="polite">
       <div className="toast-icon">
         {type === 'success' && '✅'}
         {type === 'error' && '❌'}
@@ -20,14 +20,14 @@ const Toast = ({ message, type = 'success', onClose, duration = 3000 }) => {
         {type === 'warning' && '⚠️'}
       </div>
       <div className="toast-message">{message}</div>
-      <button className="toast-close" onClick={onClose}>×</button>
+      <button className="toast-close" onClick={onClose} aria-label="Закрыть уведомление">×</button>
     </div>
   )
 }
 
 export const ToastContainer = ({ toasts, removeToast }) => {
   return (
-    <div className="toast-container">
+    <div className="toast-container" aria-live="polite" aria-relevant="additions text">
       {toasts.map(toast => (
         <Toast
           key={toast.id}

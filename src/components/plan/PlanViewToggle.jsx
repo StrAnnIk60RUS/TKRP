@@ -2,7 +2,8 @@ import React from 'react'
 
 const VIEWS = [
   { id: 'cards', label: 'Карточки' },
-  { id: 'table', label: 'Таблица' }
+  { id: 'table', label: 'Таблица' },
+  { id: 'calendar', label: 'Календарь' }
 ]
 
 const PlanViewToggle = ({ viewMode, onChange, filteredCount }) => {

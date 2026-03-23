@@ -31,9 +31,19 @@ export function normalizeDraftPlanResponse(parsedDraft, formInput) {
   const requestedStart = toIsoDateOnly(formInput?.contentPlanStartDate) || null;
   const requestedEnd = toIsoDateOnly(formInput?.contentPlanEndDate) || null;
   const requestedPlatforms = Array.isArray(formInput?.platforms) ? formInput.platforms : [];
+  const publicationDayMode =
+    formInput?.publicationDayMode === 'shared' || plan?.schedule_preferences?.publication_day_mode === 'shared'
+      ? 'shared'
+      : 'spread';
 
   const normalized = JSON.parse(JSON.stringify(parsedDraft));
   const normalizedPlan = normalized.draft_content_plan;
+  normalizedPlan.schedule_preferences = {
+    ...(normalizedPlan?.schedule_preferences && typeof normalizedPlan.schedule_preferences === 'object'
+      ? normalizedPlan.schedule_preferences
+      : {}),
+    publication_day_mode: publicationDayMode
+  };
 
   if (requestedStart && requestedEnd) {
     normalizedPlan.planning_horizon = { start_date: requestedStart, end_date: requestedEnd };
@@ -96,7 +106,7 @@ export function normalizeDraftPlanResponse(parsedDraft, formInput) {
       if (normalizedDate > endDate) pub.planned_date = endDate;
     });
 
-    if (spanDays > 0 && uniqueDates.size <= 1) {
+    if (spanDays > 0 && uniqueDates.size <= 1 && publicationDayMode !== 'shared') {
       const step = Math.max(1, Math.floor(spanDays / Math.max(1, deduped.length)));
       deduped.forEach((pub, idx) => {
         const offset = Math.min(spanDays - 1, idx * step);

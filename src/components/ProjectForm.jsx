@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react'
+import React, { useState, useMemo, useEffect, useRef, useReducer, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ToastContainer } from './Toast'
 import CompetitorsStep from './competitors/CompetitorsStep'
@@ -9,6 +9,8 @@ import WorkflowSummaryPanel from './projectForm/WorkflowSummaryPanel'
 import PrecedentSearchPanel from './projectForm/PrecedentSearchPanel'
 import DraftPlanWorkflowPanel from './projectForm/DraftPlanWorkflowPanel'
 import TechnicalDetailsPanel from './projectForm/TechnicalDetailsPanel'
+import OperationStatusPanel from './projectForm/OperationStatusPanel'
+import { getCurrentProcessId, initialWizardState, wizardReducer } from './projectForm/wizardState'
 import { useCompetitorsPipeline } from '../hooks/useCompetitorsPipeline'
 import {
   getAggregatedOntology,
@@ -17,7 +19,9 @@ import {
   seedDemoPrecedents,
   exportOntologyToExcel,
   generateDraftContentPlan,
-  optimizeDraftContentPlan
+  optimizeDraftContentPlan,
+  getServerDraft,
+  saveServerDraft
 } from '../services/enrichmentService'
 import { savePlanSnapshot } from '../services/planStorage'
 import PrecedentDetailsModal from './precedents/PrecedentDetailsModal'
@@ -30,6 +34,7 @@ import {
   frequencyOptions,
   getWizardSteps,
   initialFormData,
+  publicationDayModeOptions,
   platformOptions,
   requiredFields
 } from './projectForm/formConfig'
@@ -49,33 +54,40 @@ import './ProjectForm.css'
 const ProjectForm = () => {
   const navigate = useNavigate()
   const { isDeveloper } = useUserRole()
-  const [formData, setFormData] = useState(initialFormData)
+  const [wizardState, dispatch] = useReducer(wizardReducer, initialWizardState)
 
   const wizardSteps = getWizardSteps(isDeveloper)
 
-  const [errors, setErrors] = useState({})
-  const [touched, setTouched] = useState({})
-  const [toasts, setToasts] = useState([])
-  const [isEditMode, setIsEditMode] = useState(true)
-  const [precedentsSummary, setPrecedentsSummary] = useState(null)
-  const [precedentSearchQuery, setPrecedentSearchQuery] = useState('')
-  const [precedentSearchResults, setPrecedentSearchResults] = useState(null)
-  const [aggregatedOntology, setAggregatedOntology] = useState(null)
-  const [isLoadingOntology, setIsLoadingOntology] = useState(false)
-  const [isSearchingPrecedents, setIsSearchingPrecedents] = useState(false)
-  const [isSeedingPrecedents, setIsSeedingPrecedents] = useState(false)
-  const [isExportingOntology, setIsExportingOntology] = useState(false)
-  const [isGeneratingDraftPlan, setIsGeneratingDraftPlan] = useState(false)
-  const [draftPlanResult, setDraftPlanResult] = useState(null)
-  const [isOptimizingPlan, setIsOptimizingPlan] = useState(false)
-  const [optimizationResult, setOptimizationResult] = useState(null)
-  const [currentStep, setCurrentStep] = useState(1)
+  const {
+    formData,
+    errors,
+    touched,
+    toasts,
+    isEditMode,
+    precedentsSummary,
+    precedentSearchQuery,
+    precedentSearchResults,
+    aggregatedOntology,
+    draftPlanResult,
+    optimizationResult,
+    currentStep,
+    selectedPrecedentItem,
+    demoHorizonExample,
+    operations,
+    operationTelemetry
+  } = wizardState
+  const isLoadingOntology = operations.loadingOntology?.status === 'running'
+  const isSearchingPrecedents = operations.searchingPrecedents?.status === 'running'
+  const isSeedingPrecedents = operations.seedingPrecedents?.status === 'running'
+  const isExportingOntology = operations.exportingOntology?.status === 'running'
+  const isGeneratingDraftPlan = operations.generatingPlan?.status === 'running'
+  const isOptimizingPlan = operations.optimizingPlan?.status === 'running'
   // Общий флаг "идет работа" для блокировки неуместных действий.
   const isProcessing =
     isSearchingPrecedents || isSeedingPrecedents || isGeneratingDraftPlan || isOptimizingPlan || isExportingOntology
   const toastCounterRef = useRef(0)
-  const [selectedPrecedentItem, setSelectedPrecedentItem] = useState(null)
-  const [demoHorizonExample, setDemoHorizonExample] = useState('example_year_plan')
+  const operationControllersRef = useRef({})
+  const operationRetryRef = useRef({})
 
   const precedentRetrieval = precedentSearchResults?.retrieval || null
 
@@ -114,10 +126,78 @@ const ProjectForm = () => {
     return value !== null && value !== undefined
   }
 
+  const setFormData = (updater) => {
+    const next = typeof updater === 'function' ? updater(formData) : updater
+    dispatch({ type: 'SET_FORM_DATA', payload: next })
+  }
+  const setErrors = (payload) => dispatch({ type: 'SET_ERRORS', payload: typeof payload === 'function' ? payload(errors) : payload })
+  const setTouched = (payload) =>
+    dispatch({ type: 'SET_TOUCHED', payload: typeof payload === 'function' ? payload(touched) : payload })
+  const setPrecedentsSummary = (payload) => dispatch({ type: 'SET_PRECEDENTS_SUMMARY', payload })
+  const setPrecedentSearchQuery = (payload) => dispatch({ type: 'SET_PRECEDENT_QUERY', payload })
+  const setPrecedentSearchResults = (payload) => dispatch({ type: 'SET_PRECEDENT_RESULTS', payload })
+  const setAggregatedOntology = (payload) => dispatch({ type: 'SET_AGGREGATED_ONTOLOGY', payload })
+  const setDraftPlanResult = (payload) => dispatch({ type: 'SET_DRAFT_PLAN_RESULT', payload })
+  const setOptimizationResult = (payload) => dispatch({ type: 'SET_OPTIMIZATION_RESULT', payload })
+  const setCurrentStep = (payload) =>
+    dispatch({ type: 'SET_CURRENT_STEP', payload: typeof payload === 'function' ? payload(currentStep) : payload })
+  const setSelectedPrecedentItem = (payload) => dispatch({ type: 'SET_SELECTED_PRECEDENT', payload })
+  const setDemoHorizonExample = (payload) => dispatch({ type: 'SET_DEMO_HORIZON', payload })
+  const setIsEditMode = (payload) => dispatch({ type: 'SET_EDIT_MODE', payload })
+
   const addToast = (message, type = 'success') => {
     toastCounterRef.current += 1
     const id = `${Date.now()}-${toastCounterRef.current}-${Math.random().toString(36).substr(2, 9)}`
-    setToasts(prev => [...prev, { id, message, type }])
+    dispatch({ type: 'PUSH_TOAST', payload: { id, message, type } })
+  }
+
+  const setOperationTelemetry = (payload) => dispatch({ type: 'SET_OPERATION_TELEMETRY', payload })
+
+  const startOperation = (operationId) => dispatch({ type: 'OPERATION_START', payload: operationId })
+  const finishOperationSuccess = (operationId) => dispatch({ type: 'OPERATION_SUCCESS', payload: operationId })
+  const finishOperationError = (operationId, error) =>
+    dispatch({ type: 'OPERATION_ERROR', payload: { operationId, error } })
+
+  const runTrackedOperation = useCallback(
+    async (operationId, operationFn) => {
+      const controller = new AbortController()
+      operationControllersRef.current[operationId] = controller
+      operationRetryRef.current[operationId] = () => runTrackedOperation(operationId, operationFn)
+      startOperation(operationId)
+      try {
+        await operationFn(controller.signal)
+        finishOperationSuccess(operationId)
+      } catch (error) {
+        if (error?.name === 'AbortError') {
+          dispatch({ type: 'OPERATION_CANCEL', payload: operationId })
+          return
+        }
+        finishOperationError(operationId, error?.message || 'Ошибка выполнения')
+        throw error
+      } finally {
+        delete operationControllersRef.current[operationId]
+      }
+    },
+    []
+  )
+
+  const cancelOperation = (operationId) => {
+    const controller = operationControllersRef.current[operationId]
+    if (controller) {
+      controller.abort()
+      addToast(`Операция отменена: ${operationId}`, 'info')
+    }
+  }
+
+  const retryOperation = async (operationId) => {
+    const retryFn = operationRetryRef.current[operationId]
+    if (!retryFn) return
+    try {
+      await retryFn()
+      addToast(`Операция повторена: ${operationId}`, 'success')
+    } catch (error) {
+      addToast(`Повтор не удался: ${error.message}`, 'error')
+    }
   }
 
   const {
@@ -142,6 +222,17 @@ const ProjectForm = () => {
   const reviewChecklist = useMemo(
     () => buildReviewChecklist(formData, competitorsData, precedentSearchResults, draftPlanResult),
     [formData, competitorsData, precedentSearchResults, draftPlanResult]
+  )
+  const explainabilitySignals = useMemo(
+    () => [
+      formData.projectDescription ? 'Описание проекта' : null,
+      formData.consumerCategory ? `Аудитория: ${formData.consumerCategory}` : null,
+      formData.platforms.length ? `Платформы: ${formData.platforms.join(', ')}` : null,
+      formData.contentFormats.length ? `Форматы: ${formData.contentFormats.join(', ')}` : null,
+      precedentSearchQuery ? 'RAG-запрос по данным формы' : null,
+      (precedentSearchResults?.publications?.length || 0) > 0 ? 'Сигналы из релевантных публикаций' : null
+    ].filter(Boolean),
+    [formData, precedentSearchQuery, precedentSearchResults]
   )
 
   /** Для SMM: блокировка действий до выполнения пунктов проверки перед генерацией. */
@@ -257,15 +348,30 @@ const ProjectForm = () => {
   ])
 
   useEffect(() => {
-    const savedDraft = localStorage.getItem('projectFormDraft')
-    if (savedDraft) {
+    const restoreDraft = async () => {
       try {
-        const draft = JSON.parse(savedDraft)
-        setFormData(draft)
-      } catch (e) {
-        console.error('Ошибка загрузки черновика:', e)
+        const serverDraftResponse = await getServerDraft()
+        const serverDraft = serverDraftResponse?.draft?.formData
+        if (serverDraft && typeof serverDraft === 'object') {
+          setFormData(serverDraft)
+          return
+        }
+      } catch (error) {
+        console.error('Ошибка загрузки server-side черновика:', error)
+      }
+
+      const savedDraft = localStorage.getItem('projectFormDraft')
+      if (savedDraft) {
+        try {
+          const draft = JSON.parse(savedDraft)
+          setFormData(draft)
+        } catch (e) {
+          console.error('Ошибка загрузки локального черновика:', e)
+        }
       }
     }
+
+    restoreDraft()
   }, [])
 
   useEffect(() => {
@@ -311,13 +417,16 @@ const ProjectForm = () => {
     if (hasData) {
       const timeoutId = setTimeout(() => {
         localStorage.setItem('projectFormDraft', JSON.stringify(formData))
+        saveServerDraft({ formData }).catch((error) => {
+          console.error('Ошибка сохранения server-side черновика:', error)
+        })
       }, 1000)
       return () => clearTimeout(timeoutId)
     }
   }, [formData])
 
   const removeToast = (id) => {
-    setToasts(prev => prev.filter(toast => toast.id !== id))
+    dispatch({ type: 'REMOVE_TOAST', payload: id })
   }
 
   const handleChange = (e) => {
@@ -381,82 +490,92 @@ const ProjectForm = () => {
   const handleSearchPrecedents = async () => {
     const query = buildSuggestedPrecedentQuery(formData).trim()
 
-    setIsSearchingPrecedents(true)
     setPrecedentSearchQuery(query)
-
+    setOperationTelemetry({ backend: 'running', python: 'idle', llm: 'idle' })
     try {
-      const response = await searchPrecedents({
-        query,
-        limit: 5,
-        platform: formData.platforms[0] || undefined,
-        audience_segments: formData.consumerCategory ? [formData.consumerCategory] : []
+      await runTrackedOperation('searchingPrecedents', async (signal) => {
+        const response = await searchPrecedents(
+          {
+            query,
+            limit: 5,
+            platform: formData.platforms[0] || undefined,
+            audience_segments: formData.consumerCategory ? [formData.consumerCategory] : []
+          },
+          { signal }
+        )
+
+        setPrecedentSearchResults(response.results || null)
+        addToast('Поиск прецедентов завершён', 'success')
+
+        const summaryResponse = await getPrecedentsSummary({ signal })
+        setPrecedentsSummary(summaryResponse.summary || null)
       })
-
-      setPrecedentSearchResults(response.results || null)
-      addToast('Поиск прецедентов завершён', 'success')
-
-      const summaryResponse = await getPrecedentsSummary()
-      setPrecedentsSummary(summaryResponse.summary || null)
+      setOperationTelemetry({ backend: 'success', python: 'idle', llm: 'idle' })
     } catch (error) {
       console.error('Ошибка поиска прецедентов:', error)
       addToast(`Ошибка поиска прецедентов: ${error.message}`, 'error')
-    } finally {
-      setIsSearchingPrecedents(false)
+      setOperationTelemetry({ backend: 'error', python: 'idle', llm: 'idle' })
     }
   }
 
   const handleSeedDemoPrecedents = async () => {
     if (isEnrichmentServerAvailable === false) {
-      addToast('Сервер недоступен. Запустите backend на порту 3001.', 'error')
+      addToast('Сервер недоступен. Убедитесь, что backend запущен и доступен по VITE_ENRICHMENT_API_URL.', 'error')
       return
     }
-    setIsSeedingPrecedents(true)
+    setOperationTelemetry({ backend: 'running', python: 'idle', llm: 'idle' })
     try {
-      await seedDemoPrecedents()
-      const summaryResponse = await getPrecedentsSummary()
-      setPrecedentsSummary(summaryResponse.summary || null)
-      setAggregatedOntology(null)
-      addToast('Демо-база прецедентов загружена. Можно искать по запросу.', 'success')
+      await runTrackedOperation('seedingPrecedents', async (signal) => {
+        await seedDemoPrecedents({ signal })
+        const summaryResponse = await getPrecedentsSummary({ signal })
+        setPrecedentsSummary(summaryResponse.summary || null)
+        setAggregatedOntology(null)
+        addToast('Демо-база прецедентов загружена. Можно искать по запросу.', 'success')
+      })
+      setOperationTelemetry({ backend: 'success', python: 'idle', llm: 'idle' })
     } catch (error) {
       console.error('Ошибка загрузки демо-базы:', error)
       addToast(`Ошибка: ${error.message}`, 'error')
-    } finally {
-      setIsSeedingPrecedents(false)
+      setOperationTelemetry({ backend: 'error', python: 'idle', llm: 'idle' })
     }
   }
 
   const handleExportOntologyToExcel = async () => {
     if (isEnrichmentServerAvailable === false) {
-      addToast('Сервер недоступен. Запустите backend на порту 3001.', 'error')
+      addToast('Сервер недоступен. Убедитесь, что backend запущен и доступен по VITE_ENRICHMENT_API_URL.', 'error')
       return
     }
-    setIsExportingOntology(true)
+    setOperationTelemetry({ backend: 'running', python: 'idle', llm: 'idle' })
     try {
-      await exportOntologyToExcel()
+      await runTrackedOperation('exportingOntology', async (signal) => {
+        await exportOntologyToExcel({ signal })
+      })
       addToast('Онтология экспортирована в Excel', 'success')
+      setOperationTelemetry({ backend: 'success', python: 'idle', llm: 'idle' })
     } catch (error) {
       console.error('Ошибка экспорта онтологии:', error)
       addToast(`Ошибка: ${error.message}`, 'error')
-    } finally {
-      setIsExportingOntology(false)
+      setOperationTelemetry({ backend: 'error', python: 'idle', llm: 'idle' })
     }
   }
 
   const handleLoadOntology = async () => {
     if (isEnrichmentServerAvailable === false) {
-      addToast('Сервер недоступен. Запустите backend на порту 3001.', 'error')
+      addToast('Сервер недоступен. Убедитесь, что backend запущен и доступен по VITE_ENRICHMENT_API_URL.', 'error')
       return
     }
-    setIsLoadingOntology(true)
+    setOperationTelemetry({ backend: 'running', python: 'idle', llm: 'idle' })
     try {
-      const response = await getAggregatedOntology()
-      setAggregatedOntology(response.ontology || null)
+      await runTrackedOperation('loadingOntology', async (signal) => {
+        const response = await getAggregatedOntology({ signal })
+        setAggregatedOntology(response.ontology || null)
+      })
       addToast('Онтология загружена', 'success')
+      setOperationTelemetry({ backend: 'success', python: 'idle', llm: 'idle' })
     } catch (error) {
       console.error('Ошибка загрузки онтологии:', error)
       addToast(`Ошибка загрузки онтологии: ${error.message}`, 'error')
-    } finally {
-      setIsLoadingOntology(false)
+      setOperationTelemetry({ backend: 'error', python: 'idle', llm: 'idle' })
     }
   }
 
@@ -467,6 +586,9 @@ const ProjectForm = () => {
       setTouched({})
       clearCompetitors()
       localStorage.removeItem('projectFormDraft')
+      saveServerDraft({ formData: initialFormData }).catch((error) => {
+        console.error('Ошибка очистки server-side черновика:', error)
+      })
       addToast('Форма очищена', 'info')
     }
   }
@@ -520,37 +642,41 @@ const ProjectForm = () => {
 
     const safeFormInput = buildSafeFormInputForGeneration(formData)
 
-    setIsGeneratingDraftPlan(true)
     addToast('Генерация чернового контент-плана по данным формы и прецедентам...', 'info')
-
+    setOperationTelemetry({ backend: 'running', python: 'running', llm: 'running' })
     try {
-      const response = await generateDraftContentPlan({
-        form_input: safeFormInput,
-        rag_query: precedentSearchQuery || undefined,
-        rag_limit: 8
-      })
+      await runTrackedOperation('generatingPlan', async (signal) => {
+        const response = await generateDraftContentPlan(
+          {
+            form_input: safeFormInput,
+            rag_query: precedentSearchQuery || undefined,
+            rag_limit: 8
+          },
+          { signal }
+        )
 
-      setDraftPlanResult(response)
-      setOptimizationResult(null)
-      // Если LLM вернул черновой контент-план, сохраняем его для страницы просмотра
-      if (response?.draft?.draft_content_plan) {
-        try {
-          savePlanSnapshot(response.draft.draft_content_plan, {
-            type: 'draft'
-          })
-        } catch (e) {
-          console.error('Не удалось сохранить контент-план в localStorage:', e)
+        setDraftPlanResult(response)
+        setOptimizationResult(null)
+        // Если LLM вернул черновой контент-план, сохраняем его для страницы просмотра
+        if (response?.draft?.draft_content_plan) {
+          try {
+            savePlanSnapshot(response.draft.draft_content_plan, {
+              type: 'draft'
+            })
+          } catch (e) {
+            console.error('Не удалось сохранить контент-план в localStorage:', e)
+          }
         }
-      }
-      if (response?.rag) {
-        setPrecedentSearchResults(response.rag)
-      }
+        if (response?.rag) {
+          setPrecedentSearchResults(response.rag)
+        }
+      })
       addToast('Черновой контент-план успешно сгенерирован', 'success')
+      setOperationTelemetry({ backend: 'success', python: 'success', llm: 'success' })
     } catch (error) {
       console.error('Ошибка генерации чернового плана:', error)
       addToast(`Ошибка генерации: ${error.message}`, 'error')
-    } finally {
-      setIsGeneratingDraftPlan(false)
+      setOperationTelemetry({ backend: 'error', python: 'error', llm: 'error' })
     }
   }
 
@@ -577,7 +703,15 @@ const ProjectForm = () => {
       parseNumberOrNull(formData.maxCostPerPublication) ??
       parseNumberOrNull(draft?.constraints?.max_cost_per_publication) ??
       null
+    const publicationDayMode = draft?.schedule_preferences?.publication_day_mode || formData.publicationDayMode
+    const sharedModeMinPubs =
+      publicationDayMode === 'shared'
+        ? parseNumberOrNull(draft?.schedule_preferences?.generated_publications) ??
+          parseNumberOrNull(draft?.publications?.length) ??
+          null
+        : null
     const minPubs =
+      sharedModeMinPubs ??
       parseNumberOrNull(formData.minPublications) ??
       parseNumberOrNull(draft?.constraints?.min_publications) ??
       null
@@ -613,57 +747,45 @@ const ProjectForm = () => {
       }
     }
 
-    setIsOptimizingPlan(true)
     addToast('Запуск эволюционной оптимизации (2 уровня ГА)...', 'info')
+    setOperationTelemetry({ backend: 'running', python: 'running', llm: 'idle' })
     try {
-      const response = await optimizeDraftContentPlan(payload)
-      setOptimizationResult(response)
+      await runTrackedOperation('optimizingPlan', async (signal) => {
+        const response = await optimizeDraftContentPlan(payload, { signal })
+        setOptimizationResult(response)
 
-      if (response?.optimized_content_plan) {
-        try {
-          savePlanSnapshot(response.optimized_content_plan, {
-            type: 'optimized',
-            optimization: {
-              optimized_at: new Date().toISOString(),
-              stage1: response.stage1 || null,
-              stage2: response.stage2 || null
-            }
-          })
-        } catch (e) {
-          console.error('Не удалось сохранить оптимизированный план в localStorage:', e)
+        if (response?.optimized_content_plan) {
+          try {
+            savePlanSnapshot(response.optimized_content_plan, {
+              type: 'optimized',
+              optimization: {
+                optimized_at: new Date().toISOString(),
+                stage1: response.stage1 || null,
+                stage2: response.stage2 || null
+              }
+            })
+          } catch (e) {
+            console.error('Не удалось сохранить оптимизированный план в localStorage:', e)
+          }
         }
-      }
-
+      })
       addToast('Оптимизация завершена: план обновлён', 'success')
+      setOperationTelemetry({ backend: 'success', python: 'success', llm: 'idle' })
     } catch (error) {
       console.error('Ошибка оптимизации:', error)
       addToast(`Ошибка оптимизации: ${error.message}`, 'error')
-    } finally {
-      setIsOptimizingPlan(false)
+      setOperationTelemetry({ backend: 'error', python: 'error', llm: 'idle' })
     }
   }
 
   const hasError = (fieldName) => touched[fieldName] && errors[fieldName]
+  const visibleErrorEntries = useMemo(
+    () => Object.entries(errors).filter(([fieldName]) => touched[fieldName]),
+    [errors, touched]
+  )
   const isFirstStep = currentStep === 1
 
-  const currentProcessId = useMemo(() => {
-    if (isOptimizingPlan) return 'optimizingPlan'
-    if (isGeneratingDraftPlan) return 'generatingPlan'
-    if (isEnriching) return 'enriching'
-    if (isParsingFromUrls) return 'parsing'
-    if (isSearchingPrecedents) return 'searchingPrecedents'
-    if (isSeedingPrecedents) return 'seedingPrecedents'
-    if (isExportingOntology) return 'exportingOntology'
-    return null
-  }, [
-    isOptimizingPlan,
-    isGeneratingDraftPlan,
-    isEnriching,
-    isParsingFromUrls,
-    isSearchingPrecedents,
-    isSeedingPrecedents,
-    isExportingOntology
-  ])
+  const currentProcessId = useMemo(() => getCurrentProcessId(operations), [operations])
   const isLastStep = currentStep === wizardSteps.length
 
   const goToNextStep = () => {
@@ -683,6 +805,13 @@ const ProjectForm = () => {
     <>
       <ToastContainer toasts={toasts} removeToast={removeToast} />
       <ProcessIndicator active={!!currentProcessId} processId={currentProcessId} />
+      <OperationStatusPanel
+        operations={operations}
+        telemetry={operationTelemetry}
+        onCancel={cancelOperation}
+        onRetry={retryOperation}
+        isDeveloper={isDeveloper}
+      />
 
       <form className="project-form">
         {/* Прогресс-бар */}
@@ -692,6 +821,22 @@ const ProjectForm = () => {
           onStepClick={goToStep}
           stepStatuses={stepStatuses}
         />
+
+        {visibleErrorEntries.length > 0 && (
+          <section className="form-section" role="alert" aria-live="polite">
+            <h2 className="section-title">Ошибки формы</h2>
+            <div className="workflow-checklist">
+              {visibleErrorEntries.map(([fieldName, message]) => (
+                <div key={fieldName} className="workflow-checklist-item is-pending">
+                  <span className="workflow-checklist-mark">•</span>
+                  <span>
+                    {fieldName}: {message}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         {currentStep === 1 && (
           <>
@@ -987,6 +1132,36 @@ const ProjectForm = () => {
               ))}
             </select>
             {hasError('publicationFrequency') && <span className="error-message">{errors.publicationFrequency}</span>}
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Режим дат публикации</label>
+            <div className="publication-day-mode-toggle" role="radiogroup" aria-label="Режим дат публикации">
+              {publicationDayModeOptions.map((option) => {
+                const isActive = formData.publicationDayMode === option.value
+                return (
+                  <label
+                    key={option.value}
+                    className={`publication-day-mode-option ${isActive ? 'is-active' : ''}`}
+                  >
+                    <input
+                      type="radio"
+                      name="publicationDayMode"
+                      value={option.value}
+                      checked={isActive}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                      disabled={!isEditMode}
+                    />
+                    <span className="publication-day-mode-option-title">{option.label}</span>
+                    <span className="publication-day-mode-option-hint">{option.hint}</span>
+                  </label>
+                )
+              })}
+            </div>
+            <small className="form-hint">
+              Если результат не подойдет, даты потом можно вручную поправить в календаре плана.
+            </small>
           </div>
 
           <div className="form-group">
@@ -1490,6 +1665,8 @@ const ProjectForm = () => {
               isEnrichmentServerAvailable={isEnrichmentServerAvailable}
               hasDraftPlan={Boolean(draftPlanResult?.draft?.draft_content_plan)}
               hasOptimizedPlan={Boolean(optimizationResult?.optimized_content_plan)}
+              publicationDayMode={formData.publicationDayMode}
+              explainabilitySignals={explainabilitySignals}
             />
 
             <PrecedentSearchPanel
@@ -1530,7 +1707,28 @@ const ProjectForm = () => {
               isEnrichmentServerAvailable={isEnrichmentServerAvailable}
               canGenerateDraft={canGenerateDraft}
               smmBlockedReasons={smmBlockedReasonsForGenerate}
+              publicationDayMode={formData.publicationDayMode}
+              isDeveloper={isDeveloper}
             />
+
+            {(draftPlanResult?.draft?.draft_content_plan || optimizationResult?.optimized_content_plan) && (
+              <section className="form-section precedent-workflow-section">
+                <div className="workflow-section-heading">
+                  <div>
+                    <h2 className="section-title">Планирование публикаций</h2>
+                    <p className="workflow-section-subtitle">
+                      Для удобного планирования откройте отдельный экран календаря: там есть режимы
+                      Карточки/Таблица/Календарь и drag-and-drop по датам и платформам.
+                    </p>
+                  </div>
+                </div>
+                <div className="workflow-action-row">
+                  <button type="button" className="submit-button secondary" onClick={() => navigate('/content-plan')}>
+                    <span>ОТКРЫТЬ КАЛЕНДАРЬ ПЛАНА</span>
+                  </button>
+                </div>
+              </section>
+            )}
 
             {isDeveloper && (
               <TechnicalDetailsPanel

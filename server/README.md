@@ -79,6 +79,35 @@ npm start
 }
 ```
 
+### `POST /api/plan/generate`
+Генерация чернового контент-плана по данным формы и RAG-контексту.
+
+В `form_input` поддерживается поле `publicationDayMode`:
+
+- `spread` - публикации распределяются по горизонту без обязательного совпадения дат между платформами.
+- `shared` - каждая выбранная дата формирует пакет публикаций по всем выбранным платформам.
+
+Если выбран режим `shared`, сервер может увеличить итоговое число публикаций до ближайшего числа, кратного количеству платформ, чтобы на каждой общей дате был полный комплект платформ.
+
+**Фрагмент тела запроса:**
+```json
+{
+  "form_input": {
+    "contentPlanStartDate": "2026-03-01",
+    "contentPlanEndDate": "2026-03-31",
+    "platforms": ["vk", "linkedin"],
+    "minPublications": "5",
+    "publicationDayMode": "shared"
+  }
+}
+```
+
+**Что возвращается дополнительно в плане:**
+- `draft_content_plan.schedule_preferences.publication_day_mode`
+- `draft_content_plan.schedule_preferences.requested_publications`
+- `draft_content_plan.schedule_preferences.generated_publications`
+- `draft_content_plan.schedule_preferences.platform_bundle_size`
+
 ## Что делает сервер
 
 1. **Вычисляет `engagement_rate`** для всех постов локально (формула: `(likes + comments + shares) / views`)
@@ -101,5 +130,5 @@ npm start
 
 Для изменения URL сервера создайте файл `.env` в корне проекта:
 ```
-VITE_ENRICHMENT_API_URL=http://localhost:3001
+=http://localhost:3001
 ```

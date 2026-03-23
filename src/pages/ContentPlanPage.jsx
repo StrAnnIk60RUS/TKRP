@@ -6,6 +6,7 @@ import PlanSummaryBar from '../components/plan/PlanSummaryBar'
 import PlanFilters from '../components/plan/PlanFilters'
 import PlanViewToggle from '../components/plan/PlanViewToggle'
 import PlanPublicationTable from '../components/plan/PlanPublicationTable'
+import PlanCalendarBoard from '../components/plan/PlanCalendarBoard'
 import PostCard from '../components/plan/PostCard'
 import PostEditModal from '../components/plan/PostEditModal'
 import PlanEditModal from '../components/plan/PlanEditModal'
@@ -18,6 +19,7 @@ import {
   savePlanSnapshot
 } from '../services/planStorage'
 import { exportToExcel, exportToPdf } from '../utils/contentPlanExport'
+import { platformOptions } from '../components/projectForm/formConfig'
 import './ContentPlanPage.css'
 
 const DEFAULT_FILTERS = {
@@ -221,6 +223,33 @@ const ContentPlanPage = () => {
     }
   }
 
+  const handleMovePublication = (publicationId, nextDate, nextPlatform) => {
+    if (!safePlan || !publicationId || !nextDate || !nextPlatform) return
+    const nextPublications = Array.isArray(safePlan.publications)
+      ? safePlan.publications.map((item) =>
+          item?.publication_id === publicationId
+            ? { ...item, planned_date: nextDate, platform: nextPlatform }
+            : item
+        )
+      : []
+
+    const nextPlan = ensureUniquePublicationIds({
+      ...safePlan,
+      publications: nextPublications,
+      platforms: getPlatformsFromPublications(nextPublications)
+    })
+
+    const type = optimizationMeta ? 'optimized' : 'draft'
+    const optimization = optimizationMeta || null
+    try {
+      savePlanSnapshot(nextPlan, { type, optimization })
+      setContentPlan(nextPlan)
+      setPlanHistory(getPlanHistory())
+    } catch (e) {
+      console.error('Не удалось сохранить изменение календаря:', e)
+    }
+  }
+
   const handleSavePlanEdit = (nextPlanFields) => {
     if (!safePlan) return
 
@@ -369,10 +398,15 @@ const ContentPlanPage = () => {
         <p className="page-subtitle">
           ID плана: <strong>{contentPlan.plan_id || 'Неизвестно'}</strong>
         </p>
-        {optimizationMeta && (
+        {optimizationMeta && isDeveloper && (
           <p className="page-subtitle">
             Оптимизация: F_kp = <strong>{optimizationMeta.stage2?.f_kp ?? '—'}</strong>; ограничения:{' '}
             <strong>{optimizationMeta.stage2?.constraints_check?.valid ? 'OK' : 'есть нарушения'}</strong>
+          </p>
+        )}
+        {optimizationMeta && !isDeveloper && (
+          <p className="page-subtitle">
+            План улучшен: <strong>{optimizationMeta.stage2?.constraints_check?.valid ? 'ограничения соблюдены' : 'есть ограничения для проверки'}</strong>
           </p>
         )}
       </div>
@@ -469,6 +503,16 @@ const ContentPlanPage = () => {
 
           {filteredPublications.length > 0 && viewMode === 'table' && (
             <PlanPublicationTable publications={filteredPublications} onEdit={setPublicationToEdit} />
+          )}
+
+          {filteredPublications.length > 0 && viewMode === 'calendar' && (
+            <PlanCalendarBoard
+              plan={safePlan}
+              publications={filteredPublications}
+              keyDates={safePlan?.notes || ''}
+              platformOptions={platformOptions.map((item) => item.value)}
+              onMovePublication={handleMovePublication}
+            />
           )}
 
           {filteredPublications.length > 0 && viewMode === 'cards' && Object.keys(groupedFilteredByPlatform).length === 0 && (

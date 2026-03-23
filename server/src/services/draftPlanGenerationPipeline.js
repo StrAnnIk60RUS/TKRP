@@ -23,6 +23,10 @@ const ALLOWED_PLATFORMS = ['vk', 'linkedin'];
 const ALLOWED_OBJECTIVES = ['inform', 'educate', 'engage', 'convert', 'retain'];
 const DEFAULT_FORMATS = ['text', 'image', 'video', 'combined'];
 
+function normalizePublicationDayMode(value) {
+  return value === 'shared' ? 'shared' : 'spread';
+}
+
 function readPromptFile(filePath) {
   return fs.readFileSync(filePath, 'utf-8');
 }
@@ -165,12 +169,24 @@ function estimatePublicationCountFromFrequency(formInput = {}) {
   return Math.max(1, Math.round(weeks * perWeek));
 }
 
-function getTargetPublicationCount(formInput = {}) {
+function getRequestedPublicationCount(formInput = {}) {
   const explicitMin = asNumber(formInput.minPublications ?? formInput.min_publications, null);
   if (explicitMin !== null && explicitMin > 0) {
     return Math.round(explicitMin);
   }
   return estimatePublicationCountFromFrequency(formInput);
+}
+
+function getTargetPublicationCount(formInput = {}) {
+  const requestedCount = getRequestedPublicationCount(formInput);
+  const publicationDayMode = normalizePublicationDayMode(formInput.publicationDayMode);
+  if (publicationDayMode !== 'shared') return requestedCount;
+
+  const platformsCount = uniqueStrings(toArray(formInput.platforms).map((value) => normalizePlatform(value)))
+    .filter((value) => ALLOWED_PLATFORMS.includes(value)).length;
+
+  if (platformsCount <= 1) return requestedCount;
+  return Math.max(platformsCount, Math.ceil(requestedCount / platformsCount) * platformsCount);
 }
 
 function buildCompactPublicationContext(item = {}) {
@@ -288,7 +304,7 @@ function buildRequestedAudience(formInput = {}) {
   ]);
 }
 
-function buildDefaultSchedule(startDate, endDate, count) {
+function buildSpreadSchedule(startDate, endDate, count) {
   if (!isIsoDateString(startDate) || !isIsoDateString(endDate) || count <= 0) {
     return Array.from({ length: count }, () => null);
   }
@@ -304,6 +320,17 @@ function buildDefaultSchedule(startDate, endDate, count) {
     const offset = Math.round((idx * (spanDays - 1)) / Math.max(1, count - 1));
     return addDaysIso(startDate, offset);
   });
+}
+
+function buildDefaultSchedule(startDate, endDate, count, publicationDayMode = 'spread', platformsCount = 1) {
+  const normalizedMode = normalizePublicationDayMode(publicationDayMode);
+  if (normalizedMode !== 'shared' || platformsCount <= 1) {
+    return buildSpreadSchedule(startDate, endDate, count);
+  }
+
+  const sharedDateCount = Math.max(1, Math.ceil(count / platformsCount));
+  const sharedDates = buildSpreadSchedule(startDate, endDate, sharedDateCount);
+  return sharedDates.flatMap((date) => Array.from({ length: platformsCount }, () => date)).slice(0, count);
 }
 
 function getMonthKey(dateString) {
@@ -358,6 +385,9 @@ function repairSkeleton(rawSkeleton = {}, formInput = {}, targetPublicationCount
   const projectName = typeof formInput.projectName === 'string' ? formInput.projectName.trim() : 'IT Project';
   const requestedStart = toIsoDateOnly(formInput.contentPlanStartDate) || toIsoDateOnly(rawSkeleton?.planning_horizon?.start_date) || new Date().toISOString().slice(0, 10);
   const requestedEnd = toIsoDateOnly(formInput.contentPlanEndDate) || toIsoDateOnly(rawSkeleton?.planning_horizon?.end_date) || requestedStart;
+  const publicationDayMode = normalizePublicationDayMode(
+    formInput.publicationDayMode ?? rawSkeleton?.schedule_preferences?.publication_day_mode
+  );
   const requestedPlatforms = uniqueStrings(toArray(formInput.platforms).map((value) => normalizePlatform(value)))
     .filter((value) => ALLOWED_PLATFORMS.includes(value));
   const normalizedPlatforms = requestedPlatforms.length
@@ -366,7 +396,14 @@ function repairSkeleton(rawSkeleton = {}, formInput = {}, targetPublicationCount
   const platforms = normalizedPlatforms.length ? normalizedPlatforms : ['linkedin'];
   const formats = uniqueStrings(toArray(formInput.contentFormats).map((value) => normalizeFormat(value))).filter(Boolean);
   const resolvedFormats = formats.length ? formats : DEFAULT_FORMATS;
-  const schedule = buildDefaultSchedule(requestedStart, requestedEnd, targetPublicationCount);
+  const schedule = buildDefaultSchedule(
+    requestedStart,
+    requestedEnd,
+    targetPublicationCount,
+    publicationDayMode,
+    platforms.length
+  );
+  const requestedPublicationCount = getRequestedPublicationCount(formInput);
 
   const rawSlots = toArray(rawSkeleton.publication_slots);
   const config = {
@@ -374,7 +411,8 @@ function repairSkeleton(rawSkeleton = {}, formInput = {}, targetPublicationCount
     formats: resolvedFormats,
     defaultTone: 'expert',
     schedule,
-    startDate: requestedStart
+    startDate: requestedStart,
+    publicationDayMode
   };
 
   const repairedSlots = Array.from({ length: targetPublicationCount }, (_, idx) => {
@@ -383,13 +421,16 @@ function repairSkeleton(rawSkeleton = {}, formInput = {}, targetPublicationCount
     return {
       slot_id: `slot_${String(idx + 1).padStart(3, '0')}`,
       planned_date: (() => {
+        if (publicationDayMode === 'shared') return fallback.planned_date;
         const candidate = toIsoDateOnly(source.planned_date);
         if (!candidate) return fallback.planned_date;
         if (candidate < requestedStart) return requestedStart;
         if (candidate > requestedEnd) return requestedEnd;
         return candidate;
       })(),
-      platform: normalizePlatform(source.platform, fallback.platform),
+      platform: publicationDayMode === 'shared'
+        ? fallback.platform
+        : normalizePlatform(source.platform, fallback.platform),
       objective: normalizeObjective(source.objective, fallback.objective),
       format: normalizeFormat(source.format, fallback.format),
       tone: normalizeTone(source.tone, fallback.tone)
@@ -423,6 +464,15 @@ function repairSkeleton(rawSkeleton = {}, formInput = {}, targetPublicationCount
     notes: typeof rawSkeleton.notes === 'string' && rawSkeleton.notes.trim()
       ? rawSkeleton.notes.trim()
       : `Черновой план для ${projectName}, собранный по частям на основе компактного RAG-контекста.`,
+    schedule_preferences: {
+      ...(rawSkeleton?.schedule_preferences && typeof rawSkeleton.schedule_preferences === 'object'
+        ? rawSkeleton.schedule_preferences
+        : {}),
+      publication_day_mode: publicationDayMode,
+      requested_publications: requestedPublicationCount,
+      generated_publications: targetPublicationCount,
+      platform_bundle_size: platforms.length
+    },
     publication_slots: repairedSlots
   };
 }
@@ -785,6 +835,7 @@ export async function generateDraftPlanBatched({
   ragLimit
 }) {
   const compactRagContext = buildCompactRagContext(ragResults);
+  const requestedPublicationCount = getRequestedPublicationCount(formInput);
   const targetPublicationCount = getTargetPublicationCount(formInput);
 
   const usageItems = [];
@@ -847,6 +898,7 @@ export async function generateDraftPlanBatched({
     platforms: skeleton.platforms,
     target_audience: skeleton.target_audience,
     constraints: skeleton.constraints,
+    schedule_preferences: skeleton.schedule_preferences,
     publications: skeleton.publication_slots.map((slot, index) =>
       normalizeBatchPublication(
         publicationMap.get(slot.slot_id) || {},
@@ -895,6 +947,7 @@ export async function generateDraftPlanBatched({
     generation_metadata: {
       mode: 'skeleton_monthly_merge',
       rag_limit: ragLimit,
+      requested_publications: requestedPublicationCount,
       target_publications: targetPublicationCount,
       total_months: monthlyGroups.length,
       compact_rag_context: compactRagContext.summary

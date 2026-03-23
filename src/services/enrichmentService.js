@@ -17,7 +17,7 @@ const buildFetchErrorMessage = async (response) => {
   return errorMessage
 }
 
-const fetchJsonOrThrow = async (endpoint, options) => {
+const fetchJsonOrThrow = async (endpoint, options = {}) => {
   const response = await fetch(endpoint, options)
   if (!response.ok) {
     throw new Error(await buildFetchErrorMessage(response))
@@ -30,14 +30,15 @@ const fetchJsonOrThrow = async (endpoint, options) => {
  * @param {Object} competitorsData - сырые данные конкурентов от парсера
  * @returns {Promise<Object>} - обогащенные данные
  */
-export async function enrichCompetitorsData(competitorsData) {
+export async function enrichCompetitorsData(competitorsData, requestOptions = {}) {
   try {
     const result = await fetchJsonOrThrow(`${API_URL}/api/enrich`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ competitors_data: competitorsData })
+      body: JSON.stringify({ competitors_data: competitorsData }),
+      signal: requestOptions.signal
     })
     
     // Если есть ошибка и нет даже raw_response, значит реальная ошибка
@@ -62,11 +63,11 @@ export async function enrichCompetitorsData(competitorsData) {
  * Проверяет доступность сервера обогащения
  * @returns {Promise<boolean>} - true если сервер доступен
  */
-export async function checkEnrichmentServer() {
+export async function checkEnrichmentServer(requestOptions = {}) {
   try {
     const response = await fetch(`${API_URL}/health`, {
       method: 'GET',
-      signal: AbortSignal.timeout(3000) // 3 секунды таймаут
+      signal: requestOptions.signal || AbortSignal.timeout(3000) // 3 секунды таймаут
     });
     return response.ok;
   } catch (error) {
@@ -80,14 +81,15 @@ export async function checkEnrichmentServer() {
  * @param {number|null} limit - максимальное количество постов (null или undefined = все посты)
  * @returns {Promise<Object>} - результат parse-only
  */
-export async function parseCompetitorByUrl(url, limit) {
+export async function parseCompetitorByUrl(url, limit, requestOptions = {}) {
   try {
     return await fetchJsonOrThrow(`${API_URL}/api/parse`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ url, limit })
+      body: JSON.stringify({ url, limit }),
+      signal: requestOptions.signal
     })
   } catch (error) {
     console.error('Ошибка в parseCompetitorByUrl:', error);
@@ -100,14 +102,15 @@ export async function parseCompetitorByUrl(url, limit) {
  * @param {string} url - ссылка на профиль/пост конкурента
  * @returns {Promise<Object>} - результат пайплайна parse-and-enrich
  */
-export async function parseAndEnrichByUrl(url) {
+export async function parseAndEnrichByUrl(url, requestOptions = {}) {
   try {
     return await fetchJsonOrThrow(`${API_URL}/api/parse-and-enrich`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ url })
+      body: JSON.stringify({ url }),
+      signal: requestOptions.signal
     })
   } catch (error) {
     console.error('Ошибка в parseAndEnrichByUrl:', error);
@@ -119,10 +122,11 @@ export async function parseAndEnrichByUrl(url) {
  * Получает краткую сводку по накопленной базе прецедентов
  * @returns {Promise<Object>}
  */
-export async function getPrecedentsSummary() {
+export async function getPrecedentsSummary(requestOptions = {}) {
   try {
     return await fetchJsonOrThrow(`${API_URL}/api/precedents/summary`, {
-      method: 'GET'
+      method: 'GET',
+      signal: requestOptions.signal
     })
   } catch (error) {
     console.error('Ошибка в getPrecedentsSummary:', error);
@@ -134,11 +138,12 @@ export async function getPrecedentsSummary() {
  * Загружает демо-базу прецедентов (фикстура) для проверки поиска без парсинга/обогащения
  * @returns {Promise<Object>}
  */
-export async function seedDemoPrecedents() {
+export async function seedDemoPrecedents(requestOptions = {}) {
   try {
     return await fetchJsonOrThrow(`${API_URL}/api/precedents/seed`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
+      headers: { 'Content-Type': 'application/json' },
+      signal: requestOptions.signal
     })
   } catch (error) {
     console.error('Ошибка в seedDemoPrecedents:', error);
@@ -151,14 +156,15 @@ export async function seedDemoPrecedents() {
  * @param {Object} payload
  * @returns {Promise<Object>}
  */
-export async function searchPrecedents(payload) {
+export async function searchPrecedents(payload, requestOptions = {}) {
   try {
     return await fetchJsonOrThrow(`${API_URL}/api/precedents/search`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
+      signal: requestOptions.signal
     })
   } catch (error) {
     console.error('Ошибка в searchPrecedents:', error);
@@ -170,10 +176,11 @@ export async function searchPrecedents(payload) {
  * Получает нормализованную агрегированную онтологию из базы прецедентов
  * @returns {Promise<Object>}
  */
-export async function getAggregatedOntology() {
+export async function getAggregatedOntology(requestOptions = {}) {
   try {
     return await fetchJsonOrThrow(`${API_URL}/api/precedents/ontology`, {
-      method: 'GET'
+      method: 'GET',
+      signal: requestOptions.signal
     })
   } catch (error) {
     console.error('Ошибка в getAggregatedOntology:', error);
@@ -185,8 +192,11 @@ export async function getAggregatedOntology() {
  * Скачивает Excel-файл с онтологией (классы, сущности, отношения) из базы прецедентов
  * @returns {Promise<void>}
  */
-export async function exportOntologyToExcel() {
-  const response = await fetch(`${API_URL}/api/precedents/ontology/export`, { method: 'GET' })
+export async function exportOntologyToExcel(requestOptions = {}) {
+  const response = await fetch(`${API_URL}/api/precedents/ontology/export`, {
+    method: 'GET',
+    signal: requestOptions.signal
+  })
   if (!response.ok) {
     const err = await buildFetchErrorMessage(response)
     throw new Error(err)
@@ -206,8 +216,11 @@ export async function exportOntologyToExcel() {
  * Скачивает онтологию в формате Turtle/RDF
  * @returns {Promise<void>}
  */
-export async function exportOntologyToTurtle() {
-  const response = await fetch(`${API_URL}/api/precedents/ontology/export/turtle`, { method: 'GET' })
+export async function exportOntologyToTurtle(requestOptions = {}) {
+  const response = await fetch(`${API_URL}/api/precedents/ontology/export/turtle`, {
+    method: 'GET',
+    signal: requestOptions.signal
+  })
   if (!response.ok) {
     const err = await buildFetchErrorMessage(response)
     throw new Error(err)
@@ -228,14 +241,15 @@ export async function exportOntologyToTurtle() {
  * @param {Object} payload
  * @returns {Promise<Object>}
  */
-export async function generateDraftContentPlan(payload) {
+export async function generateDraftContentPlan(payload, requestOptions = {}) {
   try {
     return await fetchJsonOrThrow(`${API_URL}/api/plan/generate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
+      signal: requestOptions.signal
     })
   } catch (error) {
     console.error('Ошибка в generateDraftContentPlan:', error);
@@ -248,17 +262,46 @@ export async function generateDraftContentPlan(payload) {
  * @param {Object} payload
  * @returns {Promise<Object>}
  */
-export async function optimizeDraftContentPlan(payload) {
+export async function optimizeDraftContentPlan(payload, requestOptions = {}) {
   try {
     return await fetchJsonOrThrow(`${API_URL}/api/plan/optimize`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
+      signal: requestOptions.signal
     })
   } catch (error) {
     console.error('Ошибка в optimizeDraftContentPlan:', error);
     throw error;
+  }
+}
+
+export async function getServerDraft(requestOptions = {}) {
+  try {
+    return await fetchJsonOrThrow(`${API_URL}/api/plan/draft/current`, {
+      method: 'GET',
+      signal: requestOptions.signal
+    })
+  } catch (error) {
+    console.error('Ошибка в getServerDraft:', error)
+    throw error
+  }
+}
+
+export async function saveServerDraft(payload, requestOptions = {}) {
+  try {
+    return await fetchJsonOrThrow(`${API_URL}/api/plan/draft/current`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload),
+      signal: requestOptions.signal
+    })
+  } catch (error) {
+    console.error('Ошибка в saveServerDraft:', error)
+    throw error
   }
 }

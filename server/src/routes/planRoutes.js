@@ -7,6 +7,7 @@ import { buildRagQueryFromForm, normalizeDraftPlanResponse } from './shared/plan
 import { sendRouteError } from './shared/routeUtils.js';
 
 const router = Router();
+let currentWizardDraft = null
 
 async function handleGeneratePlan(req, res, routeName) {
   const { form_input, rag_query, rag_limit } = req.body || {};
@@ -83,5 +84,26 @@ router.post('/optimize', (req, res) => {
     return sendRouteError(res, req, 400, 'Некорректный запрос в /api/plan/optimize', error);
   }
 });
+
+router.get('/draft/current', (req, res) => {
+  return res.json({
+    success: true,
+    draft: currentWizardDraft,
+    request_id: req.requestId
+  })
+})
+
+router.put('/draft/current', (req, res) => {
+  const payload = req.body || {}
+  currentWizardDraft = {
+    formData: payload.formData || null,
+    updated_at: new Date().toISOString()
+  }
+  return res.json({
+    success: true,
+    draft: currentWizardDraft,
+    request_id: req.requestId
+  })
+})
 
 export default router;
