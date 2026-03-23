@@ -14,15 +14,13 @@ const WorkflowSummaryPanel = ({
   const statusTone =
     isEnrichmentServerAvailable === false
       ? 'danger'
-      : isEnrichmentServerAvailable === true
-      ? 'success'
       : 'neutral'
 
   const statusLabel =
     isEnrichmentServerAvailable === false
       ? 'Backend недоступен'
       : isEnrichmentServerAvailable === true
-      ? 'Backend доступен'
+      ? null
       : 'Проверка backend...'
 
   return (
@@ -35,7 +33,7 @@ const WorkflowSummaryPanel = ({
             необходимости запустите оптимизацию.
           </p>
         </div>
-        <span className={`ui-badge ui-badge-${statusTone}`}>{statusLabel}</span>
+        {statusLabel && <span className={`ui-badge ui-badge-${statusTone}`}>{statusLabel}</span>}
       </div>
 
       <div className="workflow-overview-grid">

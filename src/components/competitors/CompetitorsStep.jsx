@@ -36,7 +36,7 @@ const CompetitorsStep = ({
     isEnrichmentServerAvailable === false
       ? { text: 'Backend недоступен', tone: 'danger' }
       : isEnrichmentServerAvailable === true
-      ? { text: 'Backend доступен', tone: 'success' }
+      ? null
       : { text: 'Проверка backend…', tone: 'neutral' };
 
   return (
@@ -52,7 +52,7 @@ const CompetitorsStep = ({
         <div className="ui-panel competitors-dashboard">
           <div className="ui-panel-header">
             <div className="ui-panel-title">Статус шага</div>
-            <div className={`ui-badge ui-badge-${serverBadge.tone}`}>{serverBadge.text}</div>
+            {serverBadge && <div className={`ui-badge ui-badge-${serverBadge.tone}`}>{serverBadge.text}</div>}
           </div>
           <div className="ui-panel-grid">
             <div className="ui-metric">

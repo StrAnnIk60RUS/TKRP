@@ -1413,7 +1413,8 @@
     font-weight: 800;
     border-radius: 0;
     cursor: pointer;
-    transition: all 0.15s;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease,
+      border-color 0.15s ease;
     box-shadow: 6px 6px 0 0 #ff6b9d;
     min-width: 280px;
     letter-spacing: 1px;
@@ -1423,11 +1424,14 @@
 
   .submit-button.secondary {
     background: #2d2d44;
+    border-color: #2d2d44;
     box-shadow: 6px 6px 0 0 #cbd5e0;
   }
 
   .submit-button.secondary:hover:not(:disabled) {
     background: #3d3d5d;
+    border-color: #3d3d5d;
+    transform: translate(-3px, -3px);
     box-shadow: 8px 8px 0 0 #cbd5e0;
   }
 
@@ -1437,8 +1441,9 @@
   }
 
   .submit-button.primary:hover:not(:disabled) {
-    background: #ff6b9d;
-    border-color: #ff6b9d;
+    background: #2d2d44;
+    border-color: #2d2d44;
+    transform: translate(-3px, -3px);
     box-shadow: 8px 8px 0 0 #ff6b9d;
   }
 
@@ -1453,17 +1458,16 @@
     z-index: 10;
   }
   
-  .submit-button:hover:not(:disabled) {
-    background: #ff6b9d;
-    border-color: #ff6b9d;
-    color: #ffffff !important;
-    transform: translate(-3px, -3px);
-    box-shadow: 8px 8px 0 0 #ff6b9d;
-  }
-  
   .submit-button:active:not(:disabled) {
     transform: translate(-1px, -1px);
+  }
+
+  .submit-button.primary:active:not(:disabled) {
     box-shadow: 4px 4px 0 0 #ff6b9d;
+  }
+
+  .submit-button.secondary:active:not(:disabled) {
+    box-shadow: 4px 4px 0 0 #cbd5e0;
   }
   
 .submit-button:disabled {
@@ -1544,6 +1548,100 @@
 .checkbox-label input[type="checkbox"]:disabled {
   cursor: not-allowed;
   opacity: 0.4;
+}
+
+/* Светлая тема: контраст и предсказуемые hover-состояния */
+body.theme-light .quick-actions {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+body.theme-light .actions-label,
+body.theme-light .actions-description,
+body.theme-light .competitors-select-label,
+body.theme-light .competitors-status-text,
+body.theme-light .precedent-summary-text,
+body.theme-light .ui-panel-title,
+body.theme-light .ui-details-summary,
+body.theme-light .ui-callout-title,
+body.theme-light .ui-empty-title {
+  color: #1a1a2e;
+}
+
+body.theme-light .action-btn {
+  background: #ffffff;
+  border-color: #cbd5e1;
+  color: #1a1a2e !important;
+}
+
+body.theme-light .action-btn > *,
+body.theme-light .action-btn span,
+body.theme-light .action-btn label {
+  color: #1a1a2e !important;
+}
+
+body.theme-light .action-btn:hover {
+  background: #ff6b9d;
+  border-color: #ff6b9d;
+  color: #ffffff !important;
+}
+
+body.theme-light .action-btn:hover > *,
+body.theme-light .action-btn:hover span,
+body.theme-light .action-btn:hover label {
+  color: #ffffff !important;
+}
+
+body.theme-light .ui-panel,
+body.theme-light .ui-empty,
+body.theme-light .ui-callout {
+  background: #ffffff;
+  border-color: #cbd5e1;
+}
+
+body.theme-light .ui-metric {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+body.theme-light .ui-metric-label,
+body.theme-light .ui-metric-hint,
+body.theme-light .ui-callout-text,
+body.theme-light .ui-empty-text {
+  color: #334155;
+}
+
+body.theme-light .ui-metric-value,
+body.theme-light .ui-mono {
+  color: #1a1a2e;
+}
+
+body.theme-light .ui-mono {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+body.theme-light .ui-badge-success {
+  color: #166534;
+}
+
+body.theme-light .ui-badge-danger {
+  color: #9f1239;
+}
+
+body.theme-light .ui-badge-neutral {
+  color: #334155;
+}
+
+/* Выравнивание размеров элементов в соседних action-группах */
+.workflow-action-row .submit-button,
+.workflow-action-row .demo-horizon-select,
+.wizard-nav-actions .submit-button {
+  min-height: 62px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.2;
 }
   
   /* Адаптивность */
