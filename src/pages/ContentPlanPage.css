@@ -542,6 +542,12 @@
 .plan-table-edit-btn {
   padding: 8px 14px;
   font-size: 0.82rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .plan-calendar {
@@ -872,7 +878,9 @@
   }
 
   .plan-table-edit-btn {
-    width: 100%;
+    width: auto;
+    max-width: 100%;
+    justify-self: start;
   }
 
   .plan-calendar-grid {
