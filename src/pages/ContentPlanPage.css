@@ -65,6 +65,7 @@
 .action-buttons {
   display: flex;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 .download-dropdown {
@@ -128,6 +129,7 @@
   text-transform: uppercase;
   letter-spacing: 0.5px;
   position: relative;
+  overflow-wrap: anywhere;
 }
 
 .primary-btn > *,
@@ -181,6 +183,7 @@
   border: 2px solid #1a1a2e;
   box-shadow: 4px 4px 0 0 #1a1a2e;
   padding: 18px 20px;
+  min-width: 0;
 }
 
 .plan-summary-metric-label {
@@ -199,12 +202,14 @@
   color: #1a1a2e;
   font-size: 1.25rem;
   font-weight: 900;
+  overflow-wrap: anywhere;
 }
 
 .plan-summary-metric-meta {
   color: #2d2d44;
   line-height: 1.4;
   font-size: 0.9rem;
+  overflow-wrap: anywhere;
 }
 
 .content-plan-content {
@@ -218,6 +223,7 @@
   padding: 32px;
   border: 2px solid #1a1a2e;
   box-shadow: 4px 4px 0 0 #1a1a2e;
+  min-width: 0;
 }
 
 .section-title {
@@ -261,6 +267,7 @@
   padding: 24px;
   background: #fafbfc;
   border: 2px solid #1a1a2e;
+  min-width: 0;
 }
 
 .platform-name {
@@ -282,6 +289,7 @@
   padding: 20px;
   border: 2px solid #1a1a2e;
   box-shadow: 2px 2px 0 0 #1a1a2e;
+  min-width: 0;
 }
 
 .post-header {
@@ -291,6 +299,8 @@
   margin-bottom: 12px;
   padding-bottom: 12px;
   border-bottom: 1px solid #e2e8f0;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .post-date {
@@ -305,12 +315,14 @@
   font-size: 0.85rem;
   font-weight: 600;
   text-transform: uppercase;
+  overflow-wrap: anywhere;
 }
 
 .post-content {
   color: #2d2d44;
   line-height: 1.6;
   margin-bottom: 12px;
+  overflow-wrap: anywhere;
 }
 
 .post-metrics {
@@ -321,6 +333,7 @@
   font-size: 0.9rem;
   color: #2d2d44;
   font-weight: 600;
+  flex-wrap: wrap;
 }
 
 .post-edit-actions {
@@ -386,6 +399,7 @@
   font-size: 1rem;
   color: #1a1a2e;
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .plan-history-header,
@@ -435,7 +449,7 @@
 
 .plan-filters-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 16px;
 }
 
@@ -462,12 +476,14 @@
   flex-direction: column;
   align-items: flex-end;
   gap: 10px;
+  min-width: 0;
 }
 
 .plan-view-toggle-buttons {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .plan-view-toggle-btn {
@@ -477,6 +493,7 @@
   color: #1a1a2e;
   font-weight: 800;
   cursor: pointer;
+  overflow-wrap: anywhere;
 }
 
 .plan-view-toggle-btn.active {
@@ -527,6 +544,231 @@
   font-size: 0.82rem;
 }
 
+.plan-calendar {
+  display: grid;
+  gap: 16px;
+}
+
+.plan-calendar-intro {
+  border: 2px solid #1a1a2e;
+  background: #fafbfc;
+  padding: 14px 16px;
+}
+
+.plan-calendar-intro-title {
+  color: #1a1a2e;
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+
+.plan-calendar-intro p {
+  margin: 0;
+  color: #334155;
+  line-height: 1.45;
+}
+
+.plan-calendar-mobile-move {
+  border: 2px solid #1a1a2e;
+  background: #ffffff;
+  padding: 16px;
+}
+
+.plan-calendar-mobile-title {
+  color: #1a1a2e;
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+
+.plan-calendar-mobile-copy {
+  margin: 0 0 12px;
+  color: #475569;
+  line-height: 1.45;
+}
+
+.plan-calendar-mobile-empty {
+  border: 1px dashed #94a3b8;
+  background: #f8fafc;
+  padding: 12px;
+  color: #475569;
+}
+
+.plan-calendar-mobile-controls {
+  display: grid;
+  gap: 12px;
+}
+
+.plan-calendar-mobile-selection {
+  display: grid;
+  gap: 4px;
+  border: 1px solid #cbd5e0;
+  background: #f8fafc;
+  padding: 12px;
+  color: #1a1a2e;
+}
+
+.plan-calendar-mobile-selection-label {
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.plan-calendar-mobile-field {
+  display: grid;
+  gap: 6px;
+  color: #1a1a2e;
+  font-weight: 700;
+}
+
+.plan-calendar-mobile-field select {
+  width: 100%;
+  padding: 12px 14px;
+  border: 2px solid #1a1a2e;
+  background: #ffffff;
+  color: #1a1a2e;
+}
+
+.plan-calendar-mobile-action {
+  width: 100%;
+}
+
+.plan-calendar-legend {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.plan-calendar-dot {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #1a1a2e;
+}
+
+.plan-calendar-dot::before {
+  content: '';
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #94a3b8;
+}
+
+.plan-calendar-dot.is-holiday::before {
+  background: #16a34a;
+}
+
+.plan-calendar-dot.is-key-date::before {
+  background: #f59e0b;
+}
+
+.plan-calendar-month h3 {
+  margin: 0 0 10px;
+  text-transform: capitalize;
+  color: #1a1a2e;
+  overflow-wrap: anywhere;
+}
+
+.plan-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.plan-calendar-day {
+  border: 2px solid #1a1a2e;
+  background: #ffffff;
+  min-height: 180px;
+  padding: 10px;
+  min-width: 0;
+}
+
+.plan-calendar-day-header {
+  margin-bottom: 8px;
+}
+
+.plan-calendar-day-markers {
+  display: grid;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.marker-holiday,
+.marker-key-date {
+  width: fit-content;
+  font-size: 0.72rem;
+  font-weight: 700;
+  border: 1px solid;
+  padding: 2px 6px;
+}
+
+.marker-holiday {
+  border-color: #16a34a;
+  color: #166534;
+  background: #f0fdf4;
+}
+
+.marker-key-date {
+  border-color: #f59e0b;
+  color: #92400e;
+  background: #fffbeb;
+}
+
+.plan-calendar-lanes {
+  display: grid;
+  gap: 8px;
+}
+
+.plan-calendar-lane {
+  border: 1px dashed #475569;
+  background: #f8fafc;
+  padding: 6px;
+  min-height: 48px;
+  min-width: 0;
+}
+
+.plan-calendar-lane-title {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #475569;
+  margin-bottom: 6px;
+}
+
+.plan-calendar-card {
+  border: 1px solid #1a1a2e;
+  background: #ffffff;
+  padding: 6px;
+  margin-bottom: 6px;
+  cursor: grab;
+}
+
+.plan-calendar-card-button {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+}
+
+.plan-calendar-card.is-selected {
+  border-color: #ff6b9d;
+  box-shadow: 0 0 0 2px rgba(255, 107, 157, 0.18);
+}
+
+.plan-calendar-card-title {
+  color: #1a1a2e;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.3;
+  word-break: break-word;
+}
+
+.plan-calendar-card-meta {
+  color: #475569;
+  font-size: 0.7rem;
+  margin-top: 4px;
+}
+
 @media (max-width: 768px) {
   .header-actions {
     flex-direction: column;
@@ -534,11 +776,19 @@
 
   .action-buttons {
     width: 100%;
+    flex-direction: column;
   }
 
   .primary-btn,
   .secondary-btn {
-    flex: 1;
+    width: 100%;
+  }
+
+  .page-header,
+  .plan-section,
+  .platform-block {
+    padding-left: 20px;
+    padding-right: 20px;
   }
 
   .ontology-view {
@@ -561,5 +811,113 @@
   .plan-view-toggle {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .plan-summary-bar {
+    position: static;
+    top: auto;
+  }
+
+  .plan-view-toggle,
+  .plan-view-toggle-buttons {
+    width: 100%;
+  }
+
+  .plan-view-toggle-buttons {
+    justify-content: flex-start;
+  }
+
+  .plan-view-toggle-btn {
+    flex: 1 1 150px;
+  }
+
+  .plan-table {
+    min-width: 0;
+  }
+
+  .plan-table thead {
+    display: none;
+  }
+
+  .plan-table,
+  .plan-table tbody,
+  .plan-table tr,
+  .plan-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .plan-table tr {
+    border-bottom: 2px solid #1a1a2e;
+  }
+
+  .plan-table tr:last-child {
+    border-bottom: none;
+  }
+
+  .plan-table td {
+    display: grid;
+    grid-template-columns: minmax(88px, 120px) minmax(0, 1fr);
+    gap: 12px;
+    padding: 10px 14px;
+  }
+
+  .plan-table td::before {
+    content: attr(data-label);
+    color: #475569;
+    font-size: 0.78rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .plan-table-edit-btn {
+    width: 100%;
+  }
+
+  .plan-calendar-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .page-header {
+    margin-bottom: 24px;
+    padding-bottom: 18px;
+  }
+
+  .header-actions h1,
+  .section-title {
+    overflow-wrap: anywhere;
+  }
+
+  .plan-section,
+  .platform-block,
+  .post-card {
+    padding: 16px;
+  }
+
+  .plan-table td {
+    grid-template-columns: 1fr;
+    gap: 6px;
+    padding: 10px 12px;
+  }
+
+  .plan-table td::before {
+    margin-bottom: 2px;
+  }
+
+  .plan-calendar-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .plan-calendar-day {
+    min-height: auto;
+    padding: 8px;
+  }
+
+  .plan-calendar-day-header {
+    display: grid;
+    gap: 6px;
   }
 }

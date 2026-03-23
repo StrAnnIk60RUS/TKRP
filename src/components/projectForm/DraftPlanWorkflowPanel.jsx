@@ -1,6 +1,7 @@
 import React from 'react'
 
 const formatPercent = (value) => `${((Number(value) || 0) * 100).toFixed(1)}%`
+const getPublicationDayModeLabel = (mode) => (mode === 'shared' ? 'Общие дни по всем платформам' : 'Разные дни')
 
 const DraftPlanWorkflowPanel = ({
   draftPlanResult,
@@ -13,10 +14,25 @@ const DraftPlanWorkflowPanel = ({
   isProcessing,
   isEnrichmentServerAvailable,
   canGenerateDraft = true,
-  smmBlockedReasons = []
+  smmBlockedReasons = [],
+  publicationDayMode = 'spread',
+  isDeveloper = false
 }) => {
   const draftPlan = draftPlanResult?.draft?.draft_content_plan || null
   const optimizedPlan = optimizationResult?.optimized_content_plan || null
+  const draftDayMode = draftPlan?.schedule_preferences?.publication_day_mode || publicationDayMode
+  const optimizedDayMode = optimizedPlan?.schedule_preferences?.publication_day_mode || draftDayMode
+  const gaChanges = draftPlan && optimizedPlan
+    ? [
+        ['min_publications', draftPlan.constraints?.min_publications, optimizedPlan.constraints?.min_publications],
+        ['total_budget', draftPlan.constraints?.total_budget, optimizedPlan.constraints?.total_budget],
+        [
+          'max_cost_per_publication',
+          draftPlan.constraints?.max_cost_per_publication,
+          optimizedPlan.constraints?.max_cost_per_publication
+        ]
+      ].filter(([, beforeValue, afterValue]) => beforeValue !== afterValue)
+    : []
 
   return (
     <section className="form-section precedent-workflow-section">
@@ -24,7 +40,9 @@ const DraftPlanWorkflowPanel = ({
         <div>
           <h2 className="section-title">Шаг 2. Генерация и оптимизация плана</h2>
           <p className="workflow-section-subtitle">
-            Сначала создайте черновик, затем при необходимости улучшите его через генетическую оптимизацию.
+            {isDeveloper
+              ? 'Сначала создайте черновик, затем при необходимости улучшите его через генетическую оптимизацию.'
+              : 'Сначала создайте черновик плана, затем при необходимости запустите улучшение результата.'}
           </p>
         </div>
       </div>
@@ -54,9 +72,21 @@ const DraftPlanWorkflowPanel = ({
           className="submit-button secondary"
           onClick={onOptimizeDraftPlan}
           disabled={!draftPlan || isOptimizingPlan}
-          title="Запустить 2-уровневую оптимизацию (ГА)"
+          title={
+            isDeveloper
+              ? 'Запустить 2-уровневую оптимизацию (ГА)'
+              : 'Улучшить план на основе ограничений и целей'
+          }
         >
-          <span>{isOptimizingPlan ? 'ОПТИМИЗАЦИЯ...' : 'ОПТИМИЗИРОВАТЬ (ГА)'}</span>
+          <span>
+            {isOptimizingPlan
+              ? isDeveloper
+                ? 'ОПТИМИЗАЦИЯ...'
+                : 'УЛУЧШЕНИЕ...'
+              : isDeveloper
+              ? 'ОПТИМИЗИРОВАТЬ (ГА)'
+              : 'УЛУЧШИТЬ ПЛАН'}
+          </span>
         </button>
 
         <button
@@ -81,7 +111,7 @@ const DraftPlanWorkflowPanel = ({
           <div className="workflow-result-card">
             <div className="workflow-result-header">
               <h3>Черновой план</h3>
-              <span className="ui-badge ui-badge-neutral">RAG → LLM</span>
+              <span className="ui-badge ui-badge-neutral">{isDeveloper ? 'RAG → LLM' : 'AI-черновик'}</span>
             </div>
             <div className="workflow-result-list">
               <div>План: {draftPlan.plan_id || '—'}</div>
@@ -90,6 +120,7 @@ const DraftPlanWorkflowPanel = ({
                 {draftPlan.planning_horizon?.end_date || '—'}
               </div>
               <div>Публикаций: {draftPlan.publications?.length || 0}</div>
+              <div>Режим дат: {getPublicationDayModeLabel(draftDayMode)}</div>
               <div>
                 Целевой engagement:{' '}
                 {draftPlan.kpi_targets?.avg_engagement_rate !== undefined
@@ -119,13 +150,21 @@ const DraftPlanWorkflowPanel = ({
             {!!optimizedPlan && (
               <div className="workflow-result-list">
                 <div>Публикаций после оптимизации: {optimizedPlan.publications?.length || 0}</div>
-                <div>F_kp: {optimizationResult?.stage2?.f_kp ?? '—'}</div>
-                <div>Stop reason: {optimizationResult?.stage2?.ga?.stop_reason ?? '—'}</div>
-                <div>Поколений: {optimizationResult?.stage2?.ga?.generations ?? '—'}</div>
+                <div>Режим дат: {getPublicationDayModeLabel(optimizedDayMode)}</div>
+                {isDeveloper && <div>F_kp: {optimizationResult?.stage2?.f_kp ?? '—'}</div>}
+                {isDeveloper && <div>Stop reason: {optimizationResult?.stage2?.ga?.stop_reason ?? '—'}</div>}
+                {isDeveloper && <div>Поколений: {optimizationResult?.stage2?.ga?.generations ?? '—'}</div>}
                 <div>
                   Ограничения:{' '}
                   {optimizationResult?.stage2?.constraints_check?.valid ? 'соблюдены' : 'есть нарушения'}
                 </div>
+                {isDeveloper && <div>Изменено ограничений GA: {gaChanges.length}</div>}
+                {isDeveloper &&
+                  gaChanges.map(([key, beforeValue, afterValue]) => (
+                    <div key={key}>
+                      {key}: {String(beforeValue ?? '—')} → {String(afterValue ?? '—')}
+                    </div>
+                  ))}
               </div>
             )}
           </div>

@@ -8,6 +8,7 @@
   box-shadow: 4px 4px 0 0 #ff6b9d;
   margin-bottom: 20px;
   position: relative;
+  flex-wrap: wrap;
 }
 
 .process-indicator::before {
@@ -40,6 +41,7 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-width: 0;
 }
 
 .process-indicator-label {
@@ -65,4 +67,16 @@ body.theme-light .process-indicator-label {
 
 body.theme-light .process-indicator-hint {
   color: #475569;
+}
+
+@media (max-width: 560px) {
+  .process-indicator {
+    padding: 12px 14px;
+    gap: 12px;
+  }
+
+  .process-indicator-label,
+  .process-indicator-hint {
+    overflow-wrap: anywhere;
+  }
 }

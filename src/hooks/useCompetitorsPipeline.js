@@ -22,7 +22,7 @@ export function useCompetitorsPipeline(addToast, options = {}) {
     checkEnrichmentServer().then((available) => {
       setIsEnrichmentServerAvailable(available);
       if (!available) {
-        console.warn('Сервер обогащения недоступен. Убедитесь, что сервер запущен на порту 3001');
+        console.warn('Сервер обогащения недоступен. Проверьте backend и переменную VITE_ENRICHMENT_API_URL.');
       }
     });
   }, []);

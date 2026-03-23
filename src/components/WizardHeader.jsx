@@ -10,6 +10,16 @@ const statusMeta = {
 const WizardHeader = ({ currentStep, wizardSteps, onStepClick, stepStatuses = [] }) => {
   const wizardProgress = (currentStep / wizardSteps.length) * 100
   const currentStatus = statusMeta[stepStatuses[currentStep - 1]] || statusMeta.pending
+  const handleStepKeyDown = (event, stepNumber) => {
+    if (event.key === 'ArrowRight') {
+      event.preventDefault()
+      onStepClick(Math.min(wizardSteps.length, stepNumber + 1))
+    }
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault()
+      onStepClick(Math.max(1, stepNumber - 1))
+    }
+  }
 
   return (
     <div className="main-nav wizard-main-nav">
@@ -33,7 +43,10 @@ const WizardHeader = ({ currentStep, wizardSteps, onStepClick, stepStatuses = []
               type="button"
               className={`wizard-step-tab ${isActive ? 'active' : ''} ${status.className}`}
               onClick={() => onStepClick(stepNumber)}
+              onKeyDown={(event) => handleStepKeyDown(event, stepNumber)}
               title={`Перейти к этапу: ${stepName}`}
+              aria-label={`Шаг ${stepNumber}: ${stepName}`}
+              aria-current={isActive ? 'step' : undefined}
             >
               <span className="wizard-step-number">{stepNumber}.</span> {stepName}
             </button>

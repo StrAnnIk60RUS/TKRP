@@ -66,6 +66,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 16px;
   background: #1a1a2e;
   color: #ffffff;
 }
@@ -76,6 +77,7 @@
   font-size: 1.6rem;
   font-weight: 800;
   letter-spacing: -0.5px;
+  overflow-wrap: anywhere;
 }
 
 .modal-close {
@@ -107,6 +109,7 @@
   overflow-y: auto;
   flex: 1;
   background: #fafbfc;
+  min-width: 0;
 }
 
 .preview-info {
@@ -145,12 +148,14 @@
   margin: 0 0 6px;
   color: #1a1a2e;
   font-size: 1.25rem;
+  overflow-wrap: anywhere;
 }
 
 .precedent-modal-subtitle {
   margin: 0;
   color: #2d2d44;
   line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .precedent-modal-score {
@@ -162,6 +167,7 @@
   color: #c2185b;
   font-size: 1.15rem;
   font-weight: 900;
+  overflow-wrap: anywhere;
 }
 
 .precedent-modal-grid {
@@ -190,6 +196,7 @@
   color: #1a1a2e;
   font-size: 0.95rem;
   line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .precedent-modal-context {
@@ -305,6 +312,7 @@
   line-height: 1.6;
   max-height: 300px;
   overflow-y: auto;
+  word-break: break-word;
 }
 
 .modal-footer {
@@ -314,6 +322,7 @@
   justify-content: flex-end;
   gap: 16px;
   background: #fafbfc;
+  flex-wrap: wrap;
 }
 
 .btn-primary,
@@ -328,6 +337,8 @@
   text-transform: uppercase;
   letter-spacing: 0.5px;
   position: relative;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .btn-primary::before {
@@ -372,6 +383,13 @@
     max-width: 100%;
     max-height: 95vh;
   }
+
+  .modal-header,
+  .modal-body,
+  .modal-footer {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
   
   .modal-body {
     padding: 20px;
@@ -383,5 +401,60 @@
 
   .precedent-modal-hero {
     flex-direction: column;
+  }
+
+  .precedent-modal-score {
+    min-width: 0;
+    align-self: flex-start;
+  }
+}
+
+@media (max-width: 560px) {
+  .modal-overlay {
+    padding: 8px;
+  }
+
+  .modal-content {
+    border-width: 2px;
+    box-shadow: 4px 4px 0 0 #1a1a2e;
+  }
+
+  .modal-header {
+    align-items: flex-start;
+    padding: 16px;
+  }
+
+  .modal-header h3 {
+    font-size: 1.2rem;
+  }
+
+  .modal-close {
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+  }
+
+  .modal-body,
+  .modal-footer {
+    padding: 16px;
+  }
+
+  .modal-footer {
+    flex-direction: column;
+  }
+
+  .btn-primary,
+  .btn-secondary {
+    width: 100%;
+  }
+
+  .structure-tree,
+  .tree-item,
+  .preview-info {
+    padding: 16px;
+  }
+
+  .tree-item ul {
+    margin-left: 18px;
   }
 }

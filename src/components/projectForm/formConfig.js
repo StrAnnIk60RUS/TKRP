@@ -13,6 +13,7 @@ export const initialFormData = {
   contentPlanStartDate: '',
   contentPlanEndDate: '',
   publicationFrequency: '',
+  publicationDayMode: 'spread',
   minPublications: '',
   keyDates: '',
   totalBudget: '',
@@ -87,6 +88,19 @@ export const frequencyOptions = [
   { value: '2_per_week', label: '2 раза в неделю' }
 ]
 
+export const publicationDayModeOptions = [
+  {
+    value: 'spread',
+    label: 'Разные дни',
+    hint: 'Публикации распределяются по горизонту и могут выходить на платформах в разные даты.'
+  },
+  {
+    value: 'shared',
+    label: 'Общие дни',
+    hint: 'На каждую выбранную дату создается публикация на каждой выбранной платформе.'
+  }
+]
+
 export const contentFormatOptions = [
   { value: 'text', label: 'Текст' },
   { value: 'video', label: 'Ролик' },
@@ -129,6 +143,7 @@ export const demoExampleFormData = {
   contentPlanStartDate: '2026-03-01',
   contentPlanEndDate: '2026-05-31',
   publicationFrequency: '3-4_per_week',
+  publicationDayMode: 'spread',
   minPublications: '70',
   keyDates:
     '15 марта - запуск бета-версии, 1 апреля - вебинар по внедрению, 15 апреля - кейс-стади с первым клиентом, 1 мая - обновление функционала, 20 мая - итоговая презентация результатов.',

@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react'
+import React, { useMemo, useEffect, useRef } from 'react'
 import '../PreviewModal.css'
 
 function formatPercent(score) {
@@ -14,8 +14,13 @@ function prettyRetrievalType(retrieval) {
 
 const PrecedentDetailsModal = ({ item, retrieval, onClose, showTechnicalDetails = true }) => {
   const jsonString = useMemo(() => JSON.stringify(item, null, 2), [item])
+  const closeButtonRef = useRef(null)
 
   if (!item) return null
+
+  useEffect(() => {
+    closeButtonRef.current?.focus()
+  }, [])
 
   const title =
     item.type === 'publication'
@@ -54,11 +59,11 @@ const PrecedentDetailsModal = ({ item, retrieval, onClose, showTechnicalDetails 
         ]
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay" onClick={onClose} role="presentation">
+      <div className="modal-content" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <div className="modal-header">
           <h3>{title}</h3>
-          <button className="modal-close" onClick={onClose}>
+          <button className="modal-close" onClick={onClose} ref={closeButtonRef} aria-label="Закрыть модальное окно">
             ×
           </button>
         </div>

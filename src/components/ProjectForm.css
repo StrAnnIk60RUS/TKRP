@@ -150,7 +150,7 @@
 
   .competitor-url-input {
     flex: 1;
-    min-width: 220px;
+  min-width: 0;
   }
 
   .competitors-controls {
@@ -165,7 +165,7 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
-    min-width: 220px;
+  min-width: min(220px, 100%);
   }
 
   .competitors-select-label {
@@ -410,6 +410,7 @@
     color: #ffffff;
     font-size: 0.9rem;
     font-weight: 600;
+  overflow-wrap: anywhere;
   }
 
   .precedent-seed-btn {
@@ -669,6 +670,7 @@
   color: #2d2d44;
   line-height: 1.5;
   max-width: 760px;
+  overflow-wrap: anywhere;
 }
 
 .workflow-overview-grid,
@@ -684,6 +686,7 @@
   border: 2px solid #1a1a2e;
   background: #fafbfc;
   padding: 18px 20px;
+  min-width: 0;
 }
 
 .workflow-overview-label {
@@ -702,12 +705,14 @@
   color: #1a1a2e;
   font-size: 1.2rem;
   font-weight: 900;
+  overflow-wrap: anywhere;
 }
 
 .workflow-overview-meta {
   color: #2d2d44;
   font-size: 0.88rem;
   line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
 .workflow-checklist {
@@ -724,6 +729,7 @@
   background: #ffffff;
   color: #1a1a2e;
   font-weight: 600;
+  min-width: 0;
 }
 
 .workflow-checklist-item.is-complete {
@@ -748,7 +754,7 @@
 }
 
 .workflow-action-row-tight .submit-button {
-  min-width: 240px;
+  min-width: 0;
 }
 
 .workflow-next-action {
@@ -757,6 +763,143 @@
   border: 2px solid #1a1a2e;
   background: #fff8e1;
   color: #1a1a2e;
+}
+
+.calendar-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 14px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.calendar-toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.calendar-mode-btn {
+  min-width: 0;
+  min-height: 52px;
+  padding: 12px 16px;
+}
+
+.calendar-mode-btn.is-active {
+  border-color: #ff6b9d;
+  background: #ff6b9d;
+}
+
+.calendar-select {
+  min-width: 0;
+  max-width: 100%;
+  padding: 10px 12px;
+}
+
+.calendar-board {
+  display: grid;
+  gap: 12px;
+  max-height: 620px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.calendar-day-card {
+  border: 2px solid #1a1a2e;
+  background: #fafbfc;
+  padding: 12px;
+}
+
+.calendar-day-card-month {
+  border-color: #475569;
+}
+
+.calendar-day-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.calendar-markers {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.calendar-marker {
+  border: 1px solid #cbd5e0;
+  background: #fff;
+  padding: 2px 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.calendar-marker-holiday {
+  border-color: #16a34a;
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.calendar-marker-event {
+  border-color: #f59e0b;
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.calendar-marker-info {
+  border-color: #0284c7;
+  background: #f0f9ff;
+  color: #075985;
+}
+
+.calendar-platform-lanes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.calendar-platform-lane {
+  border: 1px dashed #1a1a2e;
+  background: #ffffff;
+  min-height: 70px;
+  padding: 8px;
+}
+
+.calendar-lane-title {
+  font-size: 0.76rem;
+  font-weight: 800;
+  color: #475569;
+  margin-bottom: 8px;
+}
+
+.calendar-publication-card {
+  border: 1px solid #1a1a2e;
+  background: #fafbfc;
+  padding: 8px;
+  margin-bottom: 8px;
+  cursor: grab;
+}
+
+.calendar-publication-card.is-conflict {
+  border-color: #dc2626;
+  background: #fef2f2;
+}
+
+.calendar-publication-title {
+  color: #1a1a2e;
+  font-weight: 700;
+  font-size: 0.82rem;
+  margin-bottom: 4px;
+}
+
+.calendar-publication-meta {
+  color: #475569;
+  font-size: 0.74rem;
+  font-weight: 600;
 }
 
 .ontology-preview-panel {
@@ -814,7 +957,7 @@
 
 .ontology-preview-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 16px;
 }
 
@@ -932,6 +1075,7 @@
   margin: 0;
   color: #1a1a2e;
   font-size: 1.05rem;
+  overflow-wrap: anywhere;
 }
 
 .workflow-result-list {
@@ -939,6 +1083,7 @@
   gap: 8px;
   color: #1a1a2e;
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .workflow-result-placeholder {
@@ -988,10 +1133,12 @@
 .wizard-nav-summary-step {
   color: #1a1a2e;
   font-weight: 700;
+  overflow-wrap: anywhere;
 }
 
 .wizard-nav-summary-status {
   font-weight: 700;
+  overflow-wrap: anywhere;
 }
 
 .wizard-nav-summary-status.pending {
@@ -1126,6 +1273,8 @@
     padding: 6px 10px;
     cursor: pointer;
     transition: all 0.15s ease;
+    max-width: 100%;
+    overflow-wrap: anywhere;
   }
 
   .wizard-step-tab:hover {
@@ -1200,6 +1349,7 @@
     padding-left: 20px;
     letter-spacing: -0.5px;
     text-transform: none;
+  overflow-wrap: anywhere;
   }
   
   /* Группы полей */
@@ -1269,11 +1419,14 @@
     background: #ffffff;
     color: #1a1a2e;
     font-weight: 500;
+  min-width: 0;
   }
 
   /* Демо-подбор горизонта (1/3/6/12 месяцев) */
   .demo-horizon-select {
-    min-width: 280px;
+    min-width: 0;
+    width: 100%;
+    max-width: 360px;
     padding: 18px 56px;
     font-size: 1.1rem;
     font-weight: 800;
@@ -1416,10 +1569,12 @@
     transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease,
       border-color 0.15s ease;
     box-shadow: 6px 6px 0 0 #ff6b9d;
-    min-width: 280px;
+    min-width: 0;
+    max-width: 100%;
     letter-spacing: 1px;
     text-transform: uppercase;
     position: relative;
+    overflow-wrap: anywhere;
   }
 
   .submit-button.secondary {
@@ -1490,6 +1645,8 @@
   letter-spacing: 1px;
   text-transform: uppercase;
   position: relative;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .btn-edit::before {
@@ -1533,6 +1690,52 @@
   padding-left: 4px;
   text-transform: none;
   letter-spacing: 0;
+}
+
+.publication-day-mode-toggle {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.publication-day-mode-option {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 2px solid #cbd5e0;
+  background: #ffffff;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+  position: relative;
+}
+
+.publication-day-mode-option:hover {
+  border-color: #ff6b9d;
+  transform: translateY(-1px);
+}
+
+.publication-day-mode-option.is-active {
+  border-color: #ff6b9d;
+  box-shadow: 4px 4px 0 0 rgba(255, 107, 157, 0.18);
+}
+
+.publication-day-mode-option input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.publication-day-mode-option-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #1a1a2e;
+}
+
+.publication-day-mode-option-hint {
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: #4a5568;
 }
 
 .form-input:disabled,
@@ -1646,6 +1849,13 @@ body.theme-light .ui-badge-neutral {
   
   /* Адаптивность */
   @media (max-width: 768px) {
+    .ui-panel-grid,
+    .workflow-overview-grid,
+    .workflow-result-grid,
+    .publication-day-mode-toggle {
+      grid-template-columns: 1fr;
+    }
+
     .form-row {
       grid-template-columns: 1fr;
       gap: 20px;
@@ -1714,12 +1924,68 @@ body.theme-light .ui-badge-neutral {
     .workflow-action-row .demo-horizon-select {
       width: 100%;
       min-width: 0;
+      max-width: none;
     }
 
-  .ontology-preview-grid,
-  .ontology-preview-metrics {
-    grid-template-columns: 1fr;
+    .wizard-step-tab {
+      width: 100%;
+      text-align: left;
+    }
+
+    .workflow-result-header,
+    .calendar-toolbar,
+    .calendar-toolbar-group {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .calendar-board {
+      max-height: none;
+      padding-right: 0;
+    }
+
+    .calendar-platform-lanes,
+    .ontology-preview-grid,
+    .ontology-preview-metrics {
+      grid-template-columns: 1fr;
+    }
+
   }
+
+  @media (max-width: 560px) {
+    .quick-actions,
+    .wizard-main-nav {
+      padding: 16px;
+    }
+
+    .competitor-url-row,
+    .competitors-controls,
+    .precedent-search-actions,
+    .form-actions {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .competitors-select-block,
+    .competitor-remove-btn,
+    .competitors-add-btn,
+    .competitors-parse-btn,
+    .competitors-enrich-btn,
+    .competitors-clear-btn,
+    .calendar-mode-btn,
+    .calendar-select {
+      width: 100%;
+    }
+
+    .form-section {
+      padding: 18px 16px;
+    }
+
+    .section-title {
+      font-size: 1.2rem;
+      gap: 8px;
+      padding-left: 12px;
+    }
   }
   
   @media (max-width: 480px) {
@@ -1745,5 +2011,18 @@ body.theme-light .ui-badge-neutral {
 
     .app-main {
       padding: 30px 20px;
+    }
+  }
+
+  @media (hover: none) {
+    .action-btn:hover,
+    .submit-button.primary:hover:not(:disabled),
+    .submit-button.secondary:hover:not(:disabled),
+    .btn-edit:hover:not(:disabled),
+    .checkbox-label:hover,
+    .publication-day-mode-option:hover,
+    .precedent-card-clickable:hover,
+    .form-section:hover {
+      transform: none;
     }
   }

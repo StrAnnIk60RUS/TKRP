@@ -1,5 +1,16 @@
 import React from 'react'
 
+const getPublicationDayModeCopy = (mode) =>
+  mode === 'shared'
+    ? {
+        label: 'Общие дни',
+        hint: 'На каждую дату планируются публикации по всем выбранным платформам.'
+      }
+    : {
+        label: 'Разные дни',
+        hint: 'Публикации распределяются по горизонту без обязательного совпадения дат.'
+      }
+
 const WorkflowSummaryPanel = ({
   filledRequired,
   requiredCount,
@@ -9,8 +20,11 @@ const WorkflowSummaryPanel = ({
   reviewChecklist,
   isEnrichmentServerAvailable,
   hasDraftPlan,
-  hasOptimizedPlan
+  hasOptimizedPlan,
+  publicationDayMode = 'spread',
+  explainabilitySignals = []
 }) => {
+  const publicationDayModeCopy = getPublicationDayModeCopy(publicationDayMode)
   const statusTone =
     isEnrichmentServerAvailable === false
       ? 'danger'
@@ -74,6 +88,12 @@ const WorkflowSummaryPanel = ({
               : 'Сначала выполните поиск и генерацию'}
           </span>
         </div>
+
+        <div className="workflow-overview-card">
+          <span className="workflow-overview-label">Режим дат</span>
+          <strong className="workflow-overview-value">{publicationDayModeCopy.label}</strong>
+          <span className="workflow-overview-meta">{publicationDayModeCopy.hint}</span>
+        </div>
       </div>
 
       <div className="workflow-checklist">
@@ -87,6 +107,21 @@ const WorkflowSummaryPanel = ({
           </div>
         ))}
       </div>
+
+      {explainabilitySignals.length > 0 && (
+        <div className="workflow-checklist">
+          <div className="workflow-checklist-item is-complete">
+            <span className="workflow-checklist-mark">✓</span>
+            <span>Сигналы, влияющие на черновик:</span>
+          </div>
+          {explainabilitySignals.map((signal) => (
+            <div key={signal} className="workflow-checklist-item">
+              <span className="workflow-checklist-mark">•</span>
+              <span>{signal}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </section>
   )
 }
