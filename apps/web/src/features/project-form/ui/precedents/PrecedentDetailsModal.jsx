@@ -1,0 +1,167 @@
+import React, { useMemo, useEffect, useRef } from 'react'
+import '../../../../shared/ui/PreviewModal.css'
+
+function formatPercent(score) {
+  return `${Math.round((Number(score) || 0) * 100)}%`
+}
+
+function prettyRetrievalType(retrieval) {
+  const type = retrieval?.type
+  if (type === 'embedding_cosine') return 'Semantic retrieval (эмбеддинги · cosine similarity)'
+  if (type === 'token_overlap_fallback') return 'Token overlap (фолбэк)'
+  return type || 'unknown'
+}
+
+function ReliabilityBreakdown({ factors }) {
+  if (!factors || typeof factors !== 'object') return null
+  const entries = [
+    ['relevance_score', 'Релевантность запросу', factors.retrieval_score],
+    ['completeness', 'Полнота данных', factors.completeness],
+    ['source_trust', 'Доверие к источнику', factors.source_trust]
+  ].filter(([, , v]) => Number.isFinite(Number(v)))
+  if (!entries.length) return null
+  return (
+    <div className="precedent-reliability-breakdown">
+      <p className="precedent-reliability-breakdown-title">Факторы надёжности</p>
+      <div className="precedent-reliability-factors">
+        {entries.map(([key, label, value]) => (
+          <div key={key} className="precedent-reliability-factor">
+            <span className="precedent-reliability-factor-label">{label}</span>
+            <span className="precedent-reliability-factor-value">{formatPercent(value)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+const PrecedentDetailsModal = ({ item, retrieval, onClose, showTechnicalDetails = true }) => {
+  const jsonString = useMemo(() => JSON.stringify(item, null, 2), [item])
+  const closeButtonRef = useRef(null)
+
+  if (!item) return null
+
+  useEffect(() => {
+    closeButtonRef.current?.focus()
+  }, [])
+
+  const title =
+    item.type === 'publication'
+      ? item.data?.publication_model?.topic || 'Публикация-прецедент'
+      : item.data?.competitor_name || item.data?.plan_id || 'Контент-план-прецедент'
+
+  const subtitle =
+    item.type === 'publication'
+      ? `${item.data?.competitor_name || 'Неизвестный конкурент'} · ${item.data?.platform || 'unknown'}`
+      : `${item.data?.platform || 'unknown'} · ${item.data?.content_plan_model?.total_publications || 0} публикаций`
+
+  const whyFound =
+    item.type === 'publication'
+      ? Array.isArray(item.matched_tokens) && item.matched_tokens.length > 0
+        ? showTechnicalDetails
+          ? item.matched_tokens.join(', ')
+          : 'По ключевым словам'
+        : showTechnicalDetails
+        ? 'semantic / без токенов'
+        : 'По смыслу'
+      : null
+
+  const summaryMetrics =
+    item.type === 'publication'
+      ? [
+          ['Формат', item.data?.publication_model?.format || '—'],
+          ['Категория', item.data?.publication_model?.content_category || '—'],
+          ['Аудитория', (item.data?.publication_model?.audience_segments || []).join(', ') || 'не указана'],
+          ...(whyFound ? [['Почему найдено', whyFound]] : [])
+        ]
+      : [
+          ['Платформа', item.data?.platform || '—'],
+          ['Постов в неделю', item.data?.content_plan_model?.posting_frequency_per_week || 0],
+          ['Публикаций в плане', item.data?.content_plan_model?.total_publications || 0],
+          ['Аудитория', (item.data?.content_plan_model?.audience_segments || []).join(', ') || 'не указана']
+        ]
+
+  return (
+    <div className="modal-overlay" onClick={onClose} role="presentation">
+      <div className="modal-content" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+        <div className="modal-header">
+          <h3>{title}</h3>
+          <button className="modal-close" onClick={onClose} ref={closeButtonRef} aria-label="Закрыть модальное окно">
+            ×
+          </button>
+        </div>
+
+        <div className="modal-body">
+          <div className="preview-info">
+            <div className="precedent-modal-hero">
+              <div>
+                <div className="precedent-modal-eyebrow">Прецедент</div>
+                <h4 className="precedent-modal-title">{title}</h4>
+                <p className="precedent-modal-subtitle">{subtitle}</p>
+              </div>
+              {Number.isFinite(Number(item.reliability)) ? (
+                <div className="precedent-modal-reliability" title="Надёжность: релевантность + полнота данных + доверие к источнику">
+                  <span className="precedent-modal-reliability-label">Надёжность</span>
+                  <span className="precedent-modal-reliability-value">{formatPercent(item.reliability)}</span>
+                </div>
+              ) : (
+                <div className="precedent-modal-score" title="Релевантность">{formatPercent(item.score)}</div>
+              )}
+            </div>
+
+            <div className="precedent-modal-grid">
+              {summaryMetrics.map(([label, value]) => (
+                <div key={label} className="precedent-modal-card">
+                  <span className="precedent-modal-card-label">{label}</span>
+                  <strong className="precedent-modal-card-value">{value}</strong>
+                </div>
+              ))}
+            </div>
+
+            {showTechnicalDetails && (
+              <div className="precedent-modal-context">
+                <p>
+                  <strong>Retrieval:</strong> {prettyRetrievalType(retrieval)}
+                  {retrieval?.embedding_model ? ` · ${retrieval.embedding_model}` : ''}
+                </p>
+                {retrieval?.type === 'embedding_cosine' && (
+                  <p>
+                    В режиме эмбеддингов релевантность считается по косинусной близости, поэтому список совпавших
+                    токенов может быть пустым.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {showTechnicalDetails && (
+            <details className="precedent-technical-details">
+              <summary>Технические детали и JSON</summary>
+              <div className="preview-json">
+                {item.reliability_factors && (
+                  <ReliabilityBreakdown factors={item.reliability_factors} />
+                )}
+                {Array.isArray(item.matched_tokens) && item.matched_tokens.length > 0 && (
+                  <p className="precedent-technical-line">
+                    <strong>Совпавшие токены:</strong> {item.matched_tokens.join(', ')}
+                  </p>
+                )}
+                <h4>Детали (JSON)</h4>
+                <pre className="json-preview">{jsonString}</pre>
+              </div>
+            </details>
+          )}
+        </div>
+
+        <div className="modal-footer">
+          <button className="btn-primary" onClick={onClose}>
+            <span>Закрыть</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export default PrecedentDetailsModal
+

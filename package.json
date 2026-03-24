@@ -5,12 +5,12 @@
   "private": true,
   "scripts": {
     "dev": "concurrently \"npm:dev:vite\" \"npm:dev:server\"",
-    "dev:vite": "vite",
-    "dev:server": "cd server && npm run dev",
-    "build": "vite build",
-    "preview": "vite preview",
-    "lint": "node ./scripts/lint-project.mjs",
-    "test": "node --test",
+    "dev:vite": "vite --config apps/web/vite.config.js",
+    "dev:server": "npm run dev --prefix apps/api",
+    "build": "vite build --config apps/web/vite.config.js",
+    "preview": "vite preview --config apps/web/vite.config.js",
+    "lint": "node ./tools/scripts/lint-project.mjs",
+    "test": "node --test apps/web/tests/frontend-formUtils.test.js apps/api/tests/ontologyAggregation.test.js apps/api/tests/security.test.js",
     "check": "npm run lint && npm run test && npm run build"
   },
   "dependencies": {
