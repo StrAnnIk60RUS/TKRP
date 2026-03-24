@@ -2,19 +2,41 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-import { embedTexts } from './embeddingService.js';
+import {
+  buildMlTrainingDatasets,
+  buildPlanFeatureMap,
+  buildPlanFeatureVector,
+  buildPostFeatureVector,
+  PLAN_FEATURE_NAMES,
+  POST_FEATURE_NAMES
+} from './ml/ontologyFeatureEngineering.js';
 import { runPythonJsonProcess } from './pythonRuntime.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-const SCRIPT_PATH = path.join(__dirname, '..', '..', 'ml', 'engagement_model.py');
-const MODEL_DIR = path.join(__dirname, '..', '..', 'data', 'ml');
-const MODEL_PATH = path.join(MODEL_DIR, 'engagement_model.joblib');
+const SERVER_ROOT = path.join(__dirname, '..', '..');
+const DATA_ROOT = path.join(SERVER_ROOT, 'data');
+const PRECEDENTS_ROOT = path.join(DATA_ROOT, 'precedents-store');
+const SCRIPT_PATH = path.join(SERVER_ROOT, 'ml', 'engagement_model.py');
+const MODEL_DIR = path.join(DATA_ROOT, 'ml');
 const ML_TIMEOUT_MS = Number(process.env.ML_SCRIPT_TIMEOUT_MS || 180000);
 
-const EMBEDDING_TEXT_MAX_CHARS = 4000;
-const PREDICT_BATCH_SIZE = 64;
-let modelTrainingQueue = Promise.resolve();
+const MODEL_SPECS = {
+  post: {
+    modelPath: path.join(MODEL_DIR, 'post_likes_model.joblib'),
+    metadataPath: path.join(MODEL_DIR, 'post_likes_model_metadata.json'),
+    featureNames: POST_FEATURE_NAMES
+  },
+  content_plan: {
+    modelPath: path.join(MODEL_DIR, 'content_plan_likes_model.joblib'),
+    metadataPath: path.join(MODEL_DIR, 'content_plan_likes_model_metadata.json'),
+    featureNames: PLAN_FEATURE_NAMES
+  }
+};
+
+const trainingQueues = {
+  post: Promise.resolve(),
+  content_plan: Promise.resolve()
+};
 
 function clamp01(value) {
   const numeric = Number(value);
@@ -22,143 +44,270 @@ function clamp01(value) {
   return Math.max(0, Math.min(1, numeric));
 }
 
-function truncateText(value, maxChars) {
-  if (typeof value !== 'string') return '';
-  const trimmed = value.trim();
-  if (!trimmed) return '';
-  if (trimmed.length <= maxChars) return trimmed;
-  return trimmed.slice(0, Math.max(0, maxChars - 1)).trim();
+function clampPositive(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 0;
+  return Math.max(0, numeric);
 }
 
-function inferPostTypeFromFormat(format) {
-  const f = typeof format === 'string' ? format.trim().toLowerCase() : '';
-  if (f === 'video') return 'video_post';
-  if (f === 'image') return 'image_post';
-  if (f === 'combined') return 'combined_post';
-  if (f === 'text') return 'text_post';
-  return 'other';
-}
-
-function buildEmbeddingTextForGeneratedPublication(publication) {
-  // В precedentRepository embedding-индекс строится из "лаконичного search-text" + raw_content.
-  // Здесь у нас нет публикации в виде publication_model, поэтому собираем максимально близкий "search-text"
-  // без префиксов типа `platform:` (важно, чтобы формат был таким же, как в конкурентной базе).
-
-  const inferredType = inferPostTypeFromFormat(publication?.format);
-
-  const baseParts = [
-    publication?.platform ? String(publication.platform) : '',
-    inferredType,
-    publication?.topic ? String(publication.topic) : '',
-    publication?.format ? String(publication.format) : '',
-    'other', // content_category (аналог fallback в конкурентной базе)
-    publication?.tone ? String(publication.tone) : '',
-    'unknown', // funnel_stage
-    publication?.objective ? String(publication.objective) : '',
-    publication?.summary ? String(publication.summary) : ''
-  ].filter(Boolean);
-
-  // Аналог raw_content: в конкурентной базе это текст поста, у нас его нет.
-  // Поэтому используем наиболее "плотные" строки из плана: key_message/cta.
-  const contentSnippet = [publication?.key_message, publication?.cta]
-    .filter((v) => typeof v === 'string' && v.trim().length > 0)
-    .join('\n');
-
-  const joined = [baseParts.join(' '), contentSnippet].filter(Boolean).join('\n');
-  return truncateText(joined, EMBEDDING_TEXT_MAX_CHARS);
+function average(values = []) {
+  const numbers = values.map((value) => Number(value)).filter((value) => Number.isFinite(value));
+  if (!numbers.length) return 0;
+  return numbers.reduce((sum, value) => sum + value, 0) / numbers.length;
 }
 
 function chunkArray(arr, size) {
-  if (!Array.isArray(arr) || !size || size <= 0) return [];
-  const out = [];
-  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
-  return out;
+  if (!Array.isArray(arr) || size <= 0) return [];
+  const result = [];
+  for (let index = 0; index < arr.length; index += size) {
+    result.push(arr.slice(index, index + size));
+  }
+  return result;
 }
 
-function runPythonEngagementModel(mode, payload) {
+function readJson(filePath, fallback) {
+  if (!fs.existsSync(filePath)) return fallback;
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+  } catch (error) {
+    console.warn('[relevancePredictionService] Failed to read JSON:', filePath, error?.message || error);
+    return fallback;
+  }
+}
+
+function readPrecedentSnapshot() {
+  return {
+    publications: readJson(path.join(PRECEDENTS_ROOT, 'publications.json'), []),
+    content_plans: readJson(path.join(PRECEDENTS_ROOT, 'content_plans.json'), [])
+  };
+}
+
+function getModelSpec(modelKey) {
+  const spec = MODEL_SPECS[modelKey];
+  if (!spec) {
+    throw new Error(`Unknown model key: ${modelKey}`);
+  }
+  return spec;
+}
+
+function getModelMetadata(modelKey) {
+  const spec = getModelSpec(modelKey);
+  return readJson(spec.metadataPath, null);
+}
+
+function normalizeLikesToUnitInterval(likes, metadata) {
+  const maxTarget = Number(metadata?.target_summary?.max) || 1;
+  if (maxTarget <= 0) return 0;
+  return clamp01(Math.log1p(clampPositive(likes)) / Math.log1p(maxTarget));
+}
+
+function runPythonModel(mode, modelKey, payload) {
   return runPythonJsonProcess({
     scriptPath: SCRIPT_PATH,
-    args: [mode],
-    cwd: path.join(__dirname, '..', '..'),
+    args: [mode, modelKey],
+    cwd: SERVER_ROOT,
     input: payload || {},
     timeoutMs: ML_TIMEOUT_MS,
-    description: `engagement_model.py (${mode})`
+    description: `engagement_model.py ${mode} ${modelKey}`
   }).then((result) => result.parsed);
 }
 
-async function ensureModelTrained() {
-  if (fs.existsSync(MODEL_PATH)) return;
-  if (!fs.existsSync(MODEL_DIR)) {
-    fs.mkdirSync(MODEL_DIR, { recursive: true });
-  }
-
-  // Train model from precedents.json in server/data (Python script reads it).
-  await trainRelevanceModel();
-}
-
-export async function trainRelevanceModel() {
-  if (!fs.existsSync(MODEL_DIR)) {
-    fs.mkdirSync(MODEL_DIR, { recursive: true });
-  }
-  const trainJob = modelTrainingQueue.then(() => runPythonEngagementModel('train', {}));
-  modelTrainingQueue = trainJob.then(
+function enqueueTraining(modelKey, trainFactory) {
+  const trainJob = trainingQueues[modelKey].then(() => trainFactory());
+  trainingQueues[modelKey] = trainJob.then(
     () => undefined,
     () => undefined
   );
   return trainJob;
 }
 
+function getTrainingPayload(modelKey) {
+  const snapshot = readPrecedentSnapshot();
+  const datasets = buildMlTrainingDatasets(snapshot);
+  if (modelKey === 'post') {
+    return {
+      features: datasets.postDataset.features,
+      targets: datasets.postDataset.targets,
+      feature_names: datasets.postDataset.featureNames
+    };
+  }
+  return {
+    features: datasets.contentPlanDataset.features,
+    targets: datasets.contentPlanDataset.targets,
+    feature_names: datasets.contentPlanDataset.featureNames
+  };
+}
+
+async function ensureModelTrained(modelKey, options = {}) {
+  const { forceTrain = false } = options;
+  const spec = getModelSpec(modelKey);
+  if (!forceTrain && fs.existsSync(spec.modelPath)) return;
+  if (!fs.existsSync(MODEL_DIR)) {
+    fs.mkdirSync(MODEL_DIR, { recursive: true });
+  }
+  await trainLikesModel(modelKey);
+}
+
+async function predictByFeatureVectors(modelKey, featureVectors, options = {}) {
+  if (!Array.isArray(featureVectors) || featureVectors.length === 0) {
+    return { predictions: [], metadata: getModelMetadata(modelKey) };
+  }
+
+  await ensureModelTrained(modelKey, options);
+  const batches = chunkArray(featureVectors, 128);
+  const predictions = [];
+  let metadata = null;
+
+  for (const batch of batches) {
+    const result = await runPythonModel('predict', modelKey, { features: batch });
+    if (!result || !Array.isArray(result.predictions)) {
+      throw new Error(`Python predict returned invalid payload for model ${modelKey}`);
+    }
+    predictions.push(...result.predictions.map((value) => clampPositive(value)));
+    metadata = result.model_metadata || metadata;
+  }
+
+  return { predictions, metadata };
+}
+
+export async function predictPostLikesByFeatureVectors(featureVectors, options = {}) {
+  return predictByFeatureVectors('post', featureVectors, options);
+}
+
+export async function predictContentPlanLikesByFeatureVectors(featureVectors, options = {}) {
+  return predictByFeatureVectors('content_plan', featureVectors, options);
+}
+
+export async function trainLikesModel(modelKey) {
+  const payload = getTrainingPayload(modelKey);
+  if (!payload.features.length) {
+    throw new Error(`No training samples available for model ${modelKey}`);
+  }
+  return enqueueTraining(modelKey, () => runPythonModel('train', modelKey, payload));
+}
+
+export async function trainPostLikesModel() {
+  return trainLikesModel('post');
+}
+
+export async function trainContentPlanLikesModel() {
+  return trainLikesModel('content_plan');
+}
+
+export async function trainRelevanceModel() {
+  const [postModel, contentPlanModel] = await Promise.all([
+    trainPostLikesModel(),
+    trainContentPlanLikesModel()
+  ]);
+  return {
+    success: true,
+    models: {
+      post: postModel,
+      content_plan: contentPlanModel
+    },
+    metadata: {
+      post: postModel?.metadata || null,
+      content_plan: contentPlanModel?.metadata || null
+    }
+  };
+}
+
+export async function predictPostLikesForPublications(publications, options = {}) {
+  if (!Array.isArray(publications) || publications.length === 0) {
+    return {
+      predictions: [],
+      normalizedScores: [],
+      featureVectors: [],
+      metadata: getModelMetadata('post'),
+      planFeatureMap: buildPlanFeatureMap([])
+    };
+  }
+
+  const planFeatureMap = buildPlanFeatureMap(publications, {
+    durationDays: options.durationDays
+  });
+  const featureVectors = publications.map((publication) =>
+    buildPostFeatureVector(publication, {
+      tonesCount: planFeatureMap.unique_tones,
+      creativityFromBestPlan: planFeatureMap.avg_creativity
+    })
+  );
+  const { predictions, metadata } = await predictByFeatureVectors('post', featureVectors, options);
+  const normalizedScores = predictions.map((prediction) => normalizeLikesToUnitInterval(prediction, metadata));
+
+  return {
+    predictions,
+    normalizedScores,
+    featureVectors,
+    metadata,
+    planFeatureMap
+  };
+}
+
+export async function predictContentPlanLikes(planOrPublications, options = {}) {
+  const publications = Array.isArray(planOrPublications)
+    ? planOrPublications
+    : Array.isArray(planOrPublications?.publications)
+    ? planOrPublications.publications
+    : [];
+  const planFeatureMap = buildPlanFeatureMap(publications, {
+    durationDays: options.durationDays || planOrPublications?.planning_horizon?.duration_days
+  });
+  const featureVector = buildPlanFeatureVector(publications, {
+    durationDays: planFeatureMap.duration_days
+  });
+  const { predictions, metadata } = await predictByFeatureVectors('content_plan', [featureVector], options);
+  const predictedLikes = clampPositive(predictions[0]);
+
+  return {
+    predictedLikes,
+    normalizedScore: normalizeLikesToUnitInterval(predictedLikes, metadata),
+    featureVector,
+    featureMap: planFeatureMap,
+    metadata
+  };
+}
+
+export function getMlModelMetadata() {
+  return {
+    post: getModelMetadata('post'),
+    content_plan: getModelMetadata('content_plan')
+  };
+}
+
 export async function predictEngagementRatesForGeneratedPublications(publications, options = {}) {
   if (!Array.isArray(publications) || publications.length === 0) {
-    return { updatedPublications: publications || [], avgEngagementRate: 0, engagementRates: [] };
+    return {
+      updatedPublications: publications || [],
+      avgEngagementRate: 0,
+      engagementRates: [],
+      predictedLikes: [],
+      totalPredictedLikes: 0
+    };
   }
 
-  const shouldForceTrain = Boolean(options.forceTrain);
-  const modelExists = fs.existsSync(MODEL_PATH);
-
-  if (shouldForceTrain || !modelExists) {
-    // If forceTrain, we don't delete model to avoid race; Python overwrite is deterministic.
-    await trainRelevanceModel();
-  } else {
-    await ensureModelTrained();
-  }
-
-  // 1) Embed publication fields.
-  const texts = publications.map((p) => buildEmbeddingTextForGeneratedPublication(p));
-  const textBatches = chunkArray(texts, 64);
-
-  const embeddings = [];
-  for (const batch of textBatches) {
-    const result = await embedTexts(batch, { maxBatchSize: 64 });
-    embeddings.push(...result.embeddings);
-  }
-
-  // 2) Predict in batches (avoid too big payloads).
-  const embeddingBatches = chunkArray(embeddings, PREDICT_BATCH_SIZE);
-  const engagementRates = [];
-
-  for (const embeddingBatch of embeddingBatches) {
-    const res = await runPythonEngagementModel('predict', { embeddings: embeddingBatch });
-    if (!res || !Array.isArray(res.predictions)) {
-      throw new Error('Python predict returned invalid payload');
-    }
-    engagementRates.push(...res.predictions);
-  }
-
-  const updatedPublications = publications.map((p, idx) => {
-    const er = clamp01(engagementRates[idx]);
-    const next = { ...p };
+  const result = await predictPostLikesForPublications(publications, options);
+  const updatedPublications = publications.map((publication, index) => {
+    const predictedLikes = clampPositive(result.predictions[index]);
+    const engagementRate = clamp01(result.normalizedScores[index]);
+    const next = { ...publication };
     next.expected_kpi = { ...(next.expected_kpi || {}) };
-    next.expected_kpi.engagement_rate = er;
-    next.expected_kpi.engagement_rate_source = 'ml_relevance_prediction';
+    next.expected_kpi.predicted_likes = predictedLikes;
+    next.expected_kpi.predicted_likes_source = 'ml_post_likes_prediction';
+    next.expected_kpi.engagement_rate = engagementRate;
+    next.expected_kpi.engagement_rate_source = 'ml_post_likes_normalized';
+    next.ontology_features = result.featureVectors[index];
     return next;
   });
 
-  const avgEngagementRate =
-    updatedPublications.length > 0
-      ? clamp01(updatedPublications.reduce((acc, p) => acc + (p?.expected_kpi?.engagement_rate || 0), 0) / updatedPublications.length)
-      : 0;
-
-  return { updatedPublications, avgEngagementRate, engagementRates };
+  return {
+    updatedPublications,
+    avgEngagementRate: clamp01(average(result.normalizedScores)),
+    engagementRates: result.normalizedScores,
+    predictedLikes: result.predictions,
+    totalPredictedLikes: result.predictions.reduce((sum, value) => sum + clampPositive(value), 0),
+    modelMetadata: result.metadata,
+    planFeatureMap: result.planFeatureMap
+  };
 }
 

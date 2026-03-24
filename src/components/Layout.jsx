@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { useUserRole } from '../context/UserRoleContext'
-import { ROLES } from '../context/UserRoleContext'
+import { ROLES, ROLE_MODE_LABELS } from '../context/UserRoleContext'
 import './Layout.css'
 
 const Layout = ({ children }) => {
@@ -38,15 +38,22 @@ const Layout = ({ children }) => {
               </p>
             </div>
             <div className="header-controls">
-              <select
-                className="role-select"
-                value={role}
-                onChange={(e) => setRole(e.target.value)}
-                title="Роль пользователя"
-              >
-                <option value={ROLES.SMM}>SMM-специалист</option>
-                <option value={ROLES.DEVELOPER}>Специалист-программист</option>
-              </select>
+              <div className="role-selector-block">
+                <select
+                  className="role-select"
+                  value={role}
+                  onChange={(e) => setRole(e.target.value)}
+                  title="Роль: разный уровень детализации и число шагов"
+                  aria-describedby="role-mode-hint"
+                >
+                  <option value={ROLES.SMM}>Маркетолог (SMM) — быстрый, 4 шага</option>
+                  <option value={ROLES.ANALYST}>Аналитик — расширенный, 5 шагов + GA/ML</option>
+                  <option value={ROLES.DEVELOPER}>Разработчик — полный, обход чеклиста</option>
+                </select>
+                <div id="role-mode-hint" className="role-mode-hint">
+                  {ROLE_MODE_LABELS[role]?.short}: {ROLE_MODE_LABELS[role]?.detail}
+                </div>
+              </div>
               <button
                 type="button"
                 className="theme-toggle-btn"

@@ -13,6 +13,7 @@ export const initialFormData = {
   contentPlanStartDate: '',
   contentPlanEndDate: '',
   publicationFrequency: '',
+  postsPerWeek: '',
   publicationDayMode: 'spread',
   minPublications: '',
   keyDates: '',
@@ -48,7 +49,7 @@ export const wizardSteps = [
   'Результаты'
 ]
 
-/** Шаги для SMM (без параметров эволюции). */
+/** Шаги для быстрого режима (SMM) — без параметров эволюции. */
 export const wizardStepsSmm = [
   'Конкуренты',
   'Проект',
@@ -56,8 +57,14 @@ export const wizardStepsSmm = [
   'Результаты'
 ]
 
-export function getWizardSteps(isDeveloper) {
-  return isDeveloper ? wizardSteps : wizardStepsSmm
+/** Быстрый vs расширенный режим онбординга. */
+export const ONBOARDING_MODES = {
+  quick: { label: 'Быстрый режим', hint: 'Минимум полей, для SMM', roleHint: 'smm' },
+  extended: { label: 'Расширенный режим', hint: 'Полная форма, параметры GA/ML', roleHint: 'dev' }
+}
+
+export function getWizardSteps(isDeveloper, isAnalyst = false) {
+  return isDeveloper || isAnalyst ? wizardSteps : wizardStepsSmm
 }
 
 export const requiredFields = [
@@ -143,8 +150,9 @@ export const demoExampleFormData = {
   contentPlanStartDate: '2026-03-01',
   contentPlanEndDate: '2026-05-31',
   publicationFrequency: '3-4_per_week',
+  postsPerWeek: '3.5',
   publicationDayMode: 'spread',
-  minPublications: '70',
+  minPublications: '46',
   keyDates:
     '15 марта - запуск бета-версии, 1 апреля - вебинар по внедрению, 15 апреля - кейс-стади с первым клиентом, 1 мая - обновление функционала, 20 мая - итоговая презентация результатов.',
   totalBudget: '150000',

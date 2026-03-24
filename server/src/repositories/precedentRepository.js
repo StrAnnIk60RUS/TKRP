@@ -11,6 +11,7 @@ import {
   buildOntologyFromSnapshot,
   serializeOntologyToTurtle
 } from '../services/ontologyAggregationService.js';
+import { enrichSearchResultsWithReliability } from '../services/precedentReliabilityService.js';
 import { trainRelevanceModel } from '../services/relevancePredictionService.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -446,6 +447,82 @@ async function embedMissingItems(items, buildTextFn) {
   };
 }
 
+/**
+ * Re-embeds items whose embedding dimension doesn't match targetDim.
+ * Use when migrating to a different embedding model (e.g. 1536 → 1024).
+ * @param {Object[]} items
+ * @param {Function} buildTextFn
+ * @param {number} targetDim
+ * @returns {{ embedded_count: number, embedding_model: string | null }}
+ */
+async function embedItemsWithDimensionMismatch(items, buildTextFn, targetDim) {
+  const indicesToEmbed = [];
+  const texts = [];
+
+  items.forEach((item, index) => {
+    const emb = getEmbeddingForItem(item);
+    if (emb && emb.length === targetDim) return;
+    const text = buildTextFn(item);
+    if (!text) return;
+    indicesToEmbed.push(index);
+    texts.push(text);
+  });
+
+  if (indicesToEmbed.length === 0) {
+    return { embedded_count: 0, embedding_model: null };
+  }
+
+  const result = await embedTexts(texts);
+
+  indicesToEmbed.forEach((itemIndex, i) => {
+    items[itemIndex] = {
+      ...items[itemIndex],
+      embedding: result.embeddings[i],
+      embedding_model: result.model,
+      embedded_at: new Date().toISOString()
+    };
+  });
+
+  return {
+    embedded_count: indicesToEmbed.length,
+    embedding_model: result.model
+  };
+}
+
+/**
+ * Re-embeds all precedents whose embedding dimension doesn't match the current
+ * EMBEDDING_MODEL. Call before retraining when migrating (e.g. 1536 → 1024).
+ * @returns {{ publications_reembedded: number, content_plans_reembedded: number, target_dim: number, embedding_model: string | null }}
+ */
+export async function reembedPrecedentsWithWrongDimension() {
+  const probe = await embedTexts([' ']);
+  const targetDim = Array.isArray(probe.embeddings?.[0]) ? probe.embeddings[0].length : null;
+  if (!targetDim) {
+    throw new Error('Could not determine embedding dimension from EMBEDDING_MODEL');
+  }
+
+  const result = await runStorageMutation(async (storage) => {
+    const pubRes = await embedItemsWithDimensionMismatch(
+      storage.publications,
+      buildEmbeddingTextForPublication,
+      targetDim
+    );
+    const planRes = await embedItemsWithDimensionMismatch(
+      storage.content_plans,
+      buildEmbeddingTextForContentPlan,
+      targetDim
+    );
+    return {
+      publications_reembedded: pubRes.embedded_count,
+      content_plans_reembedded: planRes.embedded_count,
+      target_dim: targetDim,
+      embedding_model: pubRes.embedding_model || planRes.embedding_model || null
+    };
+  });
+
+  return result;
+}
+
 export async function persistPrecedents(enrichedData, options = {}) {
   const competitors = Array.isArray(enrichedData?.competitors) ? enrichedData.competitors : [];
 
@@ -729,7 +806,7 @@ export async function searchPrecedents(query, options = {}) {
       .sort((a, b) => b.score - a.score)
       .slice(0, limit);
 
-    return {
+    const rawResult = {
       query: normalizedQuery,
       publications: rankedPublications,
       content_plans: rankedContentPlans,
@@ -740,6 +817,7 @@ export async function searchPrecedents(query, options = {}) {
         embedding_model: queryEmbeddingResult.model
       }
     };
+    return enrichSearchResultsWithReliability(rawResult);
   } catch (error) {
     const queryTokens = uniqueTokens(tokenize(normalizedQuery));
     console.warn('[precedentRepository] Embedding search failed, fallback to token overlap:', error.message);
@@ -780,7 +858,7 @@ export async function searchPrecedents(query, options = {}) {
       .sort((a, b) => b.score - a.score)
       .slice(0, limit);
 
-    return {
+    const rawResult = {
       query: normalizedQuery,
       publications: rankedPublications,
       content_plans: rankedContentPlans,
@@ -791,6 +869,7 @@ export async function searchPrecedents(query, options = {}) {
         error: error.message || 'embedding_failed'
       }
     };
+    return enrichSearchResultsWithReliability(rawResult);
   }
 }
 

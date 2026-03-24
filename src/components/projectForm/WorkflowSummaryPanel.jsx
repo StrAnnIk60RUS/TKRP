@@ -22,7 +22,9 @@ const WorkflowSummaryPanel = ({
   hasDraftPlan,
   hasOptimizedPlan,
   publicationDayMode = 'spread',
-  explainabilitySignals = []
+  explainabilitySignals = [],
+  onChecklistToggle,
+  riskSummary = []
 }) => {
   const publicationDayModeCopy = getPublicationDayModeCopy(publicationDayMode)
   const statusTone =
@@ -52,61 +54,67 @@ const WorkflowSummaryPanel = ({
 
       <div className="workflow-overview-grid">
         <div className="workflow-overview-card">
-          <span className="workflow-overview-label">Обязательные поля</span>
+          <span className="workflow-overview-label">Данные</span>
           <strong className="workflow-overview-value">
-            {filledRequired} / {requiredCount}
+            {filledRequired}/{requiredCount} · {competitorsCount} конкр. ·{' '}
+            {(precedentsSummary?.publications_count || 0) + (precedentsSummary?.content_plans_count || 0)} прец.
           </strong>
-          <span className="workflow-overview-meta">{Math.round(progress)}% готовности формы</span>
+          <span className="workflow-overview-meta">форма · конкуренты · прецеденты</span>
         </div>
 
         <div className="workflow-overview-card">
-          <span className="workflow-overview-label">Конкуренты</span>
-          <strong className="workflow-overview-value">{competitorsCount}</strong>
-          <span className="workflow-overview-meta">доступно в текущей сессии</span>
-        </div>
-
-        <div className="workflow-overview-card">
-          <span className="workflow-overview-label">База прецедентов</span>
+          <span className="workflow-overview-label">Статус</span>
           <strong className="workflow-overview-value">
-            {precedentsSummary?.publications_count || 0}
-          </strong>
-          <span className="workflow-overview-meta">
-            публикаций и {precedentsSummary?.content_plans_count || 0} планов
-          </span>
-        </div>
-
-        <div className="workflow-overview-card">
-          <span className="workflow-overview-label">Статус результата</span>
-          <strong className="workflow-overview-value">
-            {hasOptimizedPlan ? 'Оптимизирован' : hasDraftPlan ? 'Черновик готов' : 'Ожидает запуска'}
+            {hasOptimizedPlan ? 'Оптимизирован' : hasDraftPlan ? 'Черновик' : 'Ожидает'}
           </strong>
           <span className="workflow-overview-meta">
             {hasOptimizedPlan
-              ? 'Можно перейти к просмотру плана'
+              ? 'план готов'
               : hasDraftPlan
-              ? 'Можно запустить оптимизацию'
-              : 'Сначала выполните поиск и генерацию'}
+              ? 'можно оптимизировать'
+              : 'поиск → генерация'}
+            {' · '}
+            {publicationDayModeCopy.label}
           </span>
         </div>
 
-        <div className="workflow-overview-card">
-          <span className="workflow-overview-label">Режим дат</span>
-          <strong className="workflow-overview-value">{publicationDayModeCopy.label}</strong>
-          <span className="workflow-overview-meta">{publicationDayModeCopy.hint}</span>
+        <div className="workflow-overview-card workflow-overview-card--check">
+          <span className="workflow-overview-label">Проверено перед генерацией</span>
+          {onChecklistToggle ? (
+            <label className="workflow-checklist-checkbox workflow-checklist-checkbox--inline">
+              <input
+                type="checkbox"
+                checked={!!reviewChecklist.find((i) => i.id === 'reviewed')?.done}
+                onChange={() => onChecklistToggle('reviewed')}
+              />
+              <span className="workflow-checklist-mark">
+                {reviewChecklist.find((i) => i.id === 'reviewed')?.done ? '✓' : '○'}
+              </span>
+              <span>
+                {reviewChecklist.find((i) => i.id === 'reviewed')?.done
+                  ? 'Готово к генерации'
+                  : 'Отметить после проверки'}
+              </span>
+            </label>
+          ) : (
+            <span>{reviewChecklist.find((i) => i.id === 'reviewed')?.done ? '✓ Отмечено' : '○ Не отмечено'}</span>
+          )}
         </div>
       </div>
 
-      <div className="workflow-checklist">
-        {reviewChecklist.map((item) => (
-          <div
-            key={item.id}
-            className={`workflow-checklist-item ${item.done ? 'is-complete' : 'is-pending'}`}
-          >
-            <span className="workflow-checklist-mark">{item.done ? '✓' : '•'}</span>
-            <span>{item.label}</span>
-          </div>
-        ))}
-      </div>
+      {riskSummary.length > 0 && (
+        <div className="workflow-risk-summary">
+          <h4 className="workflow-risk-summary-title">Сводка рисков</h4>
+          <ul className="workflow-risk-list">
+            {riskSummary.map((r) => (
+              <li key={r.id} className={`workflow-risk-item severity-${r.severity}`}>
+                <span className="workflow-risk-label">{r.label}</span>
+                <span className="workflow-risk-detail">{r.detail}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {explainabilitySignals.length > 0 && (
         <div className="workflow-checklist">

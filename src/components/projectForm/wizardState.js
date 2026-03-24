@@ -44,7 +44,8 @@ export const initialWizardState = {
     backend: 'idle',
     python: 'idle',
     llm: 'idle'
-  }
+  },
+  reviewChecklistChecked: {}
 }
 
 const nowIso = () => new Date().toISOString()
@@ -85,6 +86,16 @@ export function wizardReducer(state, action) {
       return { ...state, selectedPrecedentItem: action.payload || null }
     case 'SET_DEMO_HORIZON':
       return { ...state, demoHorizonExample: action.payload }
+    case 'SET_REVIEW_CHECKLIST_CHECKED':
+      return { ...state, reviewChecklistChecked: action.payload || {} }
+    case 'TOGGLE_REVIEW_CHECKLIST_ITEM':
+      return {
+        ...state,
+        reviewChecklistChecked: {
+          ...state.reviewChecklistChecked,
+          [action.payload]: !state.reviewChecklistChecked[action.payload]
+        }
+      }
     case 'SET_EDIT_MODE':
       return { ...state, isEditMode: !!action.payload }
     case 'RESET_WIZARD':

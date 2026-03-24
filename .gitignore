@@ -40,6 +40,7 @@ YANDEX_VERSION/.env
 server/data/*.json
 server/data/runtime/
 server/data/precedents-store/
+server/.data/
 
 # Python cache / bytecode
 __pycache__/

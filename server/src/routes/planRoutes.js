@@ -5,9 +5,15 @@ import { runHierarchicalOptimization } from '../services/evolutionary/hierarchic
 import { searchPrecedents } from '../repositories/precedentRepository.js';
 import { buildRagQueryFromForm, normalizeDraftPlanResponse } from './shared/planUtils.js';
 import { sendRouteError } from './shared/routeUtils.js';
+import { loadDraft, saveDraft } from '../services/draftStore.js';
 
 const router = Router();
-let currentWizardDraft = null
+let currentWizardDraft = null;
+
+async function initDraftFromDisk() {
+  if (currentWizardDraft) return;
+  currentWizardDraft = await loadDraft();
+}
 
 async function handleGeneratePlan(req, res, routeName) {
   const { form_input, rag_query, rag_limit } = req.body || {};
@@ -72,9 +78,9 @@ router.post('/generate-batched', async (req, res) => {
   }
 });
 
-router.post('/optimize', (req, res) => {
+router.post('/optimize', async (req, res) => {
   try {
-    const result = runHierarchicalOptimization(req.body || {});
+    const result = await runHierarchicalOptimization(req.body || {});
     return res.json({
       success: true,
       ...result,
@@ -85,25 +91,27 @@ router.post('/optimize', (req, res) => {
   }
 });
 
-router.get('/draft/current', (req, res) => {
+router.get('/draft/current', async (req, res) => {
+  await initDraftFromDisk();
   return res.json({
     success: true,
     draft: currentWizardDraft,
     request_id: req.requestId
-  })
-})
+  });
+});
 
-router.put('/draft/current', (req, res) => {
-  const payload = req.body || {}
+router.put('/draft/current', async (req, res) => {
+  const payload = req.body || {};
   currentWizardDraft = {
     formData: payload.formData || null,
     updated_at: new Date().toISOString()
-  }
+  };
+  await saveDraft(currentWizardDraft);
   return res.json({
     success: true,
     draft: currentWizardDraft,
     request_id: req.requestId
-  })
-})
+  });
+});
 
 export default router;

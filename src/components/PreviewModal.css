@@ -170,6 +170,68 @@
   overflow-wrap: anywhere;
 }
 
+.precedent-modal-reliability {
+  min-width: 92px;
+  text-align: center;
+  padding: 12px 14px;
+  border: 2px solid #6b5b95;
+  background: rgba(107, 91, 149, 0.08);
+  border-radius: 6px;
+}
+
+.precedent-modal-reliability-label {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6b5b95;
+}
+
+.precedent-modal-reliability-value {
+  font-size: 1rem;
+  font-weight: 800;
+  color: #4a3f6b;
+}
+
+.precedent-reliability-breakdown {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  background: #fafbfc;
+  border: 1px solid #cbd5e0;
+  border-radius: 8px;
+}
+
+.precedent-reliability-breakdown-title {
+  margin: 0 0 10px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #2d2d44;
+}
+
+.precedent-reliability-factors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+}
+
+.precedent-reliability-factor {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.precedent-reliability-factor-label {
+  font-size: 0.78rem;
+  color: #718096;
+}
+
+.precedent-reliability-factor-value {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #1a1a2e;
+}
+
 .precedent-modal-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));

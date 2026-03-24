@@ -1,6 +1,15 @@
 import React from 'react'
 
 const formatPrecedentScore = (score) => `${Math.round((Number(score) || 0) * 100)}%`
+
+const formatReliabilityLabel = (reliability) => {
+  const r = Number(reliability)
+  if (!Number.isFinite(r)) return null
+  const pct = Math.round(r * 100)
+  if (pct >= 75) return { label: `${pct}%`, tone: 'success', title: 'Высокая надёжность' }
+  if (pct >= 50) return { label: `${pct}%`, tone: 'neutral', title: 'Средняя надёжность' }
+  return { label: `${pct}%`, tone: 'warn', title: 'Низкая надёжность' }
+}
 const ONTOLOGY_PREVIEW_LIMIT = 12
 
 const renderMatchExplanation = (matchedTokens = [], retrieval = null) => {
@@ -405,7 +414,16 @@ const PrecedentSearchPanel = ({
                         <span className="precedent-card-title">
                           {item.data.publication_model?.topic || 'Без темы'}
                         </span>
-                        <span className="precedent-card-score">{formatPrecedentScore(item.score)}</span>
+                        {Number.isFinite(Number(item.reliability)) ? (
+                          <span
+                            className={`precedent-card-reliability precedent-reliability-${formatReliabilityLabel(item.reliability)?.tone || 'neutral'}`}
+                            title={formatReliabilityLabel(item.reliability)?.title || 'Надёжность'}
+                          >
+                            {formatReliabilityLabel(item.reliability)?.label}
+                          </span>
+                        ) : (
+                          <span className="precedent-card-score" title="Релевантность">{formatPrecedentScore(item.score)}</span>
+                        )}
                       </div>
                       <div className="precedent-card-meta">
                         <span>{item.data.competitor_name || 'Неизвестный конкурент'}</span>
@@ -443,7 +461,16 @@ const PrecedentSearchPanel = ({
                         <span className="precedent-card-title">
                           {item.data.competitor_name || item.data.plan_id}
                         </span>
-                        <span className="precedent-card-score">{formatPrecedentScore(item.score)}</span>
+                        {Number.isFinite(Number(item.reliability)) ? (
+                          <span
+                            className={`precedent-card-reliability precedent-reliability-${formatReliabilityLabel(item.reliability)?.tone || 'neutral'}`}
+                            title={formatReliabilityLabel(item.reliability)?.title || 'Надёжность'}
+                          >
+                            {formatReliabilityLabel(item.reliability)?.label}
+                          </span>
+                        ) : (
+                          <span className="precedent-card-score" title="Релевантность">{formatPrecedentScore(item.score)}</span>
+                        )}
                       </div>
                       <div className="precedent-card-meta">
                         <span>{item.data.platform || 'unknown'}</span>

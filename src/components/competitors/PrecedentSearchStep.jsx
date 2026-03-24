@@ -2,6 +2,27 @@ import React from 'react';
 
 const formatScore = (score) => `${Math.round((Number(score) || 0) * 100)}%`;
 
+const formatReliabilityLabel = (reliability) => {
+  const r = Number(reliability);
+  if (!Number.isFinite(r)) return null;
+  const pct = Math.round(r * 100);
+  if (pct >= 75) return { label: `${pct}%`, tone: 'success', title: 'Высокая надёжность' };
+  if (pct >= 50) return { label: `${pct}%`, tone: 'neutral', title: 'Средняя надёжность' };
+  return { label: `${pct}%`, tone: 'warn', title: 'Низкая надёжность' };
+};
+
+const renderCardScore = (item) => {
+  if (Number.isFinite(Number(item.reliability))) {
+    const r = formatReliabilityLabel(item.reliability);
+    return (
+      <span className={`precedent-card-reliability precedent-reliability-${r?.tone || 'neutral'}`} title={r?.title}>
+        {r?.label}
+      </span>
+    );
+  }
+  return <span className="precedent-card-score" title="Релевантность">{formatScore(item.score)}</span>;
+};
+
 const renderMatchExplanation = (matchedTokens = [], retrieval = null) => {
   const type = retrieval?.type;
   if (type === 'embedding_cosine') {
@@ -120,7 +141,7 @@ const PrecedentSearchStep = ({
                         <span className="precedent-card-title">
                           {item.data.publication_model?.topic || 'Без темы'}
                         </span>
-                        <span className="precedent-card-score">{formatScore(item.score)}</span>
+                        {renderCardScore(item)}
                       </div>
                       <div className="precedent-card-meta">
                         <span>{item.data.competitor_name || 'Неизвестный конкурент'}</span>
@@ -154,7 +175,7 @@ const PrecedentSearchStep = ({
                         <span className="precedent-card-title">
                           {item.data.competitor_name || item.data.plan_id}
                         </span>
-                        <span className="precedent-card-score">{formatScore(item.score)}</span>
+                        {renderCardScore(item)}
                       </div>
                       <div className="precedent-card-meta">
                         <span>{item.data.platform || 'unknown'}</span>

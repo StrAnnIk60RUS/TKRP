@@ -7,7 +7,10 @@ import WizardHeader from './WizardHeader'
 import WizardNavActions from './WizardNavActions'
 import WorkflowSummaryPanel from './projectForm/WorkflowSummaryPanel'
 import PrecedentSearchPanel from './projectForm/PrecedentSearchPanel'
+import OnboardingMaster from './projectForm/OnboardingMaster'
+import FieldHint from './projectForm/FieldHint'
 import DraftPlanWorkflowPanel from './projectForm/DraftPlanWorkflowPanel'
+import OptimizationTracePanel from './projectForm/OptimizationTracePanel'
 import TechnicalDetailsPanel from './projectForm/TechnicalDetailsPanel'
 import OperationStatusPanel from './projectForm/OperationStatusPanel'
 import { getCurrentProcessId, initialWizardState, wizardReducer } from './projectForm/wizardState'
@@ -39,7 +42,6 @@ import {
   requiredFields
 } from './projectForm/formConfig'
 import {
-  buildAlphaByDimension,
   buildGaConfigFromForm,
   buildReviewChecklist,
   buildSafeFormInputForGeneration,
@@ -49,14 +51,23 @@ import {
   validateFieldValue,
   validateFormData
 } from './projectForm/formUtils'
+import { buildRiskSummary } from './projectForm/riskSummaryUtils'
 import './ProjectForm.css'
+
+const PUBLICATION_FREQUENCY_TO_WEEKLY = {
+  daily: 7,
+  '3-4_per_week': 3.5,
+  '2-3_per_week': 2.5,
+  weekly: 1,
+  '2_per_week': 2
+}
 
 const ProjectForm = () => {
   const navigate = useNavigate()
-  const { isDeveloper } = useUserRole()
+  const { isDeveloper, isAnalyst, isExtendedMode } = useUserRole()
   const [wizardState, dispatch] = useReducer(wizardReducer, initialWizardState)
 
-  const wizardSteps = getWizardSteps(isDeveloper)
+  const wizardSteps = getWizardSteps(isDeveloper, isAnalyst)
 
   const {
     formData,
@@ -74,7 +85,8 @@ const ProjectForm = () => {
     selectedPrecedentItem,
     demoHorizonExample,
     operations,
-    operationTelemetry
+    operationTelemetry,
+    reviewChecklistChecked
   } = wizardState
   const isLoadingOntology = operations.loadingOntology?.status === 'running'
   const isSearchingPrecedents = operations.searchingPrecedents?.status === 'running'
@@ -88,6 +100,7 @@ const ProjectForm = () => {
   const toastCounterRef = useRef(0)
   const operationControllersRef = useRef({})
   const operationRetryRef = useRef({})
+  const restoreDraftCancelledRef = useRef(false)
 
   const precedentRetrieval = precedentSearchResults?.retrieval || null
 
@@ -120,6 +133,15 @@ const ProjectForm = () => {
 
   const progress = (filledRequired / requiredFields.length) * 100
 
+  const riskSummary = useMemo(
+    () => {
+      const plan =
+        optimizationResult?.optimized_content_plan || draftPlanResult?.draft?.draft_content_plan
+      return plan ? buildRiskSummary(plan, formData) : []
+    },
+    [draftPlanResult, optimizationResult, formData]
+  )
+
   const isValueFilled = (value) => {
     if (Array.isArray(value)) return value.length > 0
     if (typeof value === 'string') return value.trim() !== ''
@@ -144,6 +166,7 @@ const ProjectForm = () => {
   const setSelectedPrecedentItem = (payload) => dispatch({ type: 'SET_SELECTED_PRECEDENT', payload })
   const setDemoHorizonExample = (payload) => dispatch({ type: 'SET_DEMO_HORIZON', payload })
   const setIsEditMode = (payload) => dispatch({ type: 'SET_EDIT_MODE', payload })
+  const toggleReviewChecklistItem = (id) => dispatch({ type: 'TOGGLE_REVIEW_CHECKLIST_ITEM', payload: id })
 
   const addToast = (message, type = 'success') => {
     toastCounterRef.current += 1
@@ -220,8 +243,15 @@ const ProjectForm = () => {
   } = useCompetitorsPipeline(addToast, { isDeveloper })
 
   const reviewChecklist = useMemo(
-    () => buildReviewChecklist(formData, competitorsData, precedentSearchResults, draftPlanResult),
-    [formData, competitorsData, precedentSearchResults, draftPlanResult]
+    () =>
+      buildReviewChecklist(
+        formData,
+        competitorsData,
+        precedentSearchResults,
+        draftPlanResult,
+        reviewChecklistChecked
+      ),
+    [formData, competitorsData, precedentSearchResults, draftPlanResult, reviewChecklistChecked]
   )
   const explainabilitySignals = useMemo(
     () => [
@@ -235,12 +265,13 @@ const ProjectForm = () => {
     [formData, precedentSearchQuery, precedentSearchResults]
   )
 
-  /** Для SMM: блокировка действий до выполнения пунктов проверки перед генерацией. */
+  /** Для SMM: блокировка действий до выполнения пунктов проверки и чеклиста. */
   const { canSearchPrecedents, canGenerateDraft, smmBlockedReasonsForSearch, smmBlockedReasonsForGenerate } =
     useMemo(() => {
       const requiredFieldsDone = reviewChecklist[0]?.done
       const competitorsDone = reviewChecklist[1]?.done
       const precedentsDone = reviewChecklist[2]?.done
+      const checklistReviewed = !!reviewChecklistChecked?.reviewed
       const backendOk = isEnrichmentServerAvailable === true
 
       const reasonsForSearch = []
@@ -250,9 +281,11 @@ const ProjectForm = () => {
 
       const reasonsForGenerate = [...reasonsForSearch]
       if (!precedentsDone) reasonsForGenerate.push('Прецеденты не подобраны')
+      if (!checklistReviewed) reasonsForGenerate.push('Отметьте «Проверено перед генерацией» в чеклисте')
 
       const canSearch = backendOk && requiredFieldsDone && competitorsDone
-      const canGen = backendOk && requiredFieldsDone && competitorsDone && precedentsDone
+      const canGen =
+        backendOk && requiredFieldsDone && competitorsDone && precedentsDone && checklistReviewed
 
       return {
         canSearchPrecedents: isDeveloper ? true : canSearch,
@@ -260,7 +293,7 @@ const ProjectForm = () => {
         smmBlockedReasonsForSearch: reasonsForSearch,
         smmBlockedReasonsForGenerate: reasonsForGenerate
       }
-    }, [reviewChecklist, isEnrichmentServerAvailable, isDeveloper])
+    }, [reviewChecklist, reviewChecklistChecked, isEnrichmentServerAvailable, isDeveloper])
 
   const stepStatuses = useMemo(() => {
     const hasCompetitorUrls = competitorUrls.some((url) => typeof url === 'string' && url.trim() !== '')
@@ -292,7 +325,7 @@ const ProjectForm = () => {
       formData.platforms.length > 0
     const hasDraftPlan = Boolean(draftPlanResult?.draft?.draft_content_plan)
     const hasOptimizedPlan = Boolean(optimizationResult?.optimized_content_plan)
-    const isOnResultsStep = isDeveloper ? currentStep === 5 : currentStep === 4
+    const isOnResultsStep = isExtendedMode ? currentStep === 5 : currentStep === 4
 
     const evolutionStatus =
       hasDraftPlan || hasOptimizedPlan ? 'completed' : currentStep === 4 ? 'in_progress' : 'pending'
@@ -324,7 +357,7 @@ const ProjectForm = () => {
           : 'in_progress'
         : 'pending'
     ]
-    if (isDeveloper) {
+    if (isExtendedMode) {
       base.push(evolutionStatus, resultsStatus)
     } else {
       base.push(resultsStatus)
@@ -335,7 +368,7 @@ const ProjectForm = () => {
     competitorsData,
     currentStep,
     draftPlanResult,
-    isDeveloper,
+    isExtendedMode,
     filledRequired,
     formData,
     isEnriching,
@@ -351,6 +384,7 @@ const ProjectForm = () => {
     const restoreDraft = async () => {
       try {
         const serverDraftResponse = await getServerDraft()
+        if (restoreDraftCancelledRef.current) return
         const serverDraft = serverDraftResponse?.draft?.formData
         if (serverDraft && typeof serverDraft === 'object') {
           setFormData(serverDraft)
@@ -359,6 +393,7 @@ const ProjectForm = () => {
       } catch (error) {
         console.error('Ошибка загрузки server-side черновика:', error)
       }
+      if (restoreDraftCancelledRef.current) return
 
       const savedDraft = localStorage.getItem('projectFormDraft')
       if (savedDraft) {
@@ -691,7 +726,6 @@ const ProjectForm = () => {
       ? precedentSearchResults.publications.map((item) => item.data).filter(Boolean)
       : []
 
-    const alphaByDimension = buildAlphaByDimension(precedentPubs, formData.evoOptimizationGoal)
     const gaConfig = buildGaConfigFromForm(formData)
 
     const totalBudget =
@@ -719,15 +753,43 @@ const ProjectForm = () => {
     const qualityMin =
       parseNumberOrNull(draft?.kpi_targets?.avg_engagement_rate) ??
       0
+    const explicitPostsPerWeek =
+      parseNumberOrNull(formData.postsPerWeek) ??
+      PUBLICATION_FREQUENCY_TO_WEEKLY[formData.publicationFrequency] ??
+      null
+    const dateStart = formData.contentPlanStartDate || draft?.planning_horizon?.start_date || null
+    const dateEnd = formData.contentPlanEndDate || draft?.planning_horizon?.end_date || null
+    const horizonDays =
+      dateStart && dateEnd
+        ? Math.max(1, Math.round((new Date(dateEnd) - new Date(dateStart)) / (24 * 60 * 60 * 1000)) + 1)
+        : null
+    const derivedPostsPerWeek =
+      explicitPostsPerWeek ??
+      (horizonDays && minPubs ? Number(((minPubs * 7) / horizonDays).toFixed(2)) : null)
+
+    if (!horizonDays || horizonDays <= 0) {
+      addToast('Для эволюции нужна положительная длительность контент-плана', 'error')
+      return
+    }
+
+    if (!derivedPostsPerWeek || derivedPostsPerWeek <= 0) {
+      addToast('Укажите posts per week или выберите частоту публикаций', 'error')
+      return
+    }
 
     const payload = {
       draft_content_plan: draft,
       stage1: {
         precedentPublications: precedentPubs,
-        alphaByDimension,
         constraints: {
-          date_min: formData.contentPlanStartDate || draft?.planning_horizon?.start_date || null,
-          date_max: formData.contentPlanEndDate || draft?.planning_horizon?.end_date || null,
+          date_min: dateStart,
+          date_max: dateEnd,
+          duration_days: horizonDays,
+          posts_per_week: derivedPostsPerWeek,
+          posts_per_week_tolerance: 0.35,
+          min_publications: minPubs,
+          total_budget: totalBudget,
+          max_cost_per_publication: maxCost,
           quality_min: qualityMin,
           quality_max: null
         },
@@ -735,10 +797,8 @@ const ProjectForm = () => {
       },
       stage2: {
         constraints: {
-          min_publications: minPubs,
-          total_budget: totalBudget,
-          max_cost_per_publication: maxCost,
-          quality_min: qualityMin
+          tones_count: null,
+          creativity_from_best_plan: null
         },
         ga: {
           ...gaConfig,
@@ -780,7 +840,10 @@ const ProjectForm = () => {
 
   const hasError = (fieldName) => touched[fieldName] && errors[fieldName]
   const visibleErrorEntries = useMemo(
-    () => Object.entries(errors).filter(([fieldName]) => touched[fieldName]),
+    () =>
+      Object.entries(errors).filter(
+        ([fieldName, message]) => touched[fieldName] && typeof message === 'string' && message.trim().length > 0
+      ),
     [errors, touched]
   )
   const isFirstStep = currentStep === 1
@@ -840,6 +903,16 @@ const ProjectForm = () => {
 
         {currentStep === 1 && (
           <>
+            <OnboardingMaster
+              currentRole={isDeveloper ? 'developer' : isAnalyst ? 'analyst' : 'smm'}
+              onApplyTemplate={(formData) => {
+                restoreDraftCancelledRef.current = true
+                setFormData(formData)
+                setCurrentStep(2)
+                addToast('Шаблон применён. Заполните наименования и даты при необходимости.', 'success')
+              }}
+              isCompact={true}
+            />
             <CompetitorsStep
               competitorUrls={competitorUrls}
               competitorsData={competitorsData}
@@ -1113,25 +1186,51 @@ const ProjectForm = () => {
             </div>
           </div>
 
-          <div className="form-group">
-            <label htmlFor="publicationFrequency" className="form-label">
-              Частота публикаций <span className="required">*</span>
-            </label>
-            <select
-              id="publicationFrequency"
-              name="publicationFrequency"
-              value={formData.publicationFrequency}
-              onChange={handleChange}
-              onBlur={handleBlur}
-              className={`form-select ${hasError('publicationFrequency') ? 'error' : ''}`}
-              disabled={!isEditMode}
-            >
-              <option value="">Выберите частоту</option>
-              {frequencyOptions.map(option => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
-            {hasError('publicationFrequency') && <span className="error-message">{errors.publicationFrequency}</span>}
+          <div className="form-row">
+            <div className="form-group">
+              <label htmlFor="publicationFrequency" className="form-label">
+                Частота публикаций <span className="required">*</span>
+              </label>
+              <select
+                id="publicationFrequency"
+                name="publicationFrequency"
+                value={formData.publicationFrequency}
+                onChange={handleChange}
+                onBlur={handleBlur}
+                className={`form-select ${hasError('publicationFrequency') ? 'error' : ''}`}
+                disabled={!isEditMode}
+              >
+                <option value="">Выберите частоту</option>
+                {frequencyOptions.map(option => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+              {hasError('publicationFrequency') && <span className="error-message">{errors.publicationFrequency}</span>}
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="postsPerWeek" className="form-label">
+                Постов в неделю <FieldHint fieldName="postsPerWeek" />
+              </label>
+              <input
+                type="number"
+                id="postsPerWeek"
+                name="postsPerWeek"
+                value={formData.postsPerWeek}
+                onChange={handleChange}
+                onBlur={handleBlur}
+                className={`form-input ${hasError('postsPerWeek') ? 'error' : ''}`}
+                placeholder="Например, 3.5"
+                min="0.1"
+                max="30"
+                step="0.1"
+                disabled={!isEditMode}
+              />
+              {hasError('postsPerWeek') && <span className="error-message">{errors.postsPerWeek}</span>}
+              <small className="form-hint">
+                Переопределяет частоту выше и идет как явная константа в GA контент-плана.
+              </small>
+            </div>
           </div>
 
           <div className="form-group">
@@ -1312,15 +1411,15 @@ const ProjectForm = () => {
           </div>
         </section>}
 
-        {/* Параметры эволюционного моделирования (опционально) — только для специалиста-программиста */}
-        {currentStep === 4 && isDeveloper && <section className="form-section">
+        {/* Параметры эволюционного моделирования (опционально) — для разработчика и аналитика */}
+        {currentStep === 4 && isExtendedMode && <section className="form-section">
           <h2 className="section-title">Параметры эволюционного моделирования (опционально)</h2>
           
           {/* Основные параметры */}
           <div className="form-row">
             <div className="form-group">
               <label htmlFor="evoPopulationSize" className="form-label">
-                Размер популяции
+                Размер популяции <FieldHint fieldName="evoPopulationSize" />
               </label>
               <input
                 type="number"
@@ -1339,7 +1438,7 @@ const ProjectForm = () => {
             </div>
             <div className="form-group">
               <label htmlFor="evoGenerations" className="form-label">
-                Количество поколений
+                Количество поколений <FieldHint fieldName="evoGenerations" />
               </label>
               <input
                 type="number"
@@ -1361,7 +1460,7 @@ const ProjectForm = () => {
           <div className="form-row">
             <div className="form-group">
               <label htmlFor="evoStopCriterion" className="form-label">
-                Критерий остановки
+                Критерий остановки <FieldHint fieldName="evoStopCriterion" />
               </label>
               <select
                 id="evoStopCriterion"
@@ -1401,7 +1500,7 @@ const ProjectForm = () => {
           <div className="form-row">
             <div className="form-group">
               <label htmlFor="evoOptimizationGoal" className="form-label">
-                Цель оптимизации
+                Цель оптимизации <FieldHint fieldName="evoOptimizationGoal" />
               </label>
               <select
                 id="evoOptimizationGoal"
@@ -1420,7 +1519,7 @@ const ProjectForm = () => {
             </div>
             <div className="form-group">
               <label htmlFor="evoBudgetLimit" className="form-label">
-                Ограничение бюджета для эволюции (byn)
+                Ограничение бюджета для эволюции (byn) <FieldHint fieldName="evoBudgetLimit" />
               </label>
               <input
                 type="number"
@@ -1441,7 +1540,7 @@ const ProjectForm = () => {
           <div className="form-row">
             <div className="form-group">
               <label htmlFor="evoSelectionMethod" className="form-label">
-                Метод отбора
+                Метод отбора <FieldHint fieldName="evoSelectionMethod" />
               </label>
               <select
                 id="evoSelectionMethod"
@@ -1460,7 +1559,7 @@ const ProjectForm = () => {
             </div>
             <div className="form-group">
               <label htmlFor="evoTournamentSize" className="form-label">
-                Размер турнира
+                Размер турнира <FieldHint fieldName="evoTournamentSize" />
               </label>
               <input
                 type="number"
@@ -1481,7 +1580,7 @@ const ProjectForm = () => {
           <div className="form-row">
             <div className="form-group">
               <label htmlFor="evoBestWinProb" className="form-label">
-                Вероятность победы сильнейшего
+                Вероятность победы сильнейшего <FieldHint fieldName="evoBestWinProb" />
               </label>
               <input
                 type="number"
@@ -1500,7 +1599,7 @@ const ProjectForm = () => {
             </div>
             <div className="form-group">
               <label htmlFor="evoEliteSize" className="form-label">
-                Размер элиты
+                Размер элиты <FieldHint fieldName="evoEliteSize" />
               </label>
               <input
                 type="number"
@@ -1522,7 +1621,7 @@ const ProjectForm = () => {
           <div className="form-row">
             <div className="form-group">
               <label htmlFor="evoCrossoverMethod" className="form-label">
-                Метод скрещивания
+                Метод скрещивания <FieldHint fieldName="evoCrossoverMethod" />
               </label>
               <select
                 id="evoCrossoverMethod"
@@ -1541,7 +1640,7 @@ const ProjectForm = () => {
             </div>
             <div className="form-group">
               <label htmlFor="evoCrossoverProbability" className="form-label">
-                Вероятность скрещивания
+                Вероятность скрещивания <FieldHint fieldName="evoCrossoverProbability" />
               </label>
               <input
                 type="number"
@@ -1563,7 +1662,7 @@ const ProjectForm = () => {
           <div className="form-row">
             <div className="form-group">
               <label htmlFor="evoMutationMethod" className="form-label">
-                Метод мутации
+                Метод мутации <FieldHint fieldName="evoMutationMethod" />
               </label>
               <select
                 id="evoMutationMethod"
@@ -1582,7 +1681,7 @@ const ProjectForm = () => {
             </div>
             <div className="form-group">
               <label htmlFor="evoMutationProbability" className="form-label">
-                Вероятность мутации
+                Вероятность мутации <FieldHint fieldName="evoMutationProbability" />
               </label>
               <input
                 type="number"
@@ -1616,7 +1715,7 @@ const ProjectForm = () => {
                     onChange={handleChange}
                     disabled={!isEditMode}
                   />
-                  <span>Сохранять разнообразие</span>
+                  <span>Сохранять разнообразие <FieldHint fieldName="evoPreserveDiversity" /></span>
                 </label>
                 <label className="checkbox-label">
                   <input
@@ -1626,13 +1725,13 @@ const ProjectForm = () => {
                     onChange={handleChange}
                     disabled={!isEditMode}
                   />
-                  <span>Использовать параллельные вычисления</span>
+                  <span>Использовать параллельные вычисления <FieldHint fieldName="evoUseParallel" /></span>
                 </label>
               </div>
             </div>
             <div className="form-group">
               <label htmlFor="evoRandomSeed" className="form-label">
-                Семя случайности
+                Семя случайности <FieldHint fieldName="evoRandomSeed" />
               </label>
               <input
                 type="number"
@@ -1653,7 +1752,7 @@ const ProjectForm = () => {
           </small>
         </section>}
 
-        {((isDeveloper && currentStep === 5) || (!isDeveloper && currentStep === 4)) && (
+        {((isExtendedMode && currentStep === 5) || (!isExtendedMode && currentStep === 4)) && (
           <>
             <WorkflowSummaryPanel
               filledRequired={filledRequired}
@@ -1667,6 +1766,8 @@ const ProjectForm = () => {
               hasOptimizedPlan={Boolean(optimizationResult?.optimized_content_plan)}
               publicationDayMode={formData.publicationDayMode}
               explainabilitySignals={explainabilitySignals}
+              onChecklistToggle={toggleReviewChecklistItem}
+              riskSummary={riskSummary}
             />
 
             <PrecedentSearchPanel
@@ -1711,6 +1812,10 @@ const ProjectForm = () => {
               isDeveloper={isDeveloper}
             />
 
+            {!!optimizationResult?.optimized_content_plan && (
+              <OptimizationTracePanel optimizationResult={optimizationResult} />
+            )}
+
             {(draftPlanResult?.draft?.draft_content_plan || optimizationResult?.optimized_content_plan) && (
               <section className="form-section precedent-workflow-section">
                 <div className="workflow-section-heading">
@@ -1730,7 +1835,7 @@ const ProjectForm = () => {
               </section>
             )}
 
-            {isDeveloper && (
+            {isExtendedMode && (
               <TechnicalDetailsPanel
                 precedentSearchQuery={precedentSearchQuery}
                 precedentSearchResults={precedentSearchResults}

@@ -1,6 +1,10 @@
 import React from 'react'
 
 const formatPercent = (value) => `${((Number(value) || 0) * 100).toFixed(1)}%`
+const formatNumber = (value) => {
+  const numeric = Number(value)
+  return Number.isFinite(numeric) ? numeric.toFixed(2) : '—'
+}
 const getPublicationDayModeLabel = (mode) => (mode === 'shared' ? 'Общие дни по всем платформам' : 'Разные дни')
 
 const DraftPlanWorkflowPanel = ({
@@ -20,6 +24,9 @@ const DraftPlanWorkflowPanel = ({
 }) => {
   const draftPlan = draftPlanResult?.draft?.draft_content_plan || null
   const optimizedPlan = optimizationResult?.optimized_content_plan || null
+  const planFeatures = optimizedPlan?.plan_features || optimizationResult?.stage1?.plan_features || null
+  const bestPublication = optimizationResult?.best_publication || null
+  const bestPublicationFeatures = bestPublication?.ontology_features || null
   const draftDayMode = draftPlan?.schedule_preferences?.publication_day_mode || publicationDayMode
   const optimizedDayMode = optimizedPlan?.schedule_preferences?.publication_day_mode || draftDayMode
   const gaChanges = draftPlan && optimizedPlan
@@ -143,7 +150,7 @@ const DraftPlanWorkflowPanel = ({
 
             {!optimizedPlan && (
               <div className="workflow-result-placeholder">
-                После запуска оптимизации здесь появится результат по числу публикаций, ограничениям и F_kp.
+                После запуска оптимизации здесь появится лучший контент-план, прогноз лайков и результат эволюции постов.
               </div>
             )}
 
@@ -151,9 +158,25 @@ const DraftPlanWorkflowPanel = ({
               <div className="workflow-result-list">
                 <div>Публикаций после оптимизации: {optimizedPlan.publications?.length || 0}</div>
                 <div>Режим дат: {getPublicationDayModeLabel(optimizedDayMode)}</div>
-                {isDeveloper && <div>F_kp: {optimizationResult?.stage2?.f_kp ?? '—'}</div>}
-                {isDeveloper && <div>Stop reason: {optimizationResult?.stage2?.ga?.stop_reason ?? '—'}</div>}
-                {isDeveloper && <div>Поколений: {optimizationResult?.stage2?.ga?.generations ?? '—'}</div>}
+                <div>Прогноз лайков плана: {formatNumber(optimizedPlan.expected_kpi?.predicted_total_likes)}</div>
+                {planFeatures && <div>Уникальных тем: {planFeatures.unique_topics ?? '—'}</div>}
+                {planFeatures && <div>Уникальных тонов: {planFeatures.unique_tones ?? '—'}</div>}
+                {planFeatures && <div>Средняя креативность: {formatNumber(planFeatures.avg_creativity)}</div>}
+                {planFeatures && <div>Доля CTA: {formatNumber(planFeatures.cta_share)}</div>}
+                {isDeveloper && <div>Целевое число постов: {optimizationResult?.stage1?.target_posts_count ?? '—'}</div>}
+                {isDeveloper && <div>Этап 1 stop reason: {optimizationResult?.stage1?.ga?.stop_reason ?? '—'}</div>}
+                {isDeveloper && <div>Этап 1 поколений: {optimizationResult?.stage1?.ga?.generations ?? '—'}</div>}
+                {isDeveloper && <div>Лучший пост: {optimizationResult?.best_publication?.publication_id ?? '—'}</div>}
+                {bestPublication && <div>Лайки лучшего поста: {formatNumber(bestPublication?.expected_kpi?.predicted_likes)}</div>}
+                {bestPublicationFeatures && <div>Креативность поста: {formatNumber(bestPublicationFeatures.creativity)}</div>}
+                {bestPublicationFeatures && <div>CTA у лучшего поста: {bestPublicationFeatures.has_cta ? 'да' : 'нет'}</div>}
+                {bestPublicationFeatures && <div>Тонов в посте: {bestPublicationFeatures.tones_count ?? '—'}</div>}
+                {optimizationResult?.stage2?.cta_distribution && (
+                  <div>
+                    CTA распределено: {optimizationResult.stage2.cta_distribution.assigned_count}/
+                    {optimizationResult.stage2.cta_distribution.target_count}
+                  </div>
+                )}
                 <div>
                   Ограничения:{' '}
                   {optimizationResult?.stage2?.constraints_check?.valid ? 'соблюдены' : 'есть нарушения'}

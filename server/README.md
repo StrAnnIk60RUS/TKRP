@@ -108,6 +108,45 @@ npm start
 - `draft_content_plan.schedule_preferences.generated_publications`
 - `draft_content_plan.schedule_preferences.platform_bundle_size`
 
+### `POST /api/plan/optimize`
+Двухфазная оптимизация `content plan -> post evolution`.
+
+Что делает endpoint:
+- запускает GA контент-плана с учетом `posts_per_week` и прогноза `content_plan_likes_model`;
+- затем запускает GA постов внутри лучшего плана с учетом признаков плана и прогноза `post_likes_model`;
+- возвращает `optimized_content_plan`, `best_publication`, а также `stage1/stage2` trace по поколениям.
+
+Минимальный фрагмент тела запроса:
+```json
+{
+  "draft_content_plan": {
+    "plan_id": "draft_plan",
+    "planning_horizon": {
+      "start_date": "2026-04-01",
+      "end_date": "2026-04-21",
+      "duration_days": 21
+    },
+    "publications": []
+  },
+  "stage1": {
+    "constraints": {
+      "posts_per_week": 2,
+      "min_publications": 6
+    },
+    "ga": {
+      "populationSize": 24,
+      "maxGenerations": 24
+    }
+  },
+  "stage2": {
+    "ga": {
+      "populationSize": 20,
+      "maxGenerations": 20
+    }
+  }
+}
+```
+
 ## Что делает сервер
 
 1. **Вычисляет `engagement_rate`** для всех постов локально (формула: `(likes + comments + shares) / views`)
@@ -123,6 +162,23 @@ npm start
 - API ключ для LLM (см. `.env.example`)
 - `PORT` - Порт сервера (по умолчанию: 3001)
 - `APP_URL` - URL приложения для заголовков (опционально)
+- `EMBEDDING_MODEL` - модель эмбеддингов для RAG и семантического поиска прецедентов (по умолчанию: `text-embedding-3-small`)
+
+### Миграция на text-embedding-3-small (1024 dim)
+
+Если precedents были эмбеддены старой моделью (1536 dim), для перехода на 1024 dim:
+1. Установите `EMBEDDING_MODEL=text-embedding-3-small` в `.env`
+2. Вызовите `POST /api/ml/relevance/reembed-and-train` (с localhost или Bearer API key) — переэмбедит precedents и переобучит обе ML-модели (`post` и `content_plan`)
+
+### ML endpoints
+
+- `POST /api/ml/relevance/reembed-and-train` - переэмбедить precedents и переобучить обе модели
+- `POST /api/ml/relevance/train` - переобучить обе модели без переэмбеддинга
+- `POST /api/ml/post/train` - обучить модель лайков постов
+- `POST /api/ml/content-plan/train` - обучить модель лайков контент-планов
+- `POST /api/ml/post/predict` - предсказать лайки для массива публикаций
+- `POST /api/ml/content-plan/predict` - предсказать суммарные лайки для кандидата контент-плана
+- `GET /api/ml/models/metadata` - получить metadata обеих моделей
 
 ## Интеграция с фронтендом
 

@@ -1,11 +1,11 @@
 {
-  "created_at": "2026-03-20T18:54:30.261542+00:00",
+  "created_at": "2026-03-23T21:15:24.240958+00:00",
   "precedents_path": "C:\\University\\TKRP\\server\\data\\precedents-store",
-  "samples": 113,
-  "embedding_dim": 1536,
+  "samples": 126,
+  "embedding_dim": 1024,
   "metrics": {
-    "mse": 0.00017796688189264387,
-    "r2": 0.13540863990783691
+    "mse": 0.0002827848948072642,
+    "r2": -0.5200674533843994
   },
   "target": "engagement_rate_clamped_0_1",
   "model_type": "sklearn.RidgeRegression(via Pipeline: StandardScaler+Ridge)"

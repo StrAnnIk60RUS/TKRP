@@ -12,6 +12,29 @@ function prettyRetrievalType(retrieval) {
   return type || 'unknown'
 }
 
+function ReliabilityBreakdown({ factors }) {
+  if (!factors || typeof factors !== 'object') return null
+  const entries = [
+    ['relevance_score', 'Релевантность запросу', factors.retrieval_score],
+    ['completeness', 'Полнота данных', factors.completeness],
+    ['source_trust', 'Доверие к источнику', factors.source_trust]
+  ].filter(([, , v]) => Number.isFinite(Number(v)))
+  if (!entries.length) return null
+  return (
+    <div className="precedent-reliability-breakdown">
+      <p className="precedent-reliability-breakdown-title">Факторы надёжности</p>
+      <div className="precedent-reliability-factors">
+        {entries.map(([key, label, value]) => (
+          <div key={key} className="precedent-reliability-factor">
+            <span className="precedent-reliability-factor-label">{label}</span>
+            <span className="precedent-reliability-factor-value">{formatPercent(value)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 const PrecedentDetailsModal = ({ item, retrieval, onClose, showTechnicalDetails = true }) => {
   const jsonString = useMemo(() => JSON.stringify(item, null, 2), [item])
   const closeButtonRef = useRef(null)
@@ -76,7 +99,14 @@ const PrecedentDetailsModal = ({ item, retrieval, onClose, showTechnicalDetails 
                 <h4 className="precedent-modal-title">{title}</h4>
                 <p className="precedent-modal-subtitle">{subtitle}</p>
               </div>
-              <div className="precedent-modal-score">{formatPercent(item.score)}</div>
+              {Number.isFinite(Number(item.reliability)) ? (
+                <div className="precedent-modal-reliability" title="Надёжность: релевантность + полнота данных + доверие к источнику">
+                  <span className="precedent-modal-reliability-label">Надёжность</span>
+                  <span className="precedent-modal-reliability-value">{formatPercent(item.reliability)}</span>
+                </div>
+              ) : (
+                <div className="precedent-modal-score" title="Релевантность">{formatPercent(item.score)}</div>
+              )}
             </div>
 
             <div className="precedent-modal-grid">
@@ -108,6 +138,9 @@ const PrecedentDetailsModal = ({ item, retrieval, onClose, showTechnicalDetails 
             <details className="precedent-technical-details">
               <summary>Технические детали и JSON</summary>
               <div className="preview-json">
+                {item.reliability_factors && (
+                  <ReliabilityBreakdown factors={item.reliability_factors} />
+                )}
                 {Array.isArray(item.matched_tokens) && item.matched_tokens.length > 0 && (
                   <p className="precedent-technical-line">
                     <strong>Совпавшие токены:</strong> {item.matched_tokens.join(', ')}

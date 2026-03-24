@@ -25,6 +25,7 @@ export const mapExamplePayloadToFormData = (data = {}) => ({
   contentPlanStartDate: data.content_plan_info?.timeline?.start_date || '',
   contentPlanEndDate: data.content_plan_info?.timeline?.end_date || '',
   publicationFrequency: data.content_plan_info?.publication_frequency || '',
+  postsPerWeek: data.content_plan_info?.posts_per_week?.toString() || '',
   publicationDayMode: data.content_plan_info?.publication_day_mode === 'shared' ? 'shared' : 'spread',
   minPublications: data.content_plan_info?.min_publications?.toString() || '',
   keyDates: data.content_plan_info?.key_dates || '',
@@ -77,6 +78,12 @@ export function validateFieldValue(name, value, formData) {
       break
     case 'publicationFrequency':
       if (!value) error = 'Выберите частоту публикаций'
+      break
+    case 'postsPerWeek':
+      if (value) {
+        const num = parseFloat(value)
+        if (Number.isNaN(num) || num <= 0 || num > 30) error = 'От 0.1 до 30'
+      }
       break
     case 'minPublications':
       if (!value) error = 'Укажите количество'
@@ -214,6 +221,7 @@ export function buildSafeFormInputForGeneration(formData) {
     contentPlanStartDate: formData.contentPlanStartDate || formatDateISO(now),
     contentPlanEndDate: formData.contentPlanEndDate || formatDateISO(end),
     publicationFrequency: formData.publicationFrequency || 'weekly',
+    postsPerWeek: formData.postsPerWeek || '',
     publicationDayMode: formData.publicationDayMode === 'shared' ? 'shared' : 'spread',
     minPublications: formData.minPublications || '8',
     totalBudget: formData.totalBudget || '0',
@@ -272,8 +280,14 @@ export function buildGaConfigFromForm(formData) {
   }
 }
 
-export function buildReviewChecklist(formData, competitorsData, precedentSearchResults, draftPlanResult) {
-  return [
+export function buildReviewChecklist(
+  formData,
+  competitorsData,
+  precedentSearchResults,
+  draftPlanResult,
+  reviewChecklistChecked = {}
+) {
+  const base = [
     {
       id: 'required_fields',
       label: 'Обязательные поля формы заполнены',
@@ -292,9 +306,16 @@ export function buildReviewChecklist(formData, competitorsData, precedentSearchR
         (precedentSearchResults?.content_plans?.length || 0) > 0
     },
     {
+      id: 'reviewed',
+      label: 'Проверено перед генерацией',
+      done: !!reviewChecklistChecked.reviewed,
+      interactive: true
+    },
+    {
       id: 'draft',
       label: 'Черновой план уже сформирован',
       done: Boolean(draftPlanResult?.draft?.draft_content_plan)
     }
   ]
+  return base
 }
