@@ -17,27 +17,16 @@ export const initialFormData = {
   publicationDayMode: 'spread',
   minPublications: '',
   keyDates: '',
-  totalBudget: '',
-  maxCostPerPublication: '',
   contentFormats: [],
   videoDescription: '',
   platforms: [],
-  evoPopulationSize: '100',
-  evoGenerations: '100',
-  evoStopCriterion: 'max_generations',
+  evoPopulationSize: '64',
+  evoGenerations: '80',
   evoStagnationGenerations: '20',
-  evoOptimizationGoal: 'max_engagement',
-  evoBudgetLimit: '',
-  evoSelectionMethod: 'tournament',
-  evoTournamentSize: '3',
-  evoBestWinProb: '0.9',
-  evoEliteSize: '2',
-  evoCrossoverMethod: 'one_point',
-  evoCrossoverProbability: '0.8',
-  evoMutationMethod: 'bit_flip',
-  evoMutationProbability: '0.01',
-  evoPreserveDiversity: true,
-  evoUseParallel: false,
+  evoTournamentSize: '5',
+  evoEliteSize: '4',
+  evoCrossoverProbability: '0.9',
+  evoMutationProbability: '0.08',
   evoRandomSeed: ''
 }
 
@@ -76,9 +65,7 @@ export const requiredFields = [
   'contentPlanStartDate',
   'contentPlanEndDate',
   'publicationFrequency',
-  'minPublications',
-  'totalBudget',
-  'maxCostPerPublication'
+  'minPublications'
 ]
 
 export const consumerCategoryOptions = [
@@ -155,27 +142,16 @@ export const demoExampleFormData = {
   minPublications: '46',
   keyDates:
     '15 марта - запуск бета-версии, 1 апреля - вебинар по внедрению, 15 апреля - кейс-стади с первым клиентом, 1 мая - обновление функционала, 20 мая - итоговая презентация результатов.',
-  totalBudget: '150000',
-  maxCostPerPublication: '3500',
   contentFormats: ['text', 'image', 'video'],
   videoDescription:
     'Короткие ролики (1-3 минуты) с демонстрацией функционала платформы, интервью с клиентами, объяснение сложных концепций простым языком. Профессиональная съемка, субтитры, брендинг CloudTech Solutions.',
   platforms: ['linkedin', 'vk'],
-  evoPopulationSize: '100',
-  evoGenerations: '100',
-  evoStopCriterion: 'max_generations',
+  evoPopulationSize: '64',
+  evoGenerations: '80',
   evoStagnationGenerations: '20',
-  evoOptimizationGoal: 'max_engagement',
-  evoBudgetLimit: '150000',
-  evoSelectionMethod: 'tournament',
-  evoTournamentSize: '3',
-  evoBestWinProb: '0.9',
-  evoEliteSize: '2',
-  evoCrossoverMethod: 'one_point',
-  evoCrossoverProbability: '0.8',
-  evoMutationMethod: 'bit_flip',
-  evoMutationProbability: '0.01',
-  evoPreserveDiversity: true,
-  evoUseParallel: false,
+  evoTournamentSize: '5',
+  evoEliteSize: '4',
+  evoCrossoverProbability: '0.9',
+  evoMutationProbability: '0.08',
   evoRandomSeed: ''
 }

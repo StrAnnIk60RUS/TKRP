@@ -23,8 +23,6 @@ function buildInitialDraft(plan) {
     avg_engagement_rate: plan?.kpi_targets?.avg_engagement_rate ?? 0,
     estimated_conversions: plan?.kpi_targets?.estimated_conversions ?? 0,
     min_publications: plan?.constraints?.min_publications ?? '',
-    total_budget: plan?.constraints?.total_budget ?? '',
-    max_cost_per_publication: plan?.constraints?.max_cost_per_publication ?? '',
     notes: plan?.notes || ''
   }
 }
@@ -75,9 +73,7 @@ const PlanEditModal = ({ plan, onSave, onCancel }) => {
         estimated_conversions: Number(coerceToNumberOrNull(draft.estimated_conversions) ?? 0)
       },
       constraints: {
-        min_publications: Number(coerceToNumberOrNull(draft.min_publications) ?? 0),
-        total_budget: coerceToNumberOrNull(draft.total_budget),
-        max_cost_per_publication: coerceToNumberOrNull(draft.max_cost_per_publication)
+        min_publications: Number(coerceToNumberOrNull(draft.min_publications) ?? 0)
       },
       notes: draft.notes
     })
@@ -154,32 +150,6 @@ const PlanEditModal = ({ plan, onSave, onCancel }) => {
                   min="0"
                   value={draft.min_publications}
                   onChange={(e) => setField('min_publications', e.target.value)}
-                />
-              </label>
-
-              <label className="editor-field">
-                total_budget (byn) / или пусто
-                <input
-                  className="editor-input"
-                  type="number"
-                  step="100"
-                  min="0"
-                  value={draft.total_budget}
-                  onChange={(e) => setField('total_budget', e.target.value)}
-                  placeholder="например 150000"
-                />
-              </label>
-
-              <label className="editor-field">
-                max_cost_per_publication (byn) / или пусто
-                <input
-                  className="editor-input"
-                  type="number"
-                  step="100"
-                  min="0"
-                  value={draft.max_cost_per_publication}
-                  onChange={(e) => setField('max_cost_per_publication', e.target.value)}
-                  placeholder="например 3500"
                 />
               </label>
 

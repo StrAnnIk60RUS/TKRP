@@ -1459,6 +1459,21 @@
     grid-template-columns: 1fr 1fr;
     gap: 24px;
   }
+
+  .evolution-settings-section .form-row {
+    gap: 18px;
+  }
+
+  .evolution-settings-section .form-group {
+    margin-bottom: 18px;
+  }
+
+  .evolution-settings-section .form-hint {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border: 1px solid #cbd5e0;
+    background: #fafbfc;
+  }
   
   .form-label {
     display: flex;

@@ -38,15 +38,10 @@ function validatePlanConstraints(plan, constraints = {}) {
     errors.push(`min_publications violated: have=${publications.length}, need>=${constraints.min_publications}`);
   }
 
-  const totalCost = publications.reduce((sum, publication) => sum + asNumber(publication?.estimated_cost, 0), 0);
-  if (constraints?.total_budget && totalCost > Number(constraints.total_budget)) {
-    errors.push(`total_budget violated: cost=${totalCost}, limit=${constraints.total_budget}`);
-  }
-
   return {
     valid: errors.length === 0,
     errors,
-    total_cost: totalCost
+    total_cost: null
   };
 }
 
@@ -67,7 +62,7 @@ export async function runHierarchicalOptimization(payload = {}) {
   );
   const filledPlanResult = await fillPlanWithBestPublication(
     contentPlanResult.optimizedPlan.publications,
-    postResult.bestPublication,
+    postResult.archetypes,
     contentPlanResult.planFeatureMap,
     stage2Config.ga || stage2Config
   );

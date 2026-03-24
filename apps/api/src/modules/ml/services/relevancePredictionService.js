@@ -11,6 +11,7 @@ import {
   POST_FEATURE_NAMES
 } from './ml/ontologyFeatureEngineering.js';
 import { runPythonJsonProcess } from '../../../shared/runtime/pythonRuntime.js';
+import { createPythonJsonWorker } from '../../../shared/runtime/pythonJsonWorker.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = path.join(__dirname, '..', '..', '..', '..');
@@ -20,6 +21,7 @@ const PRECEDENTS_ROOT = path.join(DATA_ROOT, 'precedents');
 const SCRIPT_PATH = path.join(REPO_ROOT, 'tools', 'ml', 'engagement_model.py');
 const MODEL_DIR = path.join(DATA_ROOT, 'ml');
 const ML_TIMEOUT_MS = Number(process.env.ML_SCRIPT_TIMEOUT_MS || 180000);
+const USE_PERSISTENT_ML_WORKER = String(process.env.ML_PERSISTENT_WORKER || '1') !== '0';
 
 const MODEL_SPECS = {
   post: {
@@ -38,6 +40,7 @@ const trainingQueues = {
   post: Promise.resolve(),
   content_plan: Promise.resolve()
 };
+let mlWorker = null;
 
 function clamp01(value) {
   const numeric = Number(value);
@@ -97,12 +100,185 @@ function getModelMetadata(modelKey) {
 }
 
 function normalizeLikesToUnitInterval(likes, metadata) {
+  const minTarget = Number(metadata?.target_summary?.min);
   const maxTarget = Number(metadata?.target_summary?.max) || 1;
+  const safeLikes = clampPositive(likes);
+
+  if (Number.isFinite(minTarget) && maxTarget > minTarget) {
+    const bounded = Math.min(maxTarget, Math.max(minTarget, safeLikes));
+    const normalized = (bounded - minTarget) / (maxTarget - minTarget);
+    // Keep some headroom to avoid visual "all 100%" saturation in UI.
+    return clamp01(0.05 + normalized * 0.9);
+  }
   if (maxTarget <= 0) return 0;
-  return clamp01(Math.log1p(clampPositive(likes)) / Math.log1p(maxTarget));
+  return clamp01((Math.log1p(safeLikes) / Math.log1p(maxTarget)) * 0.95);
+}
+
+function normalizeKey(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function capContentPlanLikes(predictedLikes, metadata = null) {
+  const safeLikes = clampPositive(predictedLikes);
+  const maxTarget = Number(metadata?.target_summary?.max);
+  if (!Number.isFinite(maxTarget) || maxTarget <= 0) return safeLikes;
+  return Math.min(safeLikes, maxTarget * 1.15);
+}
+
+function getPublicationCalibrationSamples() {
+  const snapshot = readPrecedentSnapshot();
+  return (snapshot?.publications || [])
+    .map((item) => {
+      const model = item?.publication_model || {};
+      const kpiEstimate = model?.kpi_estimate || item?.expected_kpi || {};
+      const likes = clampPositive(item?.metrics?.likes ?? item?.expected_kpi?.predicted_likes ?? item?.likes);
+      const engagementRate = clamp01(kpiEstimate?.expected_engagement_rate ?? item?.engagement_rate ?? 0);
+      const conversionPotential = clamp01(
+        kpiEstimate?.expected_conversion_potential ?? item?.expected_kpi?.conversion_potential ?? 0
+      );
+      const reachPotential = clamp01(
+        kpiEstimate?.expected_reach_potential ?? item?.expected_kpi?.reach_potential ?? 0
+      );
+      return {
+        likes,
+        engagementRate,
+        conversionPotential,
+        reachPotential,
+        objective: normalizeKey(model?.objective || item?.objective),
+        format: normalizeKey(model?.format || item?.format),
+        tone: normalizeKey(model?.tone || item?.tone)
+      };
+    })
+    .filter((sample) => sample.likes > 0 && (sample.engagementRate > 0 || sample.conversionPotential > 0 || sample.reachPotential > 0))
+    .sort((left, right) => left.likes - right.likes);
+}
+
+function weightedAverage(entries = [], valueSelector, fallback = 0) {
+  let weightedSum = 0;
+  let totalWeight = 0;
+  for (const entry of entries) {
+    const value = Number(valueSelector(entry));
+    const weight = Number(entry?.weight);
+    if (!Number.isFinite(value) || !Number.isFinite(weight) || weight <= 0) continue;
+    weightedSum += value * weight;
+    totalWeight += weight;
+  }
+  if (totalWeight <= 0) return fallback;
+  return weightedSum / totalWeight;
+}
+
+export function estimatePublicationKpiFromLikes(predictedLikes, publication = {}, metadata = null) {
+  const safeLikes = clampPositive(predictedLikes);
+  const objective = normalizeKey(publication?.objective);
+  const format = normalizeKey(publication?.format);
+  const tone = normalizeKey(publication?.tone);
+  const hasCta =
+    Boolean(publication?.cta && String(publication.cta).trim()) ||
+    clamp01(publication?.ontology_features?.has_cta) > 0;
+  const fallbackEngagement = clamp01(0.01 + normalizeLikesToUnitInterval(safeLikes, metadata) * 0.11);
+  const samples = getPublicationCalibrationSamples();
+
+  if (!samples.length) {
+    return {
+      engagement_rate: fallbackEngagement,
+      conversion_potential: clamp01(fallbackEngagement * 1.35 + (hasCta ? 0.02 : 0.006)),
+      reach_potential: clamp01(0.18 + fallbackEngagement * 2.4)
+    };
+  }
+
+  const nearest = samples
+    .map((sample) => {
+      let distance = Math.abs(sample.likes - safeLikes);
+      if (objective && sample.objective) distance *= sample.objective === objective ? 0.72 : 1.08;
+      if (format && sample.format) distance *= sample.format === format ? 0.86 : 1.04;
+      if (tone && sample.tone) distance *= sample.tone === tone ? 0.92 : 1.03;
+      return {
+        sample,
+        weight: 1 / (distance + 5)
+      };
+    })
+    .sort((left, right) => right.weight - left.weight)
+    .slice(0, 12);
+
+  const engagementRate = clamp01(
+    weightedAverage(nearest, (entry) => entry.sample.engagementRate, fallbackEngagement) * 0.85 +
+      fallbackEngagement * 0.15
+  );
+  const objectiveAdjustment =
+    objective === 'convert'
+      ? 0.03
+      : objective === 'retain'
+      ? 0.015
+      : objective === 'engage'
+      ? 0.008
+      : objective === 'educate'
+      ? 0.004
+      : 0.01;
+  const formatAdjustment =
+    format === 'video' || format === 'reel'
+      ? 0.03
+      : format === 'image' || format === 'carousel'
+      ? 0.02
+      : format === 'combined'
+      ? 0.015
+      : 0.008;
+  const conversionPotential = clamp01(
+    weightedAverage(nearest, (entry) => entry.sample.conversionPotential, 0.05) * 0.8 +
+      engagementRate * 0.35 +
+      objectiveAdjustment +
+      (hasCta ? 0.012 : -0.004)
+  );
+  const reachPotential = clamp01(
+    weightedAverage(nearest, (entry) => entry.sample.reachPotential, 0.22) * 0.82 +
+      engagementRate * 0.55 +
+      formatAdjustment
+  );
+
+  return {
+    engagement_rate: engagementRate,
+    conversion_potential: conversionPotential,
+    reach_potential: reachPotential
+  };
 }
 
 function runPythonModel(mode, modelKey, payload) {
+  if (USE_PERSISTENT_ML_WORKER) {
+    if (!mlWorker) {
+      mlWorker = createPythonJsonWorker({
+        scriptPath: SCRIPT_PATH,
+        args: ['serve'],
+        cwd: APP_ROOT,
+        description: 'engagement_model.py serve'
+      });
+    }
+
+    return mlWorker
+      .request({
+        mode,
+        model_key: modelKey,
+        payload: payload || {}
+      })
+      .catch(async (error) => {
+        // Fallback to one-shot execution if worker is unhealthy.
+        try {
+          mlWorker?.dispose?.();
+        } catch (_disposeError) {
+          // no-op
+        }
+        mlWorker = null;
+        const fallback = await runPythonJsonProcess({
+          scriptPath: SCRIPT_PATH,
+          args: [mode, modelKey],
+          cwd: APP_ROOT,
+          input: payload || {},
+          timeoutMs: ML_TIMEOUT_MS,
+          description: `engagement_model.py ${mode} ${modelKey}`
+        });
+        if (fallback?.parsed) return fallback.parsed;
+        throw error;
+      });
+  }
+
   return runPythonJsonProcess({
     scriptPath: SCRIPT_PATH,
     args: [mode, modelKey],
@@ -258,7 +434,7 @@ export async function predictContentPlanLikes(planOrPublications, options = {}) 
     durationDays: planFeatureMap.duration_days
   });
   const { predictions, metadata } = await predictByFeatureVectors('content_plan', [featureVector], options);
-  const predictedLikes = clampPositive(predictions[0]);
+  const predictedLikes = capContentPlanLikes(predictions[0], metadata);
 
   return {
     predictedLikes,
@@ -288,23 +464,28 @@ export async function predictEngagementRatesForGeneratedPublications(publication
   }
 
   const result = await predictPostLikesForPublications(publications, options);
+  const engagementRates = [];
   const updatedPublications = publications.map((publication, index) => {
     const predictedLikes = clampPositive(result.predictions[index]);
-    const engagementRate = clamp01(result.normalizedScores[index]);
+    const estimatedKpi = estimatePublicationKpiFromLikes(predictedLikes, publication, result.metadata);
+    const engagementRate = clamp01(estimatedKpi.engagement_rate);
+    engagementRates.push(engagementRate);
     const next = { ...publication };
     next.expected_kpi = { ...(next.expected_kpi || {}) };
     next.expected_kpi.predicted_likes = predictedLikes;
     next.expected_kpi.predicted_likes_source = 'ml_post_likes_prediction';
     next.expected_kpi.engagement_rate = engagementRate;
-    next.expected_kpi.engagement_rate_source = 'ml_post_likes_normalized';
+    next.expected_kpi.engagement_rate_source = 'ml_post_likes_calibrated';
+    next.expected_kpi.conversion_potential = estimatedKpi.conversion_potential;
+    next.expected_kpi.reach_potential = estimatedKpi.reach_potential;
     next.ontology_features = result.featureVectors[index];
     return next;
   });
 
   return {
     updatedPublications,
-    avgEngagementRate: clamp01(average(result.normalizedScores)),
-    engagementRates: result.normalizedScores,
+    avgEngagementRate: clamp01(average(engagementRates)),
+    engagementRates,
     predictedLikes: result.predictions,
     totalPredictedLikes: result.predictions.reduce((sum, value) => sum + clampPositive(value), 0),
     modelMetadata: result.metadata,

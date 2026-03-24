@@ -44,8 +44,6 @@ const templates = {
       consumerCategory: 'B2B',
       publicationFrequency: '3-4_per_week',
       ...buildTimeline(3, 3.5),
-      totalBudget: '100000',
-      maxCostPerPublication: '5000',
       contentFormats: ['text', 'image', 'video'],
       platforms: ['linkedin', 'vk']
     }
@@ -66,8 +64,6 @@ const templates = {
       consumerCategory: 'B2B',
       publicationFrequency: '2-3_per_week',
       ...buildTimeline(3, 2.5),
-      totalBudget: '80000',
-      maxCostPerPublication: '4000',
       contentFormats: ['text', 'image', 'video'],
       platforms: ['linkedin', 'vk']
     }
@@ -88,8 +84,6 @@ const templates = {
       consumerCategory: 'B2C',
       publicationFrequency: '3-4_per_week',
       ...buildTimeline(3, 3.5),
-      totalBudget: '120000',
-      maxCostPerPublication: '6000',
       contentFormats: ['text', 'video', 'image'],
       platforms: ['vk', 'linkedin']
     }
@@ -110,8 +104,6 @@ const templates = {
       consumerCategory: 'B2B',
       publicationFrequency: 'weekly',
       ...buildTimeline(3, 1),
-      totalBudget: '150000',
-      maxCostPerPublication: '8000',
       contentFormats: ['text', 'image'],
       platforms: ['linkedin', 'vk']
     }
@@ -132,8 +124,6 @@ const templates = {
       consumerCategory: 'B2B',
       publicationFrequency: '3-4_per_week',
       ...buildTimeline(3, 3.5),
-      totalBudget: '100000',
-      maxCostPerPublication: '5000',
       contentFormats: ['text', 'image', 'video'],
       platforms: ['linkedin', 'vk']
     }
@@ -154,8 +144,6 @@ const templates = {
       consumerCategory: 'B2C',
       publicationFrequency: '3-4_per_week',
       ...buildTimeline(3, 3.5),
-      totalBudget: '130000',
-      maxCostPerPublication: '6000',
       contentFormats: ['text', 'image', 'video'],
       platforms: ['vk', 'linkedin']
     }

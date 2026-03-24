@@ -104,6 +104,11 @@ const DraftPlanWorkflowPanel = ({
           <span>ПЕРЕЙТИ К ГОТОВОМУ ПЛАНУ</span>
         </button>
       </div>
+      {!canGenerateDraft && smmBlockedReasons.length > 0 && (
+        <div className="precedent-empty-state precedent-empty-state-light" role="status" aria-live="polite">
+          <strong>Почему кнопка неактивна:</strong> {smmBlockedReasons.join(' · ')}
+        </div>
+      )}
 
       {!draftPlan && (
         <div className="precedent-empty-state precedent-empty-state-light">

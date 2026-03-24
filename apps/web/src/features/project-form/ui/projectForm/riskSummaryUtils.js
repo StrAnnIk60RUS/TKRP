@@ -1,5 +1,5 @@
 /**
- * Анализ плана на риски: дороговизна, однообразие, воронка, слабые гипотезы
+ * Анализ плана на риски: однообразие, воронка, слабые гипотезы
  */
 
 function parseNumber(val) {
@@ -18,31 +18,7 @@ export function buildRiskSummary(plan, formData = {}) {
   if (!plan || typeof plan !== 'object') return risks
 
   const publications = Array.isArray(plan.publications) ? plan.publications : []
-  const constraints = plan.constraints || {}
-  const totalBudget = parseNumber(constraints.total_budget ?? formData.totalBudget)
-  const maxCost = parseNumber(constraints.max_cost_per_publication ?? formData.maxCostPerPublication)
-  const minPubs = parseNumber(constraints.min_publications ?? formData.minPublications) ?? publications.length
-
-  // 1. Слишком дорогой план
-  const totalEstimatedCost = publications.reduce((sum, p) => sum + (parseNumber(p.estimated_cost) || 0), 0)
-  if (totalBudget != null && totalEstimatedCost > totalBudget * 1.1) {
-    risks.push({
-      id: 'budget_overrun',
-      severity: 'high',
-      label: 'План превышает бюджет',
-      detail: `Оценка ${Math.round(totalEstimatedCost)} vs бюджет ${totalBudget} BYN. Стоимость публикаций выше допустимого.`
-    })
-  }
-  if (maxCost != null && publications.some((p) => (parseNumber(p.estimated_cost) || 0) > maxCost)) {
-    risks.push({
-      id: 'per_publication_overrun',
-      severity: 'medium',
-      label: 'Отдельные публикации превышают лимит',
-      detail: `max_cost_per_publication = ${maxCost} BYN, но есть публикации дороже.`
-    })
-  }
-
-  // 2. Однообразие (мало форматов, целей, тонов)
+  // 1. Однообразие (мало форматов, целей, тонов)
   const formats = new Set(publications.map((p) => p.format).filter(Boolean))
   const objectives = new Set(publications.map((p) => p.objective).filter(Boolean))
   const tones = new Set(publications.map((p) => p.tone).filter(Boolean))
@@ -55,7 +31,7 @@ export function buildRiskSummary(plan, formData = {}) {
     })
   }
 
-  // 3. Не покрывает воронку (только inform/educate, нет convert/retain)
+  // 2. Не покрывает воронку (только inform/educate, нет convert/retain)
   const hasConvert = publications.some((p) => p.objective === 'convert')
   const hasRetain = publications.some((p) => p.objective === 'retain')
   const hasEngage = publications.some((p) => p.objective === 'engage')
@@ -76,7 +52,7 @@ export function buildRiskSummary(plan, formData = {}) {
     })
   }
 
-  // 4. Слабые гипотезы (нет used_precedent_ids, низкий engagement_rate)
+  // 3. Слабые гипотезы (нет used_precedent_ids, низкий engagement_rate)
   const withPrecedents = publications.filter((p) => Array.isArray(p.used_precedent_ids) && p.used_precedent_ids.length > 0)
   const precedentShare = publications.length ? withPrecedents.length / publications.length : 1
   if (publications.length >= 5 && precedentShare < 0.5) {
@@ -101,7 +77,7 @@ export function buildRiskSummary(plan, formData = {}) {
     })
   }
 
-  // 5. Мало публикаций при длинном горизонте
+  // 4. Мало публикаций при длинном горизонте
   const horizon = plan.planning_horizon || {}
   const start = horizon.start_date ? new Date(horizon.start_date) : null
   const end = horizon.end_date ? new Date(horizon.end_date) : null

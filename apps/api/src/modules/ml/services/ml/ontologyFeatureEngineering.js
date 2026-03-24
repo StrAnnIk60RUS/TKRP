@@ -198,7 +198,7 @@ export function buildPlanFeatureMap(publications = [], options = {}) {
 
   return {
     unique_topics: topics.length,
-    unique_tones: tones.length || 1,
+    unique_tones: Math.max(1, Math.min(5, tones.length || 1)),
     avg_creativity: clamp01(average(postFeatureMaps.map((item) => item.creativity))),
     cta_share: clamp01(average(postFeatureMaps.map((item) => item.has_cta))),
     posts_count: posts.length,

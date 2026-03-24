@@ -24,6 +24,13 @@ MODEL_SPECS = {
         "target_name": "content_plan_total_likes",
     },
 }
+MODEL_CACHE = {}
+METADATA_CACHE = {}
+
+
+def write_json_line(data: dict):
+    sys.stdout.write(json.dumps(data, ensure_ascii=False) + "\n")
+    sys.stdout.flush()
 
 
 def clamp_non_negative(x: float) -> float:
@@ -40,8 +47,8 @@ def get_model_paths(model_key: str):
     spec = MODEL_SPECS.get(model_key)
     if not spec:
         raise ValueError(f"unknown model key: {model_key}")
-    server_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-    ml_dir = os.path.join(server_dir, "data", "ml")
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    ml_dir = os.path.join(repo_root, "data", "ml")
     model_path = os.path.join(ml_dir, spec["model_filename"])
     metadata_path = os.path.join(ml_dir, spec["metadata_filename"])
     return ml_dir, model_path, metadata_path, spec
@@ -195,7 +202,92 @@ def predict_model(model_key: str, payload: dict):
     return {"predictions": predictions, "model_metadata": metadata}
 
 
+def load_cached_model(model_key: str):
+    _, model_path, metadata_path, _ = get_model_paths(model_key)
+    if not os.path.exists(model_path):
+        raise FileNotFoundError(f"model not found: {model_path}")
+
+    current_model_mtime = os.path.getmtime(model_path)
+    cached_model = MODEL_CACHE.get(model_key)
+    if not cached_model or cached_model["mtime"] != current_model_mtime:
+        MODEL_CACHE[model_key] = {
+            "mtime": current_model_mtime,
+            "model": load(model_path),
+        }
+
+    metadata = None
+    if os.path.exists(metadata_path):
+        current_metadata_mtime = os.path.getmtime(metadata_path)
+        cached_metadata = METADATA_CACHE.get(model_key)
+        if not cached_metadata or cached_metadata["mtime"] != current_metadata_mtime:
+            with open(metadata_path, "r", encoding="utf-8") as f:
+                metadata = json.load(f)
+            METADATA_CACHE[model_key] = {
+                "mtime": current_metadata_mtime,
+                "metadata": metadata,
+            }
+        else:
+            metadata = cached_metadata["metadata"]
+    return MODEL_CACHE[model_key]["model"], metadata
+
+
+def predict_model_cached(model_key: str, payload: dict):
+    features = payload.get("features") or []
+    if not isinstance(features, list) or not features:
+        raise ValueError("predict payload must contain non-empty features[][]")
+    X = np.asarray(features, dtype=np.float32)
+    if X.ndim != 2:
+        raise ValueError("features must be 2-dimensional")
+
+    model, metadata = load_cached_model(model_key)
+    expected_dim = metadata.get("feature_dim") if metadata else None
+    if expected_dim is not None:
+        X = adapt_feature_dim(X, int(expected_dim))
+    predictions = np.maximum(model.predict(X), 0).tolist()
+    return {"predictions": predictions, "model_metadata": metadata}
+
+
+def invalidate_model_cache(model_key: str):
+    if model_key in MODEL_CACHE:
+        del MODEL_CACHE[model_key]
+    if model_key in METADATA_CACHE:
+        del METADATA_CACHE[model_key]
+
+
+def serve_loop():
+    write_json_line({"type": "ready"})
+    for raw_line in sys.stdin:
+        line = raw_line.strip()
+        if not line:
+            continue
+        try:
+            request = json.loads(line)
+        except Exception:
+            write_json_line({"id": None, "success": False, "error": "invalid json request"})
+            continue
+
+        request_id = request.get("id")
+        mode = str(request.get("mode") or "").strip().lower()
+        model_key = str(request.get("model_key") or "").strip().lower()
+        payload = request.get("payload") or {}
+        try:
+            if mode == "train":
+                result = train_model(model_key, payload)
+                invalidate_model_cache(model_key)
+            elif mode == "predict":
+                result = predict_model_cached(model_key, payload)
+            else:
+                raise ValueError(f"unknown mode: {mode}")
+            write_json_line({"id": request_id, "success": True, "result": result})
+        except Exception as error:
+            write_json_line({"id": request_id, "success": False, "error": str(error)})
+
+
 def main():
+    if len(sys.argv) >= 2 and sys.argv[1].strip().lower() == "serve":
+        serve_loop()
+        sys.exit(0)
+
     if len(sys.argv) < 3:
         print(
             json.dumps(

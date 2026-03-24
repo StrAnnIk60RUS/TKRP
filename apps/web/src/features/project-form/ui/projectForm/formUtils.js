@@ -29,8 +29,6 @@ export const mapExamplePayloadToFormData = (data = {}) => ({
   publicationDayMode: data.content_plan_info?.publication_day_mode === 'shared' ? 'shared' : 'spread',
   minPublications: data.content_plan_info?.min_publications?.toString() || '',
   keyDates: data.content_plan_info?.key_dates || '',
-  totalBudget: data.content_plan_info?.total_budget?.toString() || '',
-  maxCostPerPublication: data.content_plan_info?.max_cost_per_publication?.toString() || '',
   contentFormats: data.content_plan_info?.content_formats || [],
   videoDescription: data.content_plan_info?.video_requirements || '',
   platforms: data.content_plan_info?.platforms || []
@@ -92,20 +90,6 @@ export function validateFieldValue(name, value, formData) {
         if (Number.isNaN(num) || num < 1 || num > 1000) error = 'От 1 до 1000'
       }
       break
-    case 'totalBudget':
-      if (!value) error = 'Укажите бюджет'
-      else {
-        const num = parseFloat(value)
-        if (Number.isNaN(num) || num < 0) error = 'Бюджет должен быть положительным'
-      }
-      break
-    case 'maxCostPerPublication':
-      if (!value) error = 'Укажите стоимость'
-      else {
-        const num = parseFloat(value)
-        if (Number.isNaN(num) || num < 0 || num > 1000000) error = 'От 0 до 1 000 000'
-      }
-      break
     case 'videoDescription':
       if (formData.contentFormats.includes('video') && !value.trim()) {
         error = 'Опишите требования к ролику'
@@ -124,22 +108,10 @@ export function validateFieldValue(name, value, formData) {
         if (Number.isNaN(num) || num < 1 || num > 500) error = 'От 1 до 500'
       }
       break
-    case 'evoBudgetLimit':
-      if (value) {
-        const num = parseFloat(value)
-        if (Number.isNaN(num) || num < 0) error = 'Бюджет должен быть положительным'
-      }
-      break
     case 'evoTournamentSize':
       if (value) {
         const num = parseInt(value, 10)
         if (Number.isNaN(num) || num < 2 || num > 20) error = 'От 2 до 20'
-      }
-      break
-    case 'evoBestWinProb':
-      if (value) {
-        const num = parseFloat(value)
-        if (Number.isNaN(num) || num < 0.5 || num > 1) error = 'От 0.5 до 1.0'
       }
       break
     case 'evoEliteSize':
@@ -224,8 +196,6 @@ export function buildSafeFormInputForGeneration(formData) {
     postsPerWeek: formData.postsPerWeek || '',
     publicationDayMode: formData.publicationDayMode === 'shared' ? 'shared' : 'spread',
     minPublications: formData.minPublications || '8',
-    totalBudget: formData.totalBudget || '0',
-    maxCostPerPublication: formData.maxCostPerPublication || '0',
     contentFormats: formData.contentFormats.length ? formData.contentFormats : ['text'],
     platforms: formData.platforms.length ? formData.platforms : ['linkedin']
   }
@@ -269,14 +239,14 @@ export function buildGaConfigFromForm(formData) {
   const seed = formData.evoRandomSeed && formData.evoRandomSeed.trim() ? formData.evoRandomSeed.trim() : null
   return {
     seed,
-    populationSize: parseNumberOrNull(formData.evoPopulationSize) ?? 100,
-    maxGenerations: parseNumberOrNull(formData.evoGenerations) ?? 100,
+    populationSize: parseNumberOrNull(formData.evoPopulationSize) ?? 64,
+    maxGenerations: parseNumberOrNull(formData.evoGenerations) ?? 80,
     stagnationGenerations: parseNumberOrNull(formData.evoStagnationGenerations) ?? 20,
-    eliteSize: parseNumberOrNull(formData.evoEliteSize) ?? 2,
-    tournamentSize: parseNumberOrNull(formData.evoTournamentSize) ?? 3,
-    crossoverProbability: parseNumberOrNull(formData.evoCrossoverProbability) ?? 0.8,
-    mutationProbability: parseNumberOrNull(formData.evoMutationProbability) ?? 0.05,
-    crossoverMethod: formData.evoCrossoverMethod === 'order' ? 'order' : 'one_point'
+    eliteSize: parseNumberOrNull(formData.evoEliteSize) ?? 4,
+    tournamentSize: parseNumberOrNull(formData.evoTournamentSize) ?? 5,
+    crossoverProbability: parseNumberOrNull(formData.evoCrossoverProbability) ?? 0.9,
+    mutationProbability: parseNumberOrNull(formData.evoMutationProbability) ?? 0.08,
+    crossoverMethod: 'one_point'
   }
 }
 
@@ -287,11 +257,24 @@ export function buildReviewChecklist(
   draftPlanResult,
   reviewChecklistChecked = {}
 ) {
+  const isFilled = (value) => {
+    if (Array.isArray(value)) return value.length > 0
+    if (typeof value === 'string') return value.trim() !== ''
+    return value !== null && value !== undefined
+  }
+  const requiredFieldsFilled = requiredFields.every((field) => isFilled(formData?.[field]))
+  const formatsFilled = isFilled(formData?.contentFormats)
+  const platformsFilled = isFilled(formData?.platforms)
+  const videoRequirementFilled =
+    !Array.isArray(formData?.contentFormats) ||
+    !formData.contentFormats.includes('video') ||
+    isFilled(formData?.videoDescription)
+
   const base = [
     {
       id: 'required_fields',
       label: 'Обязательные поля формы заполнены',
-      done: validateFormData(formData).isValid
+      done: requiredFieldsFilled && formatsFilled && platformsFilled && videoRequirementFilled
     },
     {
       id: 'competitors',

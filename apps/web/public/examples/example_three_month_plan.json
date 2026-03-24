@@ -24,8 +24,6 @@
     "publication_frequency": "2-3_per_week",
     "min_publications": 30,
     "key_dates": "Апрель — запуск рубрики; Май — серия постов о внедрении и интеграциях; Июнь — mini-кейс с измеримыми метриками и CTA на демо.",
-    "total_budget": 150000,
-    "max_cost_per_publication": 8000,
     "content_formats": ["text", "image", "video"],
     "video_requirements": "Короткие ролики 1–3 минуты: демонстрация функционала, объяснение сложных концепций простым языком, разбор метрик и примеры внедрения; субтитры, брендирование, чистый звук.",
     "platforms": ["linkedin", "vk"]

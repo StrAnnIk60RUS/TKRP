@@ -66,6 +66,7 @@ const sortPublicationsByDate = (pubs) =>
   [...pubs].sort((a, b) => getDateTimestamp(a?.planned_date) - getDateTimestamp(b?.planned_date))
 
 const normalizeText = (value) => (typeof value === 'string' ? value.toLowerCase() : '')
+const clamp01 = (value) => Math.max(0, Math.min(1, Number(value) || 0))
 
 const matchesFilters = (publication, filters) => {
   if (filters.platform !== 'all' && publication.platform !== filters.platform) return false
@@ -151,26 +152,33 @@ const ContentPlanPage = () => {
 
   const summary = useMemo(() => {
     const engagementValues = filteredPublications
-      .map((item) => Number(item?.expected_kpi?.engagement_rate))
+      .map((item) => clamp01(item?.expected_kpi?.engagement_rate))
       .filter((value) => Number.isFinite(value))
+    const allSaturated =
+      engagementValues.length >= 3 && engagementValues.every((value) => value >= 0.999)
     const avgEngagementRate = engagementValues.length
       ? engagementValues.reduce((sum, value) => sum + value, 0) / engagementValues.length
       : 0
+    const horizonStart = safePlan?.planning_horizon?.start_date || ''
+    const horizonEnd = safePlan?.planning_horizon?.end_date || ''
+    const publicationsDateRange =
+      filteredPublications.length > 0
+        ? `${filteredPublications[0]?.planned_date || '—'} - ${
+            filteredPublications[filteredPublications.length - 1]?.planned_date || '—'
+          }`
+        : ''
 
     return {
       totalCount: publications.length,
       filteredCount: filteredPublications.length,
       avgEngagementRate,
+      engagementLikelySaturated: allSaturated,
       platformsLabel:
         Array.from(new Set(filteredPublications.map((item) => item.platform).filter(Boolean)))
           .map((item) => item.toUpperCase())
           .join(', ') || 'не указаны',
-      dateRangeLabel:
-        filteredPublications.length > 0
-          ? `${filteredPublications[0]?.planned_date || '—'} - ${
-              filteredPublications[filteredPublications.length - 1]?.planned_date || '—'
-            }`
-          : `${safePlan?.planning_horizon?.start_date || '—'} - ${safePlan?.planning_horizon?.end_date || '—'}`
+      dateRangeLabel: `${horizonStart || '—'} - ${horizonEnd || '—'}`,
+      dateRangeMeta: publicationsDateRange
     }
   }, [filteredPublications, publications.length, safePlan])
 
@@ -186,8 +194,6 @@ const ContentPlanPage = () => {
       platforms,
       start_date: safePlan?.planning_horizon?.start_date || null,
       end_date: safePlan?.planning_horizon?.end_date || null,
-      total_budget: safePlan?.constraints?.total_budget ?? null,
-      max_cost_per_publication: safePlan?.constraints?.max_cost_per_publication ?? null,
       optimization_valid: optimizationMeta?.stage2?.constraints_check?.valid ?? null
     }),
     [optimizationMeta, platforms, publications.length, safePlan]
@@ -400,7 +406,7 @@ const ContentPlanPage = () => {
         </p>
         {optimizationMeta && isDeveloper && (
           <p className="page-subtitle">
-            Оптимизация: F_kp = <strong>{optimizationMeta.stage2?.f_kp ?? '—'}</strong>; ограничения:{' '}
+            Оптимизация: F_kp = <strong>{optimizationMeta.stage2?.f_kp ?? optimizationMeta?.f_kp ?? 'недоступен'}</strong>; ограничения:{' '}
             <strong>{optimizationMeta.stage2?.constraints_check?.valid ? 'OK' : 'есть нарушения'}</strong>
           </p>
         )}
@@ -458,9 +464,7 @@ const ContentPlanPage = () => {
               <div className="plan-summary-item plan-summary-item-full">
                 <span className="plan-summary-label">Ограничения</span>
                 <span className="plan-summary-value">
-                  мин. публикаций: {contentPlan.constraints.min_publications ?? '—'}; общий бюджет:{' '}
-                  {contentPlan.constraints.total_budget ?? '—'}; макс. стоимость поста:{' '}
-                  {contentPlan.constraints.max_cost_per_publication ?? '—'}
+                  мин. публикаций: {contentPlan.constraints.min_publications ?? '—'}
                 </span>
               </div>
             )}

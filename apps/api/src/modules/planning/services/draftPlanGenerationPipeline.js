@@ -290,12 +290,7 @@ function averagePrecedentKpi(compactRagContext = {}) {
 
 function buildRequestedConstraints(formInput = {}, targetPublicationCount) {
   return {
-    min_publications: targetPublicationCount,
-    total_budget: asNumber(formInput.totalBudget ?? formInput.total_budget, null),
-    max_cost_per_publication: asNumber(
-      formInput.maxCostPerPublication ?? formInput.max_cost_per_publication,
-      null
-    )
+    min_publications: targetPublicationCount
   };
 }
 
@@ -524,34 +519,6 @@ function buildFallbackKeyMessage(formInput) {
   return `${source.slice(0, 180)}${source.length > 180 ? '...' : ''}`;
 }
 
-function estimatePublicationCost(slot, skeleton, formInput) {
-  const maxCost = asNumber(
-    formInput.maxCostPerPublication ?? skeleton?.constraints?.max_cost_per_publication,
-    null
-  );
-  const totalBudget = asNumber(formInput.totalBudget ?? skeleton?.constraints?.total_budget, null);
-  const slotsCount = toArray(skeleton?.publication_slots).length || 1;
-  const budgetBasedCost = totalBudget !== null ? totalBudget / slotsCount : null;
-
-  if (maxCost !== null && budgetBasedCost !== null) {
-    return Math.max(0, Math.min(maxCost, Math.round(budgetBasedCost)));
-  }
-  if (budgetBasedCost !== null) {
-    return Math.max(0, Math.round(budgetBasedCost));
-  }
-  if (maxCost !== null) {
-    return Math.max(0, Math.round(maxCost * 0.7));
-  }
-
-  const baseByFormat = {
-    text: 2500,
-    image: 3500,
-    video: 6000,
-    combined: 5000
-  };
-  return baseByFormat[slot.format] || 3000;
-}
-
 function buildFallbackPublication(slot, formInput, compactRagContext, skeleton, index) {
   const projectName = typeof formInput.projectName === 'string' && formInput.projectName.trim()
     ? formInput.projectName.trim()
@@ -566,7 +533,6 @@ function buildFallbackPublication(slot, formInput, compactRagContext, skeleton, 
     summary: buildFallbackSummary(slot, formInput),
     key_message: buildFallbackKeyMessage(formInput),
     cta: buildCallToAction(slot.objective, projectName),
-    estimated_cost: estimatePublicationCost(slot, skeleton, formInput),
     expected_kpi: {
       engagement_rate: clamp01(avgKpi.engagement_rate),
       conversion_potential: clamp01(avgKpi.conversion_potential),
@@ -578,11 +544,6 @@ function buildFallbackPublication(slot, formInput, compactRagContext, skeleton, 
 
 function normalizeBatchPublication(rawItem = {}, slot, formInput, compactRagContext, skeleton, index) {
   const fallback = buildFallbackPublication(slot, formInput, compactRagContext, skeleton, index);
-  const maxCost = asNumber(skeleton?.constraints?.max_cost_per_publication, null);
-  const rawCost = asNumber(rawItem.estimated_cost, fallback.estimated_cost);
-  const estimatedCost = maxCost !== null
-    ? Math.max(0, Math.min(Math.round(rawCost), Math.round(maxCost)))
-    : Math.max(0, Math.round(rawCost));
 
   return {
     publication_id: `plan_pub_${String(index + 1).padStart(3, '0')}`,
@@ -597,7 +558,6 @@ function normalizeBatchPublication(rawItem = {}, slot, formInput, compactRagCont
       ? rawItem.key_message.trim()
       : fallback.key_message,
     cta: typeof rawItem.cta === 'string' && rawItem.cta.trim() ? rawItem.cta.trim() : fallback.cta,
-    estimated_cost: estimatedCost,
     expected_kpi: {
       engagement_rate: clamp01(rawItem?.expected_kpi?.engagement_rate ?? fallback.expected_kpi.engagement_rate),
       conversion_potential: clamp01(
@@ -611,39 +571,6 @@ function normalizeBatchPublication(rawItem = {}, slot, formInput, compactRagCont
   };
 }
 
-function rebalancePlanCosts(plan = {}) {
-  const publications = toArray(plan.publications).map((item) => ({ ...item }));
-  const totalBudget = asNumber(plan?.constraints?.total_budget, null);
-  const maxCost = asNumber(plan?.constraints?.max_cost_per_publication, null);
-
-  if (!publications.length) {
-    return { ...plan, publications };
-  }
-
-  publications.forEach((item) => {
-    let cost = asNumber(item.estimated_cost, 0) ?? 0;
-    if (maxCost !== null) {
-      cost = Math.min(cost, maxCost);
-    }
-    item.estimated_cost = Math.max(0, Math.round(cost));
-  });
-
-  if (totalBudget !== null) {
-    const currentTotal = publications.reduce((acc, item) => acc + (Number(item.estimated_cost) || 0), 0);
-    if (currentTotal > totalBudget && currentTotal > 0) {
-      const ratio = totalBudget / currentTotal;
-      publications.forEach((item) => {
-        item.estimated_cost = Math.max(0, Math.floor((Number(item.estimated_cost) || 0) * ratio));
-      });
-    }
-  }
-
-  return {
-    ...plan,
-    publications
-  };
-}
-
 function validateDraftPlan(plan = {}, formInput = {}) {
   const errors = [];
   const publications = toArray(plan.publications);
@@ -651,8 +578,6 @@ function validateDraftPlan(plan = {}, formInput = {}) {
   const requestedEnd = toIsoDateOnly(formInput.contentPlanEndDate) || toIsoDateOnly(plan?.planning_horizon?.end_date);
   const requestedPlatforms = uniqueStrings(toArray(formInput.platforms).map((value) => normalizePlatform(value)));
   const minPublications = asNumber(formInput.minPublications ?? plan?.constraints?.min_publications, null);
-  const totalBudget = asNumber(formInput.totalBudget ?? plan?.constraints?.total_budget, null);
-  const maxCost = asNumber(formInput.maxCostPerPublication ?? plan?.constraints?.max_cost_per_publication, null);
 
   if (!plan || typeof plan !== 'object') {
     errors.push('draft_content_plan отсутствует');
@@ -712,14 +637,6 @@ function validateDraftPlan(plan = {}, formInput = {}) {
       errors.push(`${prefix}: format невалиден`);
     }
 
-    const estimatedCost = asNumber(pub?.estimated_cost, null);
-    if (estimatedCost === null || estimatedCost < 0) {
-      errors.push(`${prefix}: estimated_cost невалиден`);
-    }
-    if (maxCost !== null && estimatedCost !== null && estimatedCost > maxCost) {
-      errors.push(`${prefix}: estimated_cost превышает max_cost_per_publication`);
-    }
-
     const engagement = asNumber(pub?.expected_kpi?.engagement_rate, null);
     const conversion = asNumber(pub?.expected_kpi?.conversion_potential, null);
     const reach = asNumber(pub?.expected_kpi?.reach_potential, null);
@@ -733,13 +650,6 @@ function validateDraftPlan(plan = {}, formInput = {}) {
       errors.push(`${prefix}: expected_kpi.reach_potential невалиден`);
     }
   });
-
-  if (totalBudget !== null) {
-    const totalCost = publications.reduce((acc, pub) => acc + (Number(pub?.estimated_cost) || 0), 0);
-    if (totalCost > totalBudget) {
-      errors.push(`total_budget violated: cost=${totalCost}, limit=${totalBudget}`);
-    }
-  }
 
   return {
     valid: errors.length === 0,
@@ -919,7 +829,7 @@ export async function generateDraftPlanBatched({
     notes: skeleton.notes
   };
 
-  const repairedPlan = rebalancePlanCosts(mergedPlan);
+  const repairedPlan = mergedPlan;
 
   // ML-предсказание релевантности (engagement_rate) на основе embeddings.
   // Если модель недоступна/не обучена или произошла ошибка — продолжаем с эвристическими expected_kpi.

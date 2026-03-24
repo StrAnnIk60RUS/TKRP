@@ -24,8 +24,6 @@
     "publication_frequency": "3-4_per_week",
     "min_publications": 12,
     "key_dates": "Апрель — старт контент-цикла; 1-я неделя — пост с позиционированием; 2-я неделя — разбор метрик; 3-я неделя — mini-кейс; 4-я неделя — вебинар и CTA на пилот.",
-    "total_budget": 50000,
-    "max_cost_per_publication": 8000,
     "content_formats": ["text", "image", "video"],
     "video_requirements": "Короткие ролики 1–3 минуты: демонстрация функций, мини-кейсы и разбор практик; субтитры, брендинг, чистый звук. Допустима запись экрана + озвучка.",
     "platforms": ["linkedin", "vk"]

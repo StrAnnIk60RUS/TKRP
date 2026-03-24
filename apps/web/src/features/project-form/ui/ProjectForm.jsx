@@ -264,23 +264,47 @@ const ProjectForm = () => {
   )
   const explainabilitySignals = useMemo(
     () => [
-      formData.projectDescription ? 'Описание проекта' : null,
-      formData.consumerCategory
-        ? `Аудитория: ${consumerCategoryLabelMap[formData.consumerCategory] || formData.consumerCategory}`
-        : null,
-      formData.platforms.length
-        ? `Платформы: ${formData.platforms
-            .map((platform) => platformLabelMap[platform] || platform)
-            .join(', ')}`
-        : null,
-      formData.contentFormats.length
-        ? `Форматы: ${formData.contentFormats
-            .map((format) => contentFormatLabelMap[format] || format)
-            .join(', ')}`
-        : null,
-      precedentSearchQuery ? 'RAG-запрос по данным формы' : null,
-      (precedentSearchResults?.publications?.length || 0) > 0 ? 'Сигналы из релевантных публикаций' : null
-    ].filter(Boolean),
+      {
+        key: 'project_description',
+        label: 'Описание проекта',
+        done: Boolean(formData.projectDescription?.trim())
+      },
+      {
+        key: 'audience',
+        label: `Аудитория: ${consumerCategoryLabelMap[formData.consumerCategory] || formData.consumerCategory || 'не указана'}`,
+        done: Boolean(formData.consumerCategory)
+      },
+      {
+        key: 'platforms',
+        label: `Платформы: ${
+          formData.platforms.length
+            ? formData.platforms.map((platform) => platformLabelMap[platform] || platform).join(', ')
+            : 'не указаны'
+        }`,
+        done: formData.platforms.length > 0
+      },
+      {
+        key: 'formats',
+        label: `Форматы: ${
+          formData.contentFormats.length
+            ? formData.contentFormats.map((format) => contentFormatLabelMap[format] || format).join(', ')
+            : 'не указаны'
+        }`,
+        done: formData.contentFormats.length > 0
+      },
+      {
+        key: 'rag_query',
+        label: 'RAG-запрос по данным формы',
+        done: Boolean(precedentSearchQuery),
+        required: false
+      },
+      {
+        key: 'precedent_signals',
+        label: 'Сигналы из релевантных публикаций',
+        done: (precedentSearchResults?.publications?.length || 0) > 0,
+        required: false
+      }
+    ],
     [
       formData,
       precedentSearchQuery,
@@ -297,7 +321,6 @@ const ProjectForm = () => {
       const requiredFieldsDone = reviewChecklist[0]?.done
       const competitorsDone = reviewChecklist[1]?.done
       const precedentsDone = reviewChecklist[2]?.done
-      const checklistReviewed = !!reviewChecklistChecked?.reviewed
       const backendOk = isEnrichmentServerAvailable === true
 
       const reasonsForSearch = []
@@ -307,11 +330,10 @@ const ProjectForm = () => {
 
       const reasonsForGenerate = [...reasonsForSearch]
       if (!precedentsDone) reasonsForGenerate.push('Прецеденты не подобраны')
-      if (!checklistReviewed) reasonsForGenerate.push('Отметьте «Проверено перед генерацией» в чеклисте')
 
       const canSearch = backendOk && requiredFieldsDone && competitorsDone
       const canGen =
-        backendOk && requiredFieldsDone && competitorsDone && precedentsDone && checklistReviewed
+        backendOk && requiredFieldsDone && competitorsDone && precedentsDone
 
       return {
         canSearchPrecedents: isDeveloper ? true : canSearch,
@@ -500,7 +522,6 @@ const ProjectForm = () => {
             : prev[name].filter(item => item !== value)
         }))
       } else {
-        // Булевы флаги (например, evoPreserveDiversity, evoUseParallel)
         setFormData(prev => ({
           ...prev,
           [name]: checked
@@ -1382,7 +1403,7 @@ const ProjectForm = () => {
         </section>}
 
         {/* Параметры эволюционного моделирования (опционально) — для разработчика и аналитика */}
-        {currentStep === 4 && isExtendedMode && <section className="form-section">
+        {currentStep === 4 && isExtendedMode && <section className="form-section evolution-settings-section">
           <h2 className="section-title">Параметры эволюционного моделирования (опционально)</h2>
           
           {/* Основные параметры */}
@@ -1429,27 +1450,8 @@ const ProjectForm = () => {
 
           <div className="form-row">
             <div className="form-group">
-              <label htmlFor="evoStopCriterion" className="form-label">
-                Критерий остановки <FieldHint fieldName="evoStopCriterion" />
-              </label>
-              <select
-                id="evoStopCriterion"
-                name="evoStopCriterion"
-                value={formData.evoStopCriterion}
-                onChange={handleChange}
-                onBlur={handleBlur}
-                className="form-select"
-                disabled={!isEditMode}
-              >
-                <option value="max_generations">Достижение числа поколений</option>
-                <option value="stagnation">Стагнация (нет улучшений)</option>
-                <option value="target_quality">Достижение целевого качества</option>
-                <option value="time_limit">Ограничение по времени</option>
-              </select>
-            </div>
-            <div className="form-group">
               <label htmlFor="evoStagnationGenerations" className="form-label">
-                Порог стагнации (поколений)
+                Порог стагнации (поколений) <FieldHint fieldName="evoStagnationGenerations" />
               </label>
               <input
                 type="number"
@@ -1464,50 +1466,6 @@ const ProjectForm = () => {
                 max="500"
                 disabled={!isEditMode}
               />
-            </div>
-          </div>
-
-          <div className="form-row">
-            <div className="form-group">
-              <label htmlFor="evoOptimizationGoal" className="form-label">
-                Цель оптимизации <FieldHint fieldName="evoOptimizationGoal" />
-              </label>
-              <select
-                id="evoOptimizationGoal"
-                name="evoOptimizationGoal"
-                value={formData.evoOptimizationGoal}
-                onChange={handleChange}
-                onBlur={handleBlur}
-                className="form-select"
-                disabled={!isEditMode}
-              >
-                <option value="max_engagement">Максимум вовлеченности</option>
-                <option value="max_reach">Максимум охвата</option>
-                <option value="balanced">Сбалансированная цель</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Отбор */}
-          <div className="form-row">
-            <div className="form-group">
-              <label htmlFor="evoSelectionMethod" className="form-label">
-                Метод отбора <FieldHint fieldName="evoSelectionMethod" />
-              </label>
-              <select
-                id="evoSelectionMethod"
-                name="evoSelectionMethod"
-                value={formData.evoSelectionMethod}
-                onChange={handleChange}
-                onBlur={handleBlur}
-                className="form-select"
-                disabled={!isEditMode}
-              >
-                <option value="tournament">Турнирный отбор</option>
-                <option value="roulette">Пропорциональный (рулетка)</option>
-                <option value="rank">Ранговый отбор</option>
-                <option value="elite">Элитарный отбор</option>
-              </select>
             </div>
             <div className="form-group">
               <label htmlFor="evoTournamentSize" className="form-label">
@@ -1531,25 +1489,6 @@ const ProjectForm = () => {
 
           <div className="form-row">
             <div className="form-group">
-              <label htmlFor="evoBestWinProb" className="form-label">
-                Вероятность победы сильнейшего <FieldHint fieldName="evoBestWinProb" />
-              </label>
-              <input
-                type="number"
-                id="evoBestWinProb"
-                name="evoBestWinProb"
-                value={formData.evoBestWinProb}
-                onChange={handleChange}
-                onBlur={handleBlur}
-                className="form-input"
-                placeholder="0.9"
-                min="0.5"
-                max="1"
-                step="0.01"
-                disabled={!isEditMode}
-              />
-            </div>
-            <div className="form-group">
               <label htmlFor="evoEliteSize" className="form-label">
                 Размер элиты <FieldHint fieldName="evoEliteSize" />
               </label>
@@ -1567,29 +1506,26 @@ const ProjectForm = () => {
                 disabled={!isEditMode}
               />
             </div>
+            <div className="form-group">
+              <label htmlFor="evoRandomSeed" className="form-label">
+                Семя случайности <FieldHint fieldName="evoRandomSeed" />
+              </label>
+              <input
+                type="number"
+                id="evoRandomSeed"
+                name="evoRandomSeed"
+                value={formData.evoRandomSeed}
+                onChange={handleChange}
+                onBlur={handleBlur}
+                className="form-input"
+                placeholder="Оставьте пустым для случайного результата"
+                disabled={!isEditMode}
+              />
+            </div>
           </div>
 
           {/* Скрещивание и мутация */}
           <div className="form-row">
-            <div className="form-group">
-              <label htmlFor="evoCrossoverMethod" className="form-label">
-                Метод скрещивания <FieldHint fieldName="evoCrossoverMethod" />
-              </label>
-              <select
-                id="evoCrossoverMethod"
-                name="evoCrossoverMethod"
-                value={formData.evoCrossoverMethod}
-                onChange={handleChange}
-                onBlur={handleBlur}
-                className="form-select"
-                disabled={!isEditMode}
-              >
-                <option value="one_point">Одноточечное</option>
-                <option value="two_point">Двухточечное</option>
-                <option value="uniform">Равномерное</option>
-                <option value="arithmetic">Арифметическое</option>
-              </select>
-            </div>
             <div className="form-group">
               <label htmlFor="evoCrossoverProbability" className="form-label">
                 Вероятность скрещивания <FieldHint fieldName="evoCrossoverProbability" />
@@ -1609,28 +1545,6 @@ const ProjectForm = () => {
                 disabled={!isEditMode}
               />
             </div>
-          </div>
-
-          <div className="form-row">
-            <div className="form-group">
-              <label htmlFor="evoMutationMethod" className="form-label">
-                Метод мутации <FieldHint fieldName="evoMutationMethod" />
-              </label>
-              <select
-                id="evoMutationMethod"
-                name="evoMutationMethod"
-                value={formData.evoMutationMethod}
-                onChange={handleChange}
-                onBlur={handleBlur}
-                className="form-select"
-                disabled={!isEditMode}
-              >
-                <option value="bit_flip">Битовая (замена значения)</option>
-                <option value="inversion">Инверсия (разворот)</option>
-                <option value="insert_delete">Вставка/Удаление</option>
-                <option value="shift">Сдвиг</option>
-              </select>
-            </div>
             <div className="form-group">
               <label htmlFor="evoMutationProbability" className="form-label">
                 Вероятность мутации <FieldHint fieldName="evoMutationProbability" />
@@ -1647,53 +1561,6 @@ const ProjectForm = () => {
                 min="0"
                 max="0.5"
                 step="0.001"
-                disabled={!isEditMode}
-              />
-            </div>
-          </div>
-
-          {/* Дополнительные настройки */}
-          <div className="form-row">
-            <div className="form-group">
-              <label className="form-label">
-                Дополнительно
-              </label>
-              <div className="checkbox-group">
-                <label className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    name="evoPreserveDiversity"
-                    checked={!!formData.evoPreserveDiversity}
-                    onChange={handleChange}
-                    disabled={!isEditMode}
-                  />
-                  <span>Сохранять разнообразие <FieldHint fieldName="evoPreserveDiversity" /></span>
-                </label>
-                <label className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    name="evoUseParallel"
-                    checked={!!formData.evoUseParallel}
-                    onChange={handleChange}
-                    disabled={!isEditMode}
-                  />
-                  <span>Использовать параллельные вычисления <FieldHint fieldName="evoUseParallel" /></span>
-                </label>
-              </div>
-            </div>
-            <div className="form-group">
-              <label htmlFor="evoRandomSeed" className="form-label">
-                Семя случайности <FieldHint fieldName="evoRandomSeed" />
-              </label>
-              <input
-                type="number"
-                id="evoRandomSeed"
-                name="evoRandomSeed"
-                value={formData.evoRandomSeed}
-                onChange={handleChange}
-                onBlur={handleBlur}
-                className="form-input"
-                placeholder="Оставьте пустым для случайного результата"
                 disabled={!isEditMode}
               />
             </div>

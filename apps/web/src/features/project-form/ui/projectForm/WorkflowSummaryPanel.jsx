@@ -123,9 +123,16 @@ const WorkflowSummaryPanel = ({
             <span>Сигналы, влияющие на черновик:</span>
           </div>
           {explainabilitySignals.map((signal) => (
-            <div key={signal} className="workflow-checklist-item">
-              <span className="workflow-checklist-mark">•</span>
-              <span>{signal}</span>
+            <div
+              key={signal.key || signal.label}
+              className={`workflow-checklist-item ${
+                signal.required === false ? '' : signal.done ? 'is-complete' : 'is-pending'
+              }`}
+            >
+              <span className="workflow-checklist-mark">
+                {signal.required === false ? '•' : signal.done ? '✓' : '○'}
+              </span>
+              <span>{signal.label}</span>
             </div>
           ))}
         </div>

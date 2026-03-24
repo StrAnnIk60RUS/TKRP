@@ -1,13 +1,13 @@
 {
   "competitors": [
     {
-      "competitor_id": "demo_sensors_inc",
-      "name": "Sensors Inc.",
+      "competitor_id": "demo_saasops_cloud",
+      "name": "SaaSOps Cloud",
       "platform": "linkedin",
       "content_strategy": {
         "posting_frequency": "3-4 в неделю",
         "dominant_tone": "экспертный",
-        "best_performing_topic": "кейсы внедрения",
+        "best_performing_topic": "кейсы автоматизации",
         "avg_readability": 2,
         "dominant_formats": ["text_post", "image_post"],
         "core_audience_segments": ["B2B", "IT-руководители"],
@@ -15,7 +15,7 @@
       },
       "ontology_support": {
         "classes": ["it_project", "audience_segment", "publication_topic", "case_study"],
-        "entities": ["интеллектуальные датчики", "B2B", "внедрение", "умные датчики"],
+        "entities": ["SaaS automation", "B2B", "workflow automation", "cloud migration"],
         "relations": ["topic->audience", "format->objective", "case_study->evidence"]
       },
       "content_plan_model": {
@@ -26,47 +26,40 @@
         "planning_horizon_days": 30,
         "posting_frequency_per_week": 3.5,
         "total_publications": 4,
-        "budget": {
-          "currency": "USD",
-          "total_budget": null,
-          "budget_per_publication": null,
-          "estimation_confidence": "low",
-          "notes": "Демо: продвижение IT-продукта (интеллектуальные датчики)"
-        },
         "kpi_estimate": {
           "avg_engagement_rate": 0.042,
           "best_engagement_rate": 0.068,
           "estimated_conversion_potential": 0.15
         },
         "publication_schedule": [
-          { "publication_id": "demo_pub_1", "planned_at": "2026-03-01", "topic": "интеллектуальные датчики", "format": "text_post", "objective": "educate", "quality_score": 0.85 },
-          { "publication_id": "demo_pub_2", "planned_at": "2026-03-08", "topic": "умные датчики обзор", "format": "text_post", "objective": "inform", "quality_score": 0.9 }
+          { "publication_id": "demo_pub_1", "planned_at": "2026-03-01", "topic": "автоматизация заявок", "format": "text_post", "objective": "educate", "quality_score": 0.85 },
+          { "publication_id": "demo_pub_2", "planned_at": "2026-03-08", "topic": "обзор SaaS-автоматизации", "format": "text_post", "objective": "inform", "quality_score": 0.9 }
         ]
       },
       "posts": [
         {
-          "content": "Как интеллектуальные датчики снизили простои на 23% на производстве. Кейс внедрения в B2B-сегменте.",
+          "content": "Как SaaS-автоматизация сократила время обработки заявок на 23%. Кейс внедрения в B2B-сегменте.",
           "datetime": "2026-03-01T10:00:00",
           "metrics": { "likes": 45, "comments": 8, "shares": 12, "views": 1200 },
           "engagement_rate": 0.054,
           "content_category": "case_study",
           "tone": "expert",
-          "topic": "интеллектуальные датчики",
+          "topic": "автоматизация заявок",
           "target_audience": ["B2B", "IT-руководители"],
           "publication_model": {
             "publication_id": "demo_pub_1",
             "source_type": "competitor_post",
             "platform": "linkedin",
             "type": "case_study",
-            "topic": "интеллектуальные датчики",
+            "topic": "автоматизация заявок",
             "audience_segments": ["B2B", "IT-руководители"],
             "format": "text_post",
             "content_category": "case_study",
             "tone": "expert",
             "funnel_stage": "consideration",
             "objective": "educate",
-            "summary": "Кейс внедрения датчиков, снижение простоев на производстве",
-            "key_entities": ["датчики", "B2B", "внедрение", "кейс"],
+            "summary": "Кейс внедрения SaaS-автоматизации, снижение времени на обработку заявок",
+            "key_entities": ["SaaS", "B2B", "внедрение", "автоматизация"],
             "kpi_estimate": {
               "expected_engagement_rate": 0.05,
               "expected_conversion_potential": 0.1,
@@ -90,28 +83,28 @@
           }
         },
         {
-          "content": "5 причин перейти на умные датчики в 2026. Экспертный обзор для технических директоров.",
+          "content": "5 причин перейти на SaaS-автоматизацию в 2026. Экспертный обзор для технических директоров.",
           "datetime": "2026-03-08T09:00:00",
           "metrics": { "likes": 62, "comments": 15, "shares": 20, "views": 1800 },
           "engagement_rate": 0.054,
           "content_category": "expert_review",
           "tone": "expert",
-          "topic": "умные датчики",
+          "topic": "обзор SaaS-автоматизации",
           "target_audience": ["B2B"],
           "publication_model": {
             "publication_id": "demo_pub_2",
             "source_type": "competitor_post",
             "platform": "linkedin",
             "type": "expert_review",
-            "topic": "умные датчики",
+            "topic": "обзор SaaS-автоматизации",
             "audience_segments": ["B2B"],
             "format": "text_post",
             "content_category": "expert_review",
             "tone": "expert",
             "funnel_stage": "awareness",
             "objective": "inform",
-            "summary": "Обзор преимуществ умных датчиков для технических директоров",
-            "key_entities": ["датчики", "B2B", "обзор", "внедрение"],
+            "summary": "Обзор преимуществ SaaS-автоматизации для технических директоров",
+            "key_entities": ["SaaS", "B2B", "обзор", "внедрение"],
             "kpi_estimate": {
               "expected_engagement_rate": 0.055,
               "expected_conversion_potential": 0.12,
@@ -137,8 +130,8 @@
       ]
     },
     {
-      "competitor_id": "demo_datchiki_vk",
-      "name": "Датчики Про",
+      "competitor_id": "demo_workflow_vk",
+      "name": "Workflow Pro",
       "platform": "vk",
       "content_strategy": {
         "posting_frequency": "2-3 в неделю",
@@ -151,7 +144,7 @@
       },
       "ontology_support": {
         "classes": ["it_project", "audience_segment", "how_to"],
-        "entities": ["IoT", "датчики", "облако", "подключение"],
+        "entities": ["workflow", "автоматизация", "облако", "интеграция"],
         "relations": ["topic->audience", "format->how_to"]
       },
       "content_plan_model": {
@@ -162,46 +155,39 @@
         "planning_horizon_days": 14,
         "posting_frequency_per_week": 2.5,
         "total_publications": 2,
-        "budget": {
-          "currency": "RUB",
-          "total_budget": null,
-          "budget_per_publication": null,
-          "estimation_confidence": "low",
-          "notes": "Демо: VK-сообщество по IT-датчикам"
-        },
         "kpi_estimate": {
           "avg_engagement_rate": 0.038,
           "best_engagement_rate": 0.05,
           "estimated_conversion_potential": 0.08
         },
         "publication_schedule": [
-          { "publication_id": "demo_pub_3", "planned_at": "2026-03-05", "topic": "датчики IoT", "format": "text_post", "objective": "educate", "quality_score": 0.75 }
+          { "publication_id": "demo_pub_3", "planned_at": "2026-03-05", "topic": "интеграции без кода", "format": "text_post", "objective": "educate", "quality_score": 0.75 }
         ]
       },
       "posts": [
         {
-          "content": "Лайфхак: как быстро подключить датчики к облаку. Краткая инструкция для разработчиков.",
+          "content": "Лайфхак: как быстро запустить интеграции без кода. Краткая инструкция для разработчиков.",
           "datetime": "2026-03-05T14:00:00",
           "metrics": { "likes": 28, "comments": 5, "shares": 6, "views": 900 },
           "engagement_rate": 0.043,
           "content_category": "how_to",
           "tone": "friendly",
-          "topic": "датчики IoT",
+          "topic": "интеграции без кода",
           "target_audience": ["разработчики", "B2B"],
           "publication_model": {
             "publication_id": "demo_pub_3",
             "source_type": "competitor_post",
             "platform": "vk",
             "type": "how_to",
-            "topic": "датчики IoT",
+            "topic": "интеграции без кода",
             "audience_segments": ["разработчики", "B2B"],
             "format": "text_post",
             "content_category": "how_to",
             "tone": "friendly",
             "funnel_stage": "consideration",
             "objective": "educate",
-            "summary": "Инструкция по подключению датчиков к облаку для разработчиков",
-            "key_entities": ["IoT", "датчики", "облако", "подключение"],
+            "summary": "Инструкция по запуску облачных интеграций без кода для разработчиков",
+            "key_entities": ["workflow", "автоматизация", "облако", "интеграция"],
             "kpi_estimate": {
               "expected_engagement_rate": 0.04,
               "expected_conversion_potential": 0.06,

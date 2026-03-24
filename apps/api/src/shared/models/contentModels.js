@@ -184,21 +184,6 @@ function calculatePostingFrequencyPerWeek(posts = []) {
   return Number((datedPosts.length / diffWeeks).toFixed(2));
 }
 
-function buildBudgetEstimate(contentPlanModel = {}, posts = []) {
-  const sourceBudget = contentPlanModel?.budget || {};
-  const totalPosts = posts.length;
-
-  return {
-    currency: asNullableString(sourceBudget.currency) || 'unknown',
-    total_budget: asNumberOrNull(sourceBudget.total_budget),
-    budget_per_publication: asNumberOrNull(sourceBudget.budget_per_publication),
-    estimation_confidence: asNullableString(sourceBudget.estimation_confidence) || 'low',
-    notes:
-      asNullableString(sourceBudget.notes) ||
-      (totalPosts > 0 ? 'Budget is inferred from observed competitor activity and requires manual validation.' : null)
-  };
-}
-
 function buildContentPlanItems(posts = []) {
   return posts.map((post, index) => ({
     publication_id:
@@ -330,7 +315,6 @@ export function normalizeContentPlanModel(competitor = {}) {
       asNumberOrNull(contentPlanModel.posting_frequency_per_week) ||
       calculatePostingFrequencyPerWeek(posts),
     total_publications: posts.length,
-    budget: buildBudgetEstimate(contentPlanModel, posts),
     kpi_estimate: {
       avg_engagement_rate:
         asNumberOrNull(contentPlanModel?.kpi_estimate?.avg_engagement_rate) ??
@@ -424,7 +408,6 @@ export const CONTENT_MODEL_SPEC = {
       'planning_horizon_days',
       'posting_frequency_per_week',
       'total_publications',
-      'budget',
       'kpi_estimate',
       'publication_schedule'
     ]

@@ -1,15 +1,41 @@
 import { buildPostFeatureVector, buildPostFeatureVectorFromFeatureMap, POST_FEATURE_NAMES } from '../../../ml/services/ml/ontologyFeatureEngineering.js';
-import { predictPostLikesByFeatureVectors } from '../../../ml/services/relevancePredictionService.js';
+import { estimatePublicationKpiFromLikes, predictPostLikesByFeatureVectors } from '../../../ml/services/relevancePredictionService.js';
 import { runAsyncGeneticAlgorithm } from './asyncGaCore.js';
 import { GA_UTILS } from './gaCore.js';
 import { cloneJson, onePointCrossoverArrays } from './operators.js';
 
 const TONE_START = 24;
 const TONE_END = 28;
+const CTA_INDEX = 20;
 
 function asNumber(value, fallback = 0) {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function clampProbability(value, fallback = 0) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.max(0, Math.min(1, numeric));
+}
+
+function buildExpectedKpi(existingExpectedKpi = {}, publication = {}, predictedLikes = 0, metadata = null, source = 'ga_post_likes_model') {
+  const estimatedKpi = estimatePublicationKpiFromLikes(predictedLikes, publication, metadata);
+  return {
+    ...(existingExpectedKpi || {}),
+    predicted_likes: asNumber(predictedLikes, 0),
+    predicted_likes_source: source,
+    engagement_rate: estimatedKpi.engagement_rate,
+    engagement_rate_source: `${source}_calibrated`,
+    conversion_potential: estimatedKpi.conversion_potential,
+    reach_potential: estimatedKpi.reach_potential
+  };
+}
+
+function clampInt(value, min, max, fallback) {
+  const numeric = Math.floor(Number(value));
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.max(min, Math.min(max, numeric));
 }
 
 function buildAllowedValues(index) {
@@ -30,6 +56,7 @@ function nearestAllowedValue(value, allowedValues) {
 
 function repairGenome(genome, constants = {}) {
   const repaired = POST_FEATURE_NAMES.map((_, index) => {
+    if (index === CTA_INDEX) return asNumber(constants.hasCta, 0);
     if (index === 34) return asNumber(constants.tonesCount, 1);
     if (index === 35) return asNumber(constants.creativityFromBestPlan, 0.5);
     return nearestAllowedValue(asNumber(genome[index], 0), buildAllowedValues(index));
@@ -77,7 +104,7 @@ function scoreAlignment(featureMap, planFeatureMap) {
   const creativityAlignment = 1 - Math.abs(asNumber(featureMap.creativity, 0) - asNumber(planFeatureMap.avg_creativity, 0));
   const grammarBonus = asNumber(featureMap.grammar_quality, 0);
   const singleToneBonus = featureMap.tone_onehot_0 + featureMap.tone_onehot_1 + featureMap.tone_onehot_2 + featureMap.tone_onehot_3 + featureMap.tone_onehot_4 === 1 ? 1 : 0;
-  return (creativityAlignment * 25) + (grammarBonus * 10) + (singleToneBonus * 5);
+  return (creativityAlignment * 4) + (grammarBonus * 2) + singleToneBonus;
 }
 
 function sumAbsoluteDeviation(vectorA = [], vectorB = []) {
@@ -89,8 +116,96 @@ function sumAbsoluteDeviation(vectorA = [], vectorB = []) {
   return total;
 }
 
-function calculateRealismPenalty(featureMap, baseFeatureMap, candidateVector, baseVector, baselinePredictedLikes, predictedLikes) {
-  const deviationPenalty = sumAbsoluteDeviation(candidateVector.slice(0, 34), baseVector.slice(0, 34)) * 3.5;
+async function mapWithConcurrency(items = [], limit, worker) {
+  const concurrency = clampInt(limit, 1, 8, 3);
+  const results = new Array(items.length);
+  let nextIndex = 0;
+
+  async function runWorker() {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      results[currentIndex] = await worker(items[currentIndex], currentIndex);
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => runWorker()));
+  return results;
+}
+
+function createArchetypeKey(publication = {}) {
+  return [
+    publication?.topic || '',
+    publication?.format || '',
+    publication?.objective || '',
+    publication?.tone || ''
+  ].join('|');
+}
+
+function scoreArchetypeMatch(publication = {}, archetype = {}) {
+  let score = 0;
+  if ((publication?.topic || null) === (archetype?.topic || null)) score += 5;
+  if ((publication?.format || null) === (archetype?.format || null)) score += 2;
+  if ((publication?.objective || null) === (archetype?.objective || null)) score += 2;
+  if ((publication?.tone || null) === (archetype?.tone || null)) score += 2;
+  score += asNumber(archetype?.expected_kpi?.predicted_likes, 0) / 2000;
+  return score;
+}
+
+function buildPublicationArchetypes(publicationResults = [], maxCount = 3) {
+  const limit = clampInt(maxCount, 1, 8, 3);
+  const ranked = publicationResults
+    .slice()
+    .sort((left, right) => asNumber(right?.predictedLikes, 0) - asNumber(left?.predictedLikes, 0));
+  const archetypes = [];
+  const seen = new Set();
+  const seenIds = new Set();
+
+  for (const item of ranked) {
+    const publication = item?.optimizedPublication || null;
+    if (!publication) continue;
+    const key = createArchetypeKey(publication);
+    if (seen.has(key)) continue;
+    archetypes.push(publication);
+    seen.add(key);
+    if (publication?.publication_id) seenIds.add(publication.publication_id);
+    if (archetypes.length >= limit) return archetypes;
+  }
+
+  for (const item of ranked) {
+    const publication = item?.optimizedPublication || null;
+    if (!publication) continue;
+    if (publication?.publication_id && seenIds.has(publication.publication_id)) continue;
+    archetypes.push(publication);
+    if (publication?.publication_id) seenIds.add(publication.publication_id);
+    if (archetypes.length >= limit) break;
+  }
+
+  return archetypes;
+}
+
+function selectArchetypeForPublication(publication = {}, archetypes = [], usageByKey = new Map()) {
+  if (!Array.isArray(archetypes) || archetypes.length === 0) return null;
+  let bestArchetype = archetypes[0];
+  let bestScore = Number.NEGATIVE_INFINITY;
+
+  for (const archetype of archetypes) {
+    const key = createArchetypeKey(archetype);
+    const usagePenalty = (usageByKey.get(key) || 0) * 1.4;
+    const score = scoreArchetypeMatch(publication, archetype) - usagePenalty;
+    if (score > bestScore) {
+      bestArchetype = archetype;
+      bestScore = score;
+    }
+  }
+
+  const selectedKey = createArchetypeKey(bestArchetype);
+  usageByKey.set(selectedKey, (usageByKey.get(selectedKey) || 0) + 1);
+  return bestArchetype;
+}
+
+function calculateRealismPenalty(featureMap, baseFeatureMap, candidateVector, baseVector, baselinePredictedLikes, predictedLikes, planFeatureMap) {
+  const deviationPenalty = sumAbsoluteDeviation(candidateVector.slice(0, 34), baseVector.slice(0, 34)) * 4.5;
   let qualityPenalty = 0;
 
   if (asNumber(featureMap.grammar_quality, 0) < 0.75) qualityPenalty += 70;
@@ -99,13 +214,19 @@ function calculateRealismPenalty(featureMap, baseFeatureMap, candidateVector, ba
   if (asNumber(featureMap.idea_clarity, 0) < 0.5) qualityPenalty += 15;
   if (asNumber(featureMap.title_fits_notif, 0) < 1) qualityPenalty += 10;
   if (asNumber(featureMap.creativity, 0) < Math.max(0.25, asNumber(baseFeatureMap.creativity, 0) - 0.1)) qualityPenalty += 35;
+  qualityPenalty += Math.abs(asNumber(featureMap.creativity, 0) - asNumber(planFeatureMap?.avg_creativity, 0.5)) * 24;
 
-  const upperBound = Math.max(baselinePredictedLikes * 2, baselinePredictedLikes + 60, 60);
-  const cappedPredictedLikes = Math.min(asNumber(predictedLikes, 0), upperBound);
+  const rawPredictedLikes = asNumber(predictedLikes, 0);
+  const upperBound = Math.max(baselinePredictedLikes * 1.45, baselinePredictedLikes + 35, 35);
+  const cappedPredictedLikes = Math.min(rawPredictedLikes, upperBound);
+  const extrapolationOverflow = Math.max(0, rawPredictedLikes - cappedPredictedLikes);
+  const extrapolationPenalty = extrapolationOverflow * 1.35;
+  const ctaPenalty = asNumber(featureMap.has_cta, 0) > 0 ? Math.max(0, 0.55 - asNumber(planFeatureMap?.cta_share, 0)) * 40 : 0;
 
   return {
     cappedPredictedLikes,
-    penalty: deviationPenalty + qualityPenalty
+    extrapolationPenalty,
+    penalty: deviationPenalty + qualityPenalty + extrapolationPenalty + ctaPenalty
   };
 }
 
@@ -116,7 +237,8 @@ async function evolveSinglePublication(publication, planFeatureMap, gaConfig = {
   });
   const constants = {
     tonesCount: planFeatureMap.unique_tones,
-    creativityFromBestPlan: planFeatureMap.avg_creativity
+    creativityFromBestPlan: planFeatureMap.avg_creativity,
+    hasCta: 0
   };
   const baseFeatureMap = createFeatureMap(baseVector);
   const baselinePrediction = await predictPostLikesByFeatureVectors([baseVector], { forceTrain: false });
@@ -126,13 +248,25 @@ async function evolveSinglePublication(publication, planFeatureMap, gaConfig = {
   const result = await runAsyncGeneticAlgorithm({
     direction: 'max',
     seed: gaConfig.seed ?? null,
-    populationSize: gaConfig.populationSize ?? 20,
-    maxGenerations: gaConfig.maxGenerations ?? 20,
-    stagnationGenerations: gaConfig.stagnationGenerations ?? 6,
-    eliteSize: gaConfig.eliteSize ?? 2,
-    tournamentSize: gaConfig.tournamentSize ?? 3,
-    crossoverProbability: gaConfig.crossoverProbability ?? 0.8,
-    mutationProbability: gaConfig.mutationProbability ?? 0.14,
+    populationSize: gaConfig.populationSize ?? 48,
+    maxGenerations: gaConfig.maxGenerations ?? 50,
+    stagnationGenerations: gaConfig.stagnationGenerations ?? 12,
+    eliteSize: gaConfig.eliteSize ?? 3,
+    tournamentSize: gaConfig.tournamentSize ?? 4,
+    crossoverProbability: gaConfig.crossoverProbability ?? 0.9,
+    mutationProbability: gaConfig.mutationProbability ?? 0.1,
+    minImprovementEpsilon: gaConfig.minImprovementEpsilon ?? 0.25,
+    minImprovementGenerations: gaConfig.minImprovementGenerations ?? 6,
+    mutationProbabilitySchedule: (state, defaults) => {
+      const base = clampProbability(
+        gaConfig.mutationProbability ?? defaults.mutationProbability,
+        defaults.mutationProbability
+      );
+      const stagnationRatio = state.stagnation / Math.max(1, Number(gaConfig.stagnationGenerations ?? 12));
+      const lowDeltaBoost = state.lowDeltaStreak >= 2 ? 0.03 : 0;
+      const stagedBoost = stagnationRatio >= 0.75 ? 0.05 : stagnationRatio >= 0.5 ? 0.02 : 0;
+      return clampProbability(base + lowDeltaBoost + stagedBoost, base);
+    },
     createIndividual: (rng) => createIndividual(baseVector, constants, rng),
     cloneIndividual: (individual) => cloneJson(individual),
     crossover: (left, right, rng) => {
@@ -140,6 +274,7 @@ async function evolveSinglePublication(publication, planFeatureMap, gaConfig = {
       return crossed.map((child) => repairGenome(child, constants));
     },
     mutate: (individual, rng) => mutateGenome(individual, constants, rng),
+    cacheKeyForIndividual: (individual) => JSON.stringify(individual),
     scorePopulation: async (population) => {
       const repaired = population.map((item) => repairGenome(item, constants));
       const predictionResult = await predictPostLikesByFeatureVectors(repaired, { forceTrain: false });
@@ -151,15 +286,19 @@ async function evolveSinglePublication(publication, planFeatureMap, gaConfig = {
           repaired[index],
           baseVector,
           baselinePredictedLikes,
-          predictedLikes
+          predictedLikes,
+          planFeatureMap
         );
         const effectivePredictedLikes = Math.max(0, realism.cappedPredictedLikes);
+        const alignmentBonus = scoreAlignment(featureMap, planFeatureMap);
         return {
-          score: effectivePredictedLikes + scoreAlignment(featureMap, planFeatureMap) - realism.penalty,
+          score: effectivePredictedLikes + alignmentBonus - realism.penalty,
           meta: {
             predicted_likes: Number(effectivePredictedLikes.toFixed(2)),
             raw_predicted_likes: Number(asNumber(predictedLikes, 0).toFixed(2)),
             realism_penalty: Number(realism.penalty.toFixed(2)),
+            extrapolation_penalty: Number(realism.extrapolationPenalty.toFixed(2)),
+            alignment_bonus: Number(alignmentBonus.toFixed(2)),
             creativity: featureMap.creativity,
             grammar_quality: featureMap.grammar_quality,
             cta: featureMap.has_cta
@@ -175,6 +314,7 @@ async function evolveSinglePublication(publication, planFeatureMap, gaConfig = {
         best_score: entry.best_score,
         generation_best_score: entry.generation_best_score,
         avg_score: entry.generation_avg_score,
+        improvement_delta: entry.improvement_delta,
         summary: entry.best_meta
       }));
     }
@@ -182,19 +322,20 @@ async function evolveSinglePublication(publication, planFeatureMap, gaConfig = {
 
   const bestVector = repairGenome(result.best || baseVector, constants);
   const featureMap = createFeatureMap(bestVector);
+  const bestPredictedLikes = asNumber(result.best_meta?.predicted_likes, 0);
   return {
     optimizedPublication: {
       ...publication,
-      expected_kpi: {
-        ...(publication.expected_kpi || {}),
-        predicted_likes: asNumber(result.best_meta?.predicted_likes, 0),
-        predicted_likes_source: 'ga_post_likes_model',
-        engagement_rate: Math.min(1, asNumber(result.best_meta?.predicted_likes, 0) / 100),
-        engagement_rate_source: 'ga_post_likes_model_normalized'
-      },
+      expected_kpi: buildExpectedKpi(
+        publication.expected_kpi || {},
+        { ...publication, ontology_features: featureMap },
+        bestPredictedLikes,
+        baselinePrediction?.metadata || null,
+        'ga_post_likes_model'
+      ),
       ontology_features: featureMap
     },
-    predictedLikes: asNumber(result.best_meta?.predicted_likes, 0),
+    predictedLikes: bestPredictedLikes,
     featureVector: bestVector,
     featureMap,
     ga: {
@@ -205,19 +346,26 @@ async function evolveSinglePublication(publication, planFeatureMap, gaConfig = {
 }
 
 export async function optimizePublicationsEvolution(publications = [], planFeatureMap = {}, config = {}) {
-  const optimized = [];
-  for (let index = 0; index < publications.length; index += 1) {
-    optimized.push(await evolveSinglePublication(publications[index], planFeatureMap, config.ga || config, index));
-  }
+  const gaConfig = config.ga || config;
+  const optimized = await mapWithConcurrency(
+    publications,
+    gaConfig.parallelism ?? config.parallelism ?? 3,
+    (publication, index) => evolveSinglePublication(publication, planFeatureMap, gaConfig, index)
+  );
 
   const bestPublication = optimized
     .slice()
     .sort((left, right) => right.predictedLikes - left.predictedLikes)[0] || null;
+  const archetypes = buildPublicationArchetypes(
+    optimized,
+    gaConfig.maxArchetypes ?? config.maxArchetypes ?? 5
+  );
 
   return {
     optimizedPublications: optimized.map((item) => item.optimizedPublication),
     publicationResults: optimized,
-    bestPublication: bestPublication?.optimizedPublication || null
+    bestPublication: bestPublication?.optimizedPublication || null,
+    archetypes
   };
 }
 
@@ -225,6 +373,7 @@ function cloneFeatureMap(featureMap = {}, planFeatureMap = {}) {
   const next = { ...featureMap };
   next.tones_count = asNumber(planFeatureMap.unique_tones, next.tones_count || 1);
   next.creativity_from_best_plan = asNumber(planFeatureMap.avg_creativity, next.creativity_from_best_plan || 0);
+  next.has_cta = 0;
   next.grammar_quality = Math.max(asNumber(next.grammar_quality, 1), 0.75);
   next.tech_quality = Math.max(asNumber(next.tech_quality, 1), 1);
   return next;
@@ -237,8 +386,14 @@ function assignCtaToFeatureMap(featureMap = {}, hasCta = false) {
   };
 }
 
-function buildFinalPublication(basePublication, bestPublication, featureMap, predictedLikes, index) {
+function buildFinalPublication(basePublication, bestPublication, featureMap, predictedLikes, index, modelMetadata = null) {
   const source = cloneJson(bestPublication || {});
+  const nextPredictedLikes = asNumber(predictedLikes, 0);
+  const mergedForHeuristics = {
+    ...source,
+    ...cloneJson(basePublication || {}),
+    ontology_features: featureMap
+  };
   return {
     ...source,
     ...cloneJson(basePublication || {}),
@@ -254,19 +409,24 @@ function buildFinalPublication(basePublication, bestPublication, featureMap, pre
     objective: basePublication?.objective || source?.objective || null,
     tone: basePublication?.tone || source?.tone || null,
     cta: featureMap.has_cta ? source?.cta || 'Свяжитесь с нами, чтобы получить детали.' : '',
-    expected_kpi: {
-      ...(source?.expected_kpi || {}),
-      predicted_likes: asNumber(predictedLikes, 0),
-      predicted_likes_source: 'final_best_post_template',
-      engagement_rate: Math.min(1, asNumber(predictedLikes, 0) / 100),
-      engagement_rate_source: 'final_best_post_template'
-    },
+    expected_kpi: buildExpectedKpi(
+      source?.expected_kpi || {},
+      mergedForHeuristics,
+      nextPredictedLikes,
+      modelMetadata,
+      'final_best_post_template'
+    ),
     ontology_features: featureMap
   };
 }
 
 export async function fillPlanWithBestPublication(publications = [], bestPublication, planFeatureMap = {}, options = {}) {
-  if (!bestPublication || !Array.isArray(publications) || publications.length === 0) {
+  const archetypes = Array.isArray(bestPublication)
+    ? bestPublication.filter(Boolean)
+    : bestPublication
+    ? [bestPublication]
+    : [];
+  if (!archetypes.length || !Array.isArray(publications) || publications.length === 0) {
     return {
       publications: publications || [],
       ctaTargetCount: 0,
@@ -275,7 +435,6 @@ export async function fillPlanWithBestPublication(publications = [], bestPublica
   }
 
   const rng = GA_UTILS.makeRng(options.seed ?? null);
-  const baseFeatureMap = cloneFeatureMap(bestPublication.ontology_features || {}, planFeatureMap);
   const totalCount = publications.length;
   const ctaTargetCount = Math.max(0, Math.min(totalCount, Math.round(asNumber(planFeatureMap.cta_share, 0) * totalCount)));
   const shuffledIndices = Array.from({ length: totalCount }, (_, index) => index);
@@ -288,15 +447,30 @@ export async function fillPlanWithBestPublication(publications = [], bestPublica
   }
 
   const ctaIndices = new Set(shuffledIndices.slice(0, ctaTargetCount));
-  const featureVectors = publications.map((_, index) =>
-    buildPostFeatureVectorFromFeatureMap(assignCtaToFeatureMap(baseFeatureMap, ctaIndices.has(index)))
+  const usageByKey = new Map();
+  const selectedArchetypes = publications.map((publication) =>
+    selectArchetypeForPublication(publication, archetypes, usageByKey)
   );
+  const featureVectors = publications.map((_, index) => {
+    const archetype = selectedArchetypes[index] || archetypes[0];
+    const baseFeatureMap = cloneFeatureMap(archetype?.ontology_features || {}, planFeatureMap);
+    return buildPostFeatureVectorFromFeatureMap(assignCtaToFeatureMap(baseFeatureMap, ctaIndices.has(index)));
+  });
   const predictionResult = await predictPostLikesByFeatureVectors(featureVectors, { forceTrain: false });
 
   return {
     publications: publications.map((publication, index) => {
+      const archetype = selectedArchetypes[index] || archetypes[0];
+      const baseFeatureMap = cloneFeatureMap(archetype?.ontology_features || {}, planFeatureMap);
       const featureMap = assignCtaToFeatureMap(baseFeatureMap, ctaIndices.has(index));
-      return buildFinalPublication(publication, bestPublication, featureMap, predictionResult.predictions[index], index);
+      return buildFinalPublication(
+        publication,
+        archetype,
+        featureMap,
+        predictionResult.predictions[index],
+        index,
+        predictionResult?.metadata || null
+      );
     }),
     ctaTargetCount,
     ctaAssignedCount: ctaIndices.size

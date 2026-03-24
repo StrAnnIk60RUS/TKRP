@@ -3,7 +3,24 @@ const CURRENT_OPTIMIZATION_KEY = 'currentContentPlanOptimization'
 const CURRENT_HISTORY_ENTRY_KEY = 'currentContentPlanHistoryEntry'
 const PLAN_HISTORY_KEY = 'contentPlanHistory'
 const MAX_HISTORY_ITEMS = 12
-const DEDUP_WINDOW_MS = 15_000 // если та же plan_id+type сохранена повторно в течение 15 сек — заменяем
+
+function stableSerialize(value) {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value)
+  if (Array.isArray(value)) return `[${value.map((item) => stableSerialize(item)).join(',')}]`
+  const keys = Object.keys(value).sort()
+  return `{${keys.map((key) => `${JSON.stringify(key)}:${stableSerialize(value[key])}`).join(',')}}`
+}
+
+function buildEntryFingerprint(entry) {
+  const payload = {
+    id: entry?.id || null,
+    type: entry?.type || null,
+    summary: entry?.summary || null,
+    plan: entry?.plan || null,
+    optimization: entry?.optimization || null
+  }
+  return stableSerialize(payload)
+}
 
 function safeReadJson(key, fallbackValue) {
   try {
@@ -66,8 +83,6 @@ function buildHistoryEntry(plan, metadata = {}) {
       formats,
       avg_engagement_rate: plan?.kpi_targets?.avg_engagement_rate ?? null,
       estimated_conversions: plan?.kpi_targets?.estimated_conversions ?? null,
-      total_budget: plan?.constraints?.total_budget ?? null,
-      max_cost_per_publication: plan?.constraints?.max_cost_per_publication ?? null,
       has_notes: Boolean(plan?.notes),
       optimization_valid: metadata.optimization?.stage2?.constraints_check?.valid ?? null
     }
@@ -99,20 +114,10 @@ export function savePlanSnapshot(plan, metadata = {}) {
 
   const entry = buildHistoryEntry(plan, metadata)
   const history = getPlanHistory()
-  const now = Date.now()
-  const last = history[0]
+  const entryFingerprint = buildEntryFingerprint(entry)
 
-  let nextHistory
-  if (
-    last &&
-    last.id === entry.id &&
-    last.type === entry.type &&
-    now - new Date(last.saved_at).getTime() < DEDUP_WINDOW_MS
-  ) {
-    nextHistory = [entry, ...history.slice(1)].slice(0, MAX_HISTORY_ITEMS)
-  } else {
-    nextHistory = [entry, ...history].slice(0, MAX_HISTORY_ITEMS)
-  }
+  const historyWithoutSameFingerprint = history.filter((item) => buildEntryFingerprint(item) !== entryFingerprint)
+  const nextHistory = [entry, ...historyWithoutSameFingerprint].slice(0, MAX_HISTORY_ITEMS)
 
   safeWriteJson(CURRENT_HISTORY_ENTRY_KEY, {
     id: entry.id,

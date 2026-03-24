@@ -215,6 +215,11 @@ const PrecedentSearchPanel = ({
           <span>{isSearchingPrecedents ? 'ПОИСК ПРЕЦЕДЕНТОВ...' : 'ПОДОБРАТЬ ПРЕЦЕДЕНТЫ'}</span>
         </button>
       </div>
+      {!canSearchPrecedents && smmBlockedReasons.length > 0 && (
+        <div className="precedent-empty-state precedent-empty-state-light" role="status" aria-live="polite">
+          <strong>Почему кнопка неактивна:</strong> {smmBlockedReasons.join(' · ')}
+        </div>
+      )}
 
       {isOntologyVisible && (
         <div className="ontology-preview-panel">
