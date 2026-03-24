@@ -62,6 +62,12 @@ const PUBLICATION_FREQUENCY_TO_WEEKLY = {
   '2_per_week': 2
 }
 
+const toOptionLabelMap = (options = []) =>
+  options.reduce((acc, option) => {
+    acc[option.value] = option.label
+    return acc
+  }, {})
+
 const ProjectForm = () => {
   const navigate = useNavigate()
   const { isDeveloper, isAnalyst, isExtendedMode } = useUserRole()
@@ -132,6 +138,9 @@ const ProjectForm = () => {
   }, [formData])
 
   const progress = (filledRequired / requiredFields.length) * 100
+  const consumerCategoryLabelMap = useMemo(() => toOptionLabelMap(consumerCategoryOptions), [])
+  const platformLabelMap = useMemo(() => toOptionLabelMap(platformOptions), [])
+  const contentFormatLabelMap = useMemo(() => toOptionLabelMap(contentFormatOptions), [])
 
   const riskSummary = useMemo(
     () => {
@@ -256,13 +265,30 @@ const ProjectForm = () => {
   const explainabilitySignals = useMemo(
     () => [
       formData.projectDescription ? 'Описание проекта' : null,
-      formData.consumerCategory ? `Аудитория: ${formData.consumerCategory}` : null,
-      formData.platforms.length ? `Платформы: ${formData.platforms.join(', ')}` : null,
-      formData.contentFormats.length ? `Форматы: ${formData.contentFormats.join(', ')}` : null,
+      formData.consumerCategory
+        ? `Аудитория: ${consumerCategoryLabelMap[formData.consumerCategory] || formData.consumerCategory}`
+        : null,
+      formData.platforms.length
+        ? `Платформы: ${formData.platforms
+            .map((platform) => platformLabelMap[platform] || platform)
+            .join(', ')}`
+        : null,
+      formData.contentFormats.length
+        ? `Форматы: ${formData.contentFormats
+            .map((format) => contentFormatLabelMap[format] || format)
+            .join(', ')}`
+        : null,
       precedentSearchQuery ? 'RAG-запрос по данным формы' : null,
       (precedentSearchResults?.publications?.length || 0) > 0 ? 'Сигналы из релевантных публикаций' : null
     ].filter(Boolean),
-    [formData, precedentSearchQuery, precedentSearchResults]
+    [
+      formData,
+      precedentSearchQuery,
+      precedentSearchResults,
+      consumerCategoryLabelMap,
+      platformLabelMap,
+      contentFormatLabelMap
+    ]
   )
 
   /** Для SMM: блокировка действий до выполнения пунктов проверки и чеклиста. */
@@ -309,9 +335,7 @@ const ProjectForm = () => {
       'contentPlanStartDate',
       'contentPlanEndDate',
       'publicationFrequency',
-      'minPublications',
-      'totalBudget',
-      'maxCostPerPublication'
+      'minPublications'
     ]
     const projectCompleted = projectFields.every((field) => isValueFilled(formData[field]))
     const projectStarted = projectFields.some((field) => isValueFilled(formData[field]))
@@ -728,15 +752,6 @@ const ProjectForm = () => {
 
     const gaConfig = buildGaConfigFromForm(formData)
 
-    const totalBudget =
-      parseNumberOrNull(formData.evoBudgetLimit) ??
-      parseNumberOrNull(formData.totalBudget) ??
-      parseNumberOrNull(draft?.constraints?.total_budget) ??
-      null
-    const maxCost =
-      parseNumberOrNull(formData.maxCostPerPublication) ??
-      parseNumberOrNull(draft?.constraints?.max_cost_per_publication) ??
-      null
     const publicationDayMode = draft?.schedule_preferences?.publication_day_mode || formData.publicationDayMode
     const sharedModeMinPubs =
       publicationDayMode === 'shared'
@@ -788,8 +803,6 @@ const ProjectForm = () => {
           posts_per_week: derivedPostsPerWeek,
           posts_per_week_tolerance: 0.35,
           min_publications: minPubs,
-          total_budget: totalBudget,
-          max_cost_per_publication: maxCost,
           quality_min: qualityMin,
           quality_max: null
         },
@@ -1301,49 +1314,6 @@ const ProjectForm = () => {
             />
           </div>
 
-          <div className="form-row">
-            <div className="form-group">
-              <label htmlFor="totalBudget" className="form-label">
-                Общий бюджет на продвижение (byn) <span className="required">*</span>
-              </label>
-              <input
-                type="number"
-                id="totalBudget"
-                name="totalBudget"
-                value={formData.totalBudget}
-                onChange={handleChange}
-                onBlur={handleBlur}
-                className={`form-input ${hasError('totalBudget') ? 'error' : ''}`}
-                placeholder="100000"
-                min="0"
-                step="1000"
-                disabled={!isEditMode}
-              />
-              {hasError('totalBudget') && <span className="error-message">{errors.totalBudget}</span>}
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="maxCostPerPublication" className="form-label">
-                Максимальная стоимость 1 публикации (byn) <span className="required">*</span>
-              </label>
-              <input
-                type="number"
-                id="maxCostPerPublication"
-                name="maxCostPerPublication"
-                value={formData.maxCostPerPublication}
-                onChange={handleChange}
-                onBlur={handleBlur}
-                className={`form-input ${hasError('maxCostPerPublication') ? 'error' : ''}`}
-                placeholder="5000"
-                min="0"
-                max="1000000"
-                step="100"
-                disabled={!isEditMode}
-              />
-              {hasError('maxCostPerPublication') && <span className="error-message">{errors.maxCostPerPublication}</span>}
-            </div>
-          </div>
-
           <div className="form-group">
             <label className="form-label">
               Формат публикаций <span className="required">*</span>
@@ -1513,26 +1483,8 @@ const ProjectForm = () => {
               >
                 <option value="max_engagement">Максимум вовлеченности</option>
                 <option value="max_reach">Максимум охвата</option>
-                <option value="min_budget">Минимум бюджета</option>
                 <option value="balanced">Сбалансированная цель</option>
               </select>
-            </div>
-            <div className="form-group">
-              <label htmlFor="evoBudgetLimit" className="form-label">
-                Ограничение бюджета для эволюции (byn) <FieldHint fieldName="evoBudgetLimit" />
-              </label>
-              <input
-                type="number"
-                id="evoBudgetLimit"
-                name="evoBudgetLimit"
-                value={formData.evoBudgetLimit}
-                onChange={handleChange}
-                onBlur={handleBlur}
-                className="form-input"
-                placeholder="Если пусто — используется общий бюджет"
-                min="0"
-                disabled={!isEditMode}
-              />
             </div>
           </div>
 

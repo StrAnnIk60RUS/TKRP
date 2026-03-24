@@ -194,6 +194,7 @@ export function getCurrentProcessId(operations) {
   if (operations.parsing?.status === 'running') return 'parsing'
   if (operations.searchingPrecedents?.status === 'running') return 'searchingPrecedents'
   if (operations.seedingPrecedents?.status === 'running') return 'seedingPrecedents'
+  if (operations.loadingOntology?.status === 'running') return 'loadingOntology'
   if (operations.exportingOntology?.status === 'running') return 'exportingOntology'
   return null
 }

@@ -31,13 +31,7 @@ const DraftPlanWorkflowPanel = ({
   const optimizedDayMode = optimizedPlan?.schedule_preferences?.publication_day_mode || draftDayMode
   const gaChanges = draftPlan && optimizedPlan
     ? [
-        ['min_publications', draftPlan.constraints?.min_publications, optimizedPlan.constraints?.min_publications],
-        ['total_budget', draftPlan.constraints?.total_budget, optimizedPlan.constraints?.total_budget],
-        [
-          'max_cost_per_publication',
-          draftPlan.constraints?.max_cost_per_publication,
-          optimizedPlan.constraints?.max_cost_per_publication
-        ]
+        ['min_publications', draftPlan.constraints?.min_publications, optimizedPlan.constraints?.min_publications]
       ].filter(([, beforeValue, afterValue]) => beforeValue !== afterValue)
     : []
 
@@ -78,7 +72,12 @@ const DraftPlanWorkflowPanel = ({
           type="button"
           className="submit-button secondary"
           onClick={onOptimizeDraftPlan}
-          disabled={!draftPlan || isOptimizingPlan}
+          disabled={
+            !draftPlan ||
+            isOptimizingPlan ||
+            isProcessing ||
+            isEnrichmentServerAvailable === false
+          }
           title={
             isDeveloper
               ? 'Запустить 2-уровневую оптимизацию (ГА)'
