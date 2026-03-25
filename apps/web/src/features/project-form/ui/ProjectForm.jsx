@@ -46,6 +46,7 @@ import {
   buildReviewChecklist,
   buildSafeFormInputForGeneration,
   buildSuggestedPrecedentQuery,
+  hasPrecedentsForWorkflow,
   mapExamplePayloadToFormData,
   parseNumberOrNull,
   validateFieldValue,
@@ -106,8 +107,7 @@ const ProjectForm = () => {
     selectedPrecedentItem,
     demoHorizonExample,
     operations,
-    operationTelemetry,
-    reviewChecklistChecked
+    operationTelemetry
   } = wizardState
   const isLoadingOntology = operations.loadingOntology?.status === 'running'
   const isSearchingPrecedents = operations.searchingPrecedents?.status === 'running'
@@ -191,7 +191,6 @@ const ProjectForm = () => {
   const setSelectedPrecedentItem = (payload) => dispatch({ type: 'SET_SELECTED_PRECEDENT', payload })
   const setDemoHorizonExample = (payload) => dispatch({ type: 'SET_DEMO_HORIZON', payload })
   const setIsEditMode = (payload) => dispatch({ type: 'SET_EDIT_MODE', payload })
-  const toggleReviewChecklistItem = (id) => dispatch({ type: 'TOGGLE_REVIEW_CHECKLIST_ITEM', payload: id })
 
   const addToast = (message, type = 'success') => {
     toastCounterRef.current += 1
@@ -269,17 +268,13 @@ const ProjectForm = () => {
 
   const reviewChecklist = useMemo(
     () =>
-      buildReviewChecklist(
-        formData,
-        competitorsData,
-        precedentSearchResults,
-        draftPlanResult,
-        reviewChecklistChecked
-      ),
-    [formData, competitorsData, precedentSearchResults, draftPlanResult, reviewChecklistChecked]
+      buildReviewChecklist(formData, competitorsData, precedentSearchResults, draftPlanResult, precedentsSummary),
+    [formData, competitorsData, precedentSearchResults, draftPlanResult, precedentsSummary]
   )
-  const explainabilitySignals = useMemo(
-    () => [
+  const explainabilitySignals = useMemo(() => {
+    const hasCompetitorData =
+      Array.isArray(competitorsData?.competitors) && competitorsData.competitors.length > 0
+    return [
       {
         key: 'project_description',
         label: 'Описание проекта',
@@ -309,27 +304,12 @@ const ProjectForm = () => {
         done: formData.contentFormats.length > 0
       },
       {
-        key: 'rag_query',
-        label: 'RAG-запрос по данным формы',
-        done: Boolean(precedentSearchQuery),
-        required: false
-      },
-      {
-        key: 'precedent_signals',
-        label: 'Сигналы из релевантных публикаций',
-        done: (precedentSearchResults?.publications?.length || 0) > 0,
-        required: false
+        key: 'competitors',
+        label: hasCompetitorData ? 'Есть данные конкурентов' : 'Нет данных конкурентов',
+        done: hasCompetitorData
       }
-    ],
-    [
-      formData,
-      precedentSearchQuery,
-      precedentSearchResults,
-      consumerCategoryLabelMap,
-      platformLabelMap,
-      contentFormatLabelMap
     ]
-  )
+  }, [formData, competitorsData, consumerCategoryLabelMap, platformLabelMap, contentFormatLabelMap])
 
   /** Для SMM: блокировка действий до выполнения пунктов проверки и чеклиста. */
   const { canSearchPrecedents, canGenerateDraft, smmBlockedReasonsForSearch, smmBlockedReasonsForGenerate } =
@@ -357,7 +337,7 @@ const ProjectForm = () => {
         smmBlockedReasonsForSearch: reasonsForSearch,
         smmBlockedReasonsForGenerate: reasonsForGenerate
       }
-    }, [reviewChecklist, reviewChecklistChecked, isEnrichmentServerAvailable, isDeveloper])
+    }, [reviewChecklist, isEnrichmentServerAvailable, isDeveloper])
 
   const stepStatuses = useMemo(() => {
     const hasCompetitorUrls = competitorUrls.some((url) => typeof url === 'string' && url.trim() !== '')
@@ -747,15 +727,16 @@ const ProjectForm = () => {
 
     if (!isDeveloper) {
       const hasCompetitors = Array.isArray(competitorsData?.competitors) && competitorsData.competitors.length > 0
-      const hasPrecedents =
-        (precedentSearchResults?.publications?.length || 0) > 0 ||
-        (precedentSearchResults?.content_plans?.length || 0) > 0
+      const hasPrecedents = hasPrecedentsForWorkflow(precedentSearchResults, precedentsSummary)
       if (!hasCompetitors) {
         addToast('Перед генерацией добавьте и обогатите конкурентов', 'error')
         return
       }
       if (!hasPrecedents) {
-        addToast('Перед генерацией подберите прецеденты (кнопка «Подобрать прецеденты»)', 'error')
+        addToast(
+          'Перед генерацией нужны прецеденты в базе: загрузите демо, выполните поиск или дождитесь сводки по базе.',
+          'error'
+        )
         return
       }
     }
@@ -942,13 +923,15 @@ const ProjectForm = () => {
     <>
       <ToastContainer toasts={toasts} removeToast={removeToast} />
       <ProcessIndicator active={!!currentProcessId} processId={currentProcessId} />
-      <OperationStatusPanel
-        operations={operations}
-        telemetry={operationTelemetry}
-        onCancel={cancelOperation}
-        onRetry={retryOperation}
-        isDeveloper={isDeveloper}
-      />
+      {isDeveloper && (
+        <OperationStatusPanel
+          operations={operations}
+          telemetry={operationTelemetry}
+          onCancel={cancelOperation}
+          onRetry={retryOperation}
+          isDeveloper={isDeveloper}
+        />
+      )}
 
       <form className="project-form">
         {/* Прогресс-бар */}
@@ -1619,13 +1602,11 @@ const ProjectForm = () => {
               progress={progress}
               competitorsCount={competitorsData?.competitors?.length || 0}
               precedentsSummary={precedentsSummary}
-              reviewChecklist={reviewChecklist}
               isEnrichmentServerAvailable={isEnrichmentServerAvailable}
               hasDraftPlan={Boolean(draftPlanResult?.draft?.draft_content_plan)}
               hasOptimizedPlan={Boolean(optimizationResult?.optimized_content_plan)}
               publicationDayMode={formData.publicationDayMode}
               explainabilitySignals={explainabilitySignals}
-              onChecklistToggle={toggleReviewChecklistItem}
               riskSummary={riskSummary}
             />
 

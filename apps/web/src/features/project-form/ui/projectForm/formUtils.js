@@ -250,12 +250,26 @@ export function buildGaConfigFromForm(formData) {
   }
 }
 
+/**
+ * Прецеденты «готовы» для шагов SMM: есть хиты поиска ИЛИ в базе непустая сводка (после seed / до первого поиска).
+ * Генерация на сервере всё равно делает свой RAG — не требуем отдельного клика «Подобрать», если база уже есть.
+ */
+export function hasPrecedentsForWorkflow(precedentSearchResults, precedentsSummary) {
+  const fromSearch =
+    (precedentSearchResults?.publications?.length || 0) > 0 ||
+    (precedentSearchResults?.content_plans?.length || 0) > 0
+  if (fromSearch) return true
+  const pubs = Number(precedentsSummary?.publications_count) || 0
+  const plans = Number(precedentsSummary?.content_plans_count) || 0
+  return pubs + plans > 0
+}
+
 export function buildReviewChecklist(
   formData,
   competitorsData,
   precedentSearchResults,
   draftPlanResult,
-  reviewChecklistChecked = {}
+  precedentsSummary = null
 ) {
   const isFilled = (value) => {
     if (Array.isArray(value)) return value.length > 0
@@ -283,16 +297,8 @@ export function buildReviewChecklist(
     },
     {
       id: 'precedents',
-      label: 'Подобраны прецеденты',
-      done:
-        (precedentSearchResults?.publications?.length || 0) > 0 ||
-        (precedentSearchResults?.content_plans?.length || 0) > 0
-    },
-    {
-      id: 'reviewed',
-      label: 'Проверено перед генерацией',
-      done: !!reviewChecklistChecked.reviewed,
-      interactive: true
+      label: 'Подобраны прецеденты или в базе есть публикации/планы',
+      done: hasPrecedentsForWorkflow(precedentSearchResults, precedentsSummary)
     },
     {
       id: 'draft',

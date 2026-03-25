@@ -17,13 +17,11 @@ const WorkflowSummaryPanel = ({
   progress,
   competitorsCount,
   precedentsSummary,
-  reviewChecklist,
   isEnrichmentServerAvailable,
   hasDraftPlan,
   hasOptimizedPlan,
   publicationDayMode = 'spread',
   explainabilitySignals = [],
-  onChecklistToggle,
   riskSummary = []
 }) => {
   const publicationDayModeCopy = getPublicationDayModeCopy(publicationDayMode)
@@ -77,29 +75,6 @@ const WorkflowSummaryPanel = ({
             {publicationDayModeCopy.label}
           </span>
         </div>
-
-        <div className="workflow-overview-card workflow-overview-card--check">
-          <span className="workflow-overview-label">Проверено перед генерацией</span>
-          {onChecklistToggle ? (
-            <label className="workflow-checklist-checkbox workflow-checklist-checkbox--inline">
-              <input
-                type="checkbox"
-                checked={!!reviewChecklist.find((i) => i.id === 'reviewed')?.done}
-                onChange={() => onChecklistToggle('reviewed')}
-              />
-              <span className="workflow-checklist-mark">
-                {reviewChecklist.find((i) => i.id === 'reviewed')?.done ? '✓' : '○'}
-              </span>
-              <span>
-                {reviewChecklist.find((i) => i.id === 'reviewed')?.done
-                  ? 'Готово к генерации'
-                  : 'Отметить после проверки'}
-              </span>
-            </label>
-          ) : (
-            <span>{reviewChecklist.find((i) => i.id === 'reviewed')?.done ? '✓ Отмечено' : '○ Не отмечено'}</span>
-          )}
-        </div>
       </div>
 
       {riskSummary.length > 0 && (
@@ -118,10 +93,6 @@ const WorkflowSummaryPanel = ({
 
       {explainabilitySignals.length > 0 && (
         <div className="workflow-checklist">
-          <div className="workflow-checklist-item is-complete">
-            <span className="workflow-checklist-mark">✓</span>
-            <span>Сигналы, влияющие на черновик:</span>
-          </div>
           {explainabilitySignals.map((signal) => (
             <div
               key={signal.key || signal.label}
