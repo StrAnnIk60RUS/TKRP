@@ -168,6 +168,12 @@
   font-weight: 500;
 }
 
+.page-subtitle-detail {
+  font-weight: 400;
+  color: #4a5568;
+  font-size: 0.95rem;
+}
+
 .plan-summary-bar {
   position: sticky;
   top: 16px;
@@ -210,6 +216,14 @@
   line-height: 1.4;
   font-size: 0.9rem;
   overflow-wrap: anywhere;
+}
+
+.plan-summary-constraint-detail {
+  display: block;
+  margin-top: 8px;
+  font-size: 0.85rem;
+  color: #c05621;
+  line-height: 1.45;
 }
 
 .content-plan-content {
@@ -445,6 +459,16 @@
   padding: 10px 12px;
   color: #1a1a2e;
   line-height: 1.5;
+}
+
+.plan-history-constraint-msg {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid #f6ad55;
+  background: #fffaf0;
+  color: #9c4221;
+  font-size: 0.82rem;
+  line-height: 1.45;
 }
 
 .plan-filters-grid {

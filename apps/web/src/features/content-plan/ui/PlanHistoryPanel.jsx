@@ -22,6 +22,12 @@ const getPublicationWord = (count) => {
   return 'публикаций'
 }
 
+const constraintStatusLabel = (summary) => {
+  if (summary?.optimization_valid == null) return 'без проверки'
+  if (summary.optimization_valid === true) return 'соблюдены'
+  return 'есть замечания'
+}
+
 const buildDiffSummary = (item, currentSummary) => {
   if (!currentSummary) return []
 
@@ -45,15 +51,7 @@ const buildDiffSummary = (item, currentSummary) => {
   }
 
   if (item.summary?.optimization_valid !== currentSummary.optimization_valid) {
-    diffs.push(
-      `ограничения: ${
-        item.summary?.optimization_valid === null
-          ? 'без проверки'
-          : item.summary?.optimization_valid
-          ? 'OK'
-          : 'есть нарушения'
-      }`
-    )
+    diffs.push(`ограничения: ${constraintStatusLabel(item.summary)}`)
   }
 
   return diffs
@@ -112,9 +110,12 @@ const PlanHistoryPanel = ({
                 <div>
                   Период: {item.summary?.start_date || '—'} - {item.summary?.end_date || '—'}
                 </div>
-                <div>
-                  Ограничения: {item.summary?.optimization_valid == null ? 'без проверки' : item.summary?.optimization_valid ? 'OK' : 'есть нарушения'}
-                </div>
+                <div>Ограничения: {constraintStatusLabel(item.summary)}</div>
+                {item.summary?.optimization_valid === false &&
+                  Array.isArray(item.summary?.optimization_messages) &&
+                  item.summary.optimization_messages.length > 0 && (
+                    <div className="plan-history-constraint-msg">{item.summary.optimization_messages.join(' ')}</div>
+                  )}
               </div>
 
               {isCurrent && <div className="plan-history-current-badge">Текущая версия</div>}

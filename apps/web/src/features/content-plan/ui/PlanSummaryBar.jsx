@@ -2,8 +2,42 @@ import React from 'react'
 
 const formatPercent = (value) => `${((Number(value) || 0) * 100).toFixed(1)}%`
 
-const PlanSummaryBar = ({ summary, optimizationMeta }) => {
-  const fKpValue = optimizationMeta?.stage2?.f_kp ?? optimizationMeta?.f_kp ?? null
+const formatPredictedPlanLikes = (value) => {
+  if (value == null || value === '') return '—'
+  const n = Number(value)
+  if (!Number.isFinite(n)) return '—'
+  return n.toLocaleString('ru-RU', { maximumFractionDigits: 1 })
+}
+
+/** Прогноз лайков плана: план (после сохранения) → stage2 API → stage1 черновой прогноз. */
+const resolvePredictedTotalLikes = (planExpectedKpi, optimizationMeta) => {
+  const fromPlan = planExpectedKpi?.predicted_total_likes
+  if (fromPlan != null && fromPlan !== '' && Number.isFinite(Number(fromPlan))) return Number(fromPlan)
+  const s2 =
+    optimizationMeta?.stage2?.predicted_total_likes ??
+    optimizationMeta?.stage2?.f_kp ??
+    optimizationMeta?.predicted_total_likes ??
+    optimizationMeta?.f_kp
+  if (s2 != null && s2 !== '' && Number.isFinite(Number(s2))) return Number(s2)
+  const s1 = optimizationMeta?.stage1?.predicted_total_likes
+  if (s1 != null && s1 !== '' && Number.isFinite(Number(s1))) return Number(s1)
+  return null
+}
+
+const PlanSummaryBar = ({ summary, optimizationMeta, planExpectedKpi = null }) => {
+  const predictedTotal = resolvePredictedTotalLikes(planExpectedKpi, optimizationMeta)
+  const predictedLabel = formatPredictedPlanLikes(predictedTotal)
+  const constraintCheck = optimizationMeta?.stage2?.constraints_check
+  const constraintLabel =
+    constraintCheck?.valid === true
+      ? 'Соблюдены'
+      : constraintCheck?.valid === false
+        ? 'Есть замечания'
+        : optimizationMeta
+          ? 'Не проверялись'
+          : '—'
+  const constraintMessages = Array.isArray(constraintCheck?.messages) ? constraintCheck.messages : []
+
   return (
     <section className="plan-summary-bar">
       <div className="plan-summary-metric">
@@ -40,9 +74,14 @@ const PlanSummaryBar = ({ summary, optimizationMeta }) => {
         </strong>
         <span className="plan-summary-metric-meta">
           {optimizationMeta
-            ? `F_kp: ${fKpValue ?? 'недоступен'}`
+            ? `Прогноз лайков плана (ML): ${predictedLabel}; ограничения: ${constraintLabel}`
             : 'Можно редактировать и оптимизировать'}
         </span>
+        {constraintCheck?.valid === false && constraintMessages.length > 0 && (
+          <span className="plan-summary-metric-meta plan-summary-constraint-detail">
+            {constraintMessages.join(' ')}
+          </span>
+        )}
       </div>
     </section>
   )

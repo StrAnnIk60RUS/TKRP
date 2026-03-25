@@ -196,7 +196,8 @@ const ContentPlanPage = () => {
       platforms,
       start_date: safePlan?.planning_horizon?.start_date || null,
       end_date: safePlan?.planning_horizon?.end_date || null,
-      optimization_valid: optimizationMeta?.stage2?.constraints_check?.valid ?? null
+      optimization_valid: optimizationMeta?.stage2?.constraints_check?.valid ?? null,
+      optimization_messages: optimizationMeta?.stage2?.constraints_check?.messages ?? null
     }),
     [optimizationMeta, platforms, publications.length, safePlan]
   )
@@ -406,20 +407,13 @@ const ContentPlanPage = () => {
         <p className="page-subtitle">
           ID плана: <strong>{contentPlan.plan_id || 'Неизвестно'}</strong>
         </p>
-        {optimizationMeta && isDeveloper && (
-          <p className="page-subtitle">
-            Оптимизация: F_kp = <strong>{optimizationMeta.stage2?.f_kp ?? optimizationMeta?.f_kp ?? 'недоступен'}</strong>; ограничения:{' '}
-            <strong>{optimizationMeta.stage2?.constraints_check?.valid ? 'OK' : 'есть нарушения'}</strong>
-          </p>
-        )}
-        {optimizationMeta && !isDeveloper && (
-          <p className="page-subtitle">
-            План улучшен: <strong>{optimizationMeta.stage2?.constraints_check?.valid ? 'ограничения соблюдены' : 'есть ограничения для проверки'}</strong>
-          </p>
-        )}
       </div>
 
-      <PlanSummaryBar summary={summary} optimizationMeta={optimizationMeta} />
+      <PlanSummaryBar
+        summary={summary}
+        optimizationMeta={optimizationMeta}
+        planExpectedKpi={safePlan?.expected_kpi}
+      />
 
       <div className="content-plan-content">
         <PlanHistoryPanel

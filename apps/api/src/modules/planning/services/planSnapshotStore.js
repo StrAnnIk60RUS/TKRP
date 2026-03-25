@@ -43,7 +43,10 @@ function buildSnapshotSummary(plan, optimization = null) {
     avg_engagement_rate: plan?.kpi_targets?.avg_engagement_rate ?? null,
     estimated_conversions: plan?.kpi_targets?.estimated_conversions ?? null,
     has_notes: Boolean(plan?.notes),
-    optimization_valid: optimization?.stage2?.constraints_check?.valid ?? null
+    optimization_valid: optimization?.stage2?.constraints_check?.valid ?? null,
+    optimization_messages: Array.isArray(optimization?.stage2?.constraints_check?.messages)
+      ? optimization.stage2.constraints_check.messages
+      : null
   };
 }
 

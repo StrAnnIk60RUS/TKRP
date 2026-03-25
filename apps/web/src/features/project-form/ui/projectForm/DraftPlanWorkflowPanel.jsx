@@ -191,8 +191,21 @@ const DraftPlanWorkflowPanel = ({
                 )}
                 <div>
                   Ограничения:{' '}
-                  {optimizationResult?.stage2?.constraints_check?.valid ? 'соблюдены' : 'есть нарушения'}
+                  {optimizationResult?.stage2?.constraints_check?.valid === true
+                    ? 'соблюдены'
+                    : optimizationResult?.stage2?.constraints_check?.valid === false
+                      ? 'есть замечания'
+                      : 'не проверялись'}
                 </div>
+                {optimizationResult?.stage2?.constraints_check?.valid === false &&
+                  Array.isArray(optimizationResult?.stage2?.constraints_check?.messages) &&
+                  optimizationResult.stage2.constraints_check.messages.length > 0 && (
+                    <div className="draft-plan-constraint-detail">
+                      {optimizationResult.stage2.constraints_check.messages.map((msg, idx) => (
+                        <div key={idx}>{msg}</div>
+                      ))}
+                    </div>
+                  )}
                 {isDeveloper && <div>Изменено ограничений GA: {gaChanges.length}</div>}
                 {isDeveloper &&
                   gaChanges.map(([key, beforeValue, afterValue]) => (

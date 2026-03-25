@@ -30,17 +30,73 @@ function validateOptimizationInputs(draft, stage1Config = {}) {
   }
 }
 
+function pickPositiveInt(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
+}
+
+function isoDateSlice(value) {
+  if (value == null || value === '') return '';
+  return String(value).slice(0, 10);
+}
+
+/**
+ * Проверка итогового плана после эволюции. Сообщения — на русском для UI.
+ * Правила: минимум публикаций; даты в горизонте (если есть planned_date);
+ * платформа каждой публикации входит в plan.platforms.
+ */
 function validatePlanConstraints(plan, constraints = {}) {
   const publications = Array.isArray(plan?.publications) ? plan.publications : [];
-  const errors = [];
+  const messages = [];
 
-  if (constraints?.min_publications && publications.length < Number(constraints.min_publications)) {
-    errors.push(`min_publications violated: have=${publications.length}, need>=${constraints.min_publications}`);
+  const minRequired =
+    pickPositiveInt(constraints.min_publications) ?? pickPositiveInt(plan?.constraints?.min_publications);
+
+  if (minRequired != null && publications.length < minRequired) {
+    messages.push(
+      `Минимум публикаций: требуется не менее ${minRequired}, в плане сейчас ${publications.length}.`
+    );
+  }
+
+  const horizonStart = isoDateSlice(constraints.date_min ?? plan?.planning_horizon?.start_date);
+  const horizonEnd = isoDateSlice(constraints.date_max ?? plan?.planning_horizon?.end_date);
+
+  if (horizonStart && horizonEnd) {
+    const dated = publications.filter((p) => p?.planned_date);
+    if (dated.length > 0) {
+      let outOfRange = 0;
+      for (const p of dated) {
+        const d = isoDateSlice(p.planned_date);
+        if (!d || d < horizonStart || d > horizonEnd) outOfRange += 1;
+      }
+      if (outOfRange > 0) {
+        messages.push(
+          `Даты публикаций: ${outOfRange} из ${dated.length} с датой выходят за период плана (${horizonStart} — ${horizonEnd}).`
+        );
+      }
+    }
+  }
+
+  const allowed = new Set(
+    (Array.isArray(plan?.platforms) ? plan.platforms : [])
+      .map((p) => String(p || '').trim().toLowerCase())
+      .filter(Boolean)
+  );
+  if (allowed.size > 0) {
+    const bad = publications.filter(
+      (p) => p?.platform && !allowed.has(String(p.platform).trim().toLowerCase())
+    );
+    if (bad.length > 0) {
+      messages.push(
+        `Платформы: у ${bad.length} публикаций указана платформа вне списка плана (${[...allowed].join(', ')}).`
+      );
+    }
   }
 
   return {
-    valid: errors.length === 0,
-    errors,
+    valid: messages.length === 0,
+    messages,
+    errors: messages,
     total_cost: null
   };
 }
@@ -83,12 +139,16 @@ export async function runHierarchicalOptimization(payload = {}) {
     }
   );
 
+  const rawFinalLikes = finalPlanPrediction?.predictedLikes;
+  const numericFinalLikes = Number(rawFinalLikes);
+  const safeFinalPredicted = Number.isFinite(numericFinalLikes) ? numericFinalLikes : null;
+
   const optimizedContentPlan = {
     ...contentPlanResult.optimizedPlan,
     publications: filledPlanResult.publications,
     expected_kpi: {
       ...(contentPlanResult.optimizedPlan.expected_kpi || {}),
-      predicted_total_likes: finalPlanPrediction.predictedLikes,
+      predicted_total_likes: rawFinalLikes,
       predicted_total_likes_source: 'ml_content_plan_likes_model_final'
     },
     plan_features: finalPlanFeatureMap
@@ -110,6 +170,10 @@ export async function runHierarchicalOptimization(payload = {}) {
     },
     stage2: {
       phase: 'post_evolution',
+      /** Итоговый ML-прогноз суммарных лайков по плану (после заполнения постов). Дублирует optimized_content_plan.expected_kpi.predicted_total_likes. */
+      predicted_total_likes: safeFinalPredicted,
+      /** Устаревшее имя метрики в UI; то же значение, что predicted_total_likes. */
+      f_kp: safeFinalPredicted,
       best_post: postResult.bestPublication,
       archetypes: postResult.archetypes,
       cta_distribution: {
