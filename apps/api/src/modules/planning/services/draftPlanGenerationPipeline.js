@@ -26,7 +26,7 @@ const BATCH_PROMPT_PATH = path.join(
 );
 
 const ALLOWED_PLATFORMS = ['vk', 'linkedin'];
-const ALLOWED_OBJECTIVES = ['inform', 'educate', 'engage', 'convert', 'retain'];
+const ALLOWED_OBJECTIVES = ['inform', 'educate', 'engage', 'convert', 'retain', 'brand_building'];
 const DEFAULT_FORMATS = ['text', 'image', 'video', 'combined'];
 
 function normalizePublicationDayMode(value) {
@@ -208,6 +208,8 @@ function buildCompactPublicationContext(item = {}) {
     tone: normalizeTone(model.tone || data.tone || 'expert'),
     audience_segments: uniqueStrings(model.audience_segments || data.target_audience || []),
     summary: model.summary || data.summary || null,
+    reliability: clamp01(item?.reliability ?? 0),
+    retrieval_score: clamp01(item?.score ?? 0),
     expected_kpi: {
       engagement_rate: clamp01(kpi.expected_engagement_rate ?? data.engagement_rate ?? 0.04),
       conversion_potential: clamp01(kpi.expected_conversion_potential ?? 0.1),
@@ -226,6 +228,8 @@ function buildCompactPlanContext(item = {}) {
     audience_segments: uniqueStrings(model.audience_segments || []),
     total_publications: asNumber(model.total_publications, null),
     posting_frequency_per_week: asNumber(model.posting_frequency_per_week, null),
+    reliability: clamp01(item?.reliability ?? 0),
+    retrieval_score: clamp01(item?.score ?? 0),
     avg_engagement_rate: clamp01(kpi.avg_engagement_rate ?? 0.04),
     estimated_conversion_potential: clamp01(kpi.estimated_conversion_potential ?? 0.1)
   };
@@ -233,9 +237,21 @@ function buildCompactPlanContext(item = {}) {
 
 function buildCompactRagContext(ragResults = {}) {
   const publications = toArray(ragResults.publications)
+    .slice()
+    .sort(
+      (left, right) =>
+        ((right?.score || 0) * 0.65 + (right?.reliability || 0) * 0.35) -
+        ((left?.score || 0) * 0.65 + (left?.reliability || 0) * 0.35)
+    )
     .slice(0, 8)
     .map(buildCompactPublicationContext);
   const contentPlans = toArray(ragResults.content_plans)
+    .slice()
+    .sort(
+      (left, right) =>
+        ((right?.score || 0) * 0.65 + (right?.reliability || 0) * 0.35) -
+        ((left?.score || 0) * 0.65 + (left?.reliability || 0) * 0.35)
+    )
     .slice(0, 5)
     .map(buildCompactPlanContext);
 
@@ -270,21 +286,24 @@ function averagePrecedentKpi(compactRagContext = {}) {
 
   const totals = publicationItems.reduce(
     (acc, item) => ({
-      engagement_rate: acc.engagement_rate + clamp01(item?.expected_kpi?.engagement_rate ?? 0),
-      conversion_potential: acc.conversion_potential + clamp01(item?.expected_kpi?.conversion_potential ?? 0),
-      reach_potential: acc.reach_potential + clamp01(item?.expected_kpi?.reach_potential ?? 0)
+      engagement_rate: acc.engagement_rate + clamp01(item?.expected_kpi?.engagement_rate ?? 0) * Math.max(0.2, clamp01(item?.reliability ?? 0)),
+      conversion_potential: acc.conversion_potential + clamp01(item?.expected_kpi?.conversion_potential ?? 0) * Math.max(0.2, clamp01(item?.reliability ?? 0)),
+      reach_potential: acc.reach_potential + clamp01(item?.expected_kpi?.reach_potential ?? 0) * Math.max(0.2, clamp01(item?.reliability ?? 0)),
+      weight: acc.weight + Math.max(0.2, clamp01(item?.reliability ?? 0))
     }),
     {
       engagement_rate: 0,
       conversion_potential: 0,
-      reach_potential: 0
+      reach_potential: 0,
+      weight: 0
     }
   );
+  const totalWeight = Math.max(1, totals.weight);
 
   return {
-    engagement_rate: clamp01(totals.engagement_rate / publicationItems.length),
-    conversion_potential: clamp01(totals.conversion_potential / publicationItems.length),
-    reach_potential: clamp01(totals.reach_potential / publicationItems.length)
+    engagement_rate: clamp01(totals.engagement_rate / totalWeight),
+    conversion_potential: clamp01(totals.conversion_potential / totalWeight),
+    reach_potential: clamp01(totals.reach_potential / totalWeight)
   };
 }
 

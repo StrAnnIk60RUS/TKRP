@@ -54,9 +54,26 @@ function nearestAllowedValue(value, allowedValues) {
     .sort((left, right) => Math.abs(left - value) - Math.abs(right - value))[0];
 }
 
+function resolveToneIndex(tone) {
+  const source = String(tone || '').toLowerCase();
+  if (/(expert|эксперт|technical|tech)/u.test(source)) return 0;
+  if (/(friend|друж|warm|casual)/u.test(source)) return 1;
+  if (/(official|formal|офиц|корпоратив)/u.test(source)) return 2;
+  if (/(inspir|motiv|вдохнов)/u.test(source)) return 3;
+  if (/(humor|юмор|fun)/u.test(source)) return 4;
+  return null;
+}
+
+function resolveCtaPreference(publication = {}) {
+  const objective = String(publication?.objective || '').toLowerCase();
+  if (objective === 'convert' || objective === 'retain') return 'required';
+  if (objective === 'engage' || objective === 'brand_building') return 'preferred';
+  return 'avoid';
+}
+
 function repairGenome(genome, constants = {}) {
   const repaired = POST_FEATURE_NAMES.map((_, index) => {
-    if (index === CTA_INDEX) return asNumber(constants.hasCta, 0);
+    if (index === CTA_INDEX && Number.isFinite(Number(constants.hasCta))) return asNumber(constants.hasCta, 0);
     if (index === 34) return asNumber(constants.tonesCount, 1);
     if (index === 35) return asNumber(constants.creativityFromBestPlan, 0.5);
     return nearestAllowedValue(asNumber(genome[index], 0), buildAllowedValues(index));
@@ -100,11 +117,20 @@ function mutateGenome(genome, constants, rng) {
   return repairGenome(next, constants);
 }
 
-function scoreAlignment(featureMap, planFeatureMap) {
+function scoreAlignment(featureMap, planFeatureMap, slotContext = {}) {
   const creativityAlignment = 1 - Math.abs(asNumber(featureMap.creativity, 0) - asNumber(planFeatureMap.avg_creativity, 0));
   const grammarBonus = asNumber(featureMap.grammar_quality, 0);
   const singleToneBonus = featureMap.tone_onehot_0 + featureMap.tone_onehot_1 + featureMap.tone_onehot_2 + featureMap.tone_onehot_3 + featureMap.tone_onehot_4 === 1 ? 1 : 0;
-  return (creativityAlignment * 4) + (grammarBonus * 2) + singleToneBonus;
+  const targetToneIndex = Number.isInteger(slotContext?.targetToneIndex) ? slotContext.targetToneIndex : null;
+  const toneBonus = targetToneIndex === null ? 0.75 : asNumber(featureMap[`tone_onehot_${targetToneIndex}`], 0) * 2.5;
+  const ctaPreference = slotContext?.ctaPreference || 'avoid';
+  const ctaAlignment =
+    ctaPreference === 'required'
+      ? asNumber(featureMap.has_cta, 0) * 2.4
+      : ctaPreference === 'preferred'
+      ? asNumber(featureMap.has_cta, 0) * 1.15
+      : (1 - asNumber(featureMap.has_cta, 0)) * 1.4;
+  return (creativityAlignment * 4) + (grammarBonus * 2) + singleToneBonus + toneBonus + ctaAlignment;
 }
 
 function sumAbsoluteDeviation(vectorA = [], vectorB = []) {
@@ -145,9 +171,10 @@ function createArchetypeKey(publication = {}) {
 function scoreArchetypeMatch(publication = {}, archetype = {}) {
   let score = 0;
   if ((publication?.topic || null) === (archetype?.topic || null)) score += 5;
-  if ((publication?.format || null) === (archetype?.format || null)) score += 2;
-  if ((publication?.objective || null) === (archetype?.objective || null)) score += 2;
-  if ((publication?.tone || null) === (archetype?.tone || null)) score += 2;
+  if ((publication?.format || null) === (archetype?.format || null)) score += 3.5;
+  if ((publication?.objective || null) === (archetype?.objective || null)) score += 4;
+  if ((publication?.tone || null) === (archetype?.tone || null)) score += 2.5;
+  if ((publication?.platform || null) === (archetype?.platform || null)) score += 2;
   score += asNumber(archetype?.expected_kpi?.predicted_likes, 0) / 2000;
   return score;
 }
@@ -204,7 +231,7 @@ function selectArchetypeForPublication(publication = {}, archetypes = [], usageB
   return bestArchetype;
 }
 
-function calculateRealismPenalty(featureMap, baseFeatureMap, candidateVector, baseVector, baselinePredictedLikes, predictedLikes, planFeatureMap) {
+function calculateRealismPenalty(featureMap, baseFeatureMap, candidateVector, baseVector, baselinePredictedLikes, predictedLikes, planFeatureMap, slotContext = {}) {
   const deviationPenalty = sumAbsoluteDeviation(candidateVector.slice(0, 34), baseVector.slice(0, 34)) * 4.5;
   let qualityPenalty = 0;
 
@@ -221,16 +248,28 @@ function calculateRealismPenalty(featureMap, baseFeatureMap, candidateVector, ba
   const cappedPredictedLikes = Math.min(rawPredictedLikes, upperBound);
   const extrapolationOverflow = Math.max(0, rawPredictedLikes - cappedPredictedLikes);
   const extrapolationPenalty = extrapolationOverflow * 1.35;
-  const ctaPenalty = asNumber(featureMap.has_cta, 0) > 0 ? Math.max(0, 0.55 - asNumber(planFeatureMap?.cta_share, 0)) * 40 : 0;
+  const ctaPreference = slotContext?.ctaPreference || 'avoid';
+  let ctaPenalty = 0;
+  if (ctaPreference === 'required' && asNumber(featureMap.has_cta, 0) < 1) ctaPenalty += 42;
+  if (ctaPreference === 'avoid' && asNumber(featureMap.has_cta, 0) > 0) ctaPenalty += 18;
+  if (ctaPreference === 'preferred' && asNumber(featureMap.has_cta, 0) < 1) ctaPenalty += 8;
+  if (ctaPreference !== 'required' && asNumber(featureMap.has_cta, 0) > 0) {
+    ctaPenalty += Math.max(0, 0.55 - asNumber(planFeatureMap?.cta_share, 0)) * 24;
+  }
+  const targetToneIndex = Number.isInteger(slotContext?.targetToneIndex) ? slotContext.targetToneIndex : null;
+  const tonePenalty =
+    targetToneIndex === null
+      ? 0
+      : (1 - asNumber(featureMap[`tone_onehot_${targetToneIndex}`], 0)) * 20;
 
   return {
     cappedPredictedLikes,
     extrapolationPenalty,
-    penalty: deviationPenalty + qualityPenalty + extrapolationPenalty + ctaPenalty
+    penalty: deviationPenalty + qualityPenalty + extrapolationPenalty + ctaPenalty + tonePenalty
   };
 }
 
-async function evolveSinglePublication(publication, planFeatureMap, gaConfig = {}, publicationIndex = 0) {
+async function evolveSinglePublication(publication, planFeatureMap, gaConfig = {}, publicationIndex = 0, slotContext = {}) {
   const baseVector = buildPostFeatureVector(publication, {
     tonesCount: planFeatureMap.unique_tones,
     creativityFromBestPlan: planFeatureMap.avg_creativity
@@ -238,7 +277,7 @@ async function evolveSinglePublication(publication, planFeatureMap, gaConfig = {
   const constants = {
     tonesCount: planFeatureMap.unique_tones,
     creativityFromBestPlan: planFeatureMap.avg_creativity,
-    hasCta: 0
+    hasCta: null
   };
   const baseFeatureMap = createFeatureMap(baseVector);
   const baselinePrediction = await predictPostLikesByFeatureVectors([baseVector], { forceTrain: false });
@@ -287,10 +326,11 @@ async function evolveSinglePublication(publication, planFeatureMap, gaConfig = {
           baseVector,
           baselinePredictedLikes,
           predictedLikes,
-          planFeatureMap
+          planFeatureMap,
+          slotContext
         );
         const effectivePredictedLikes = Math.max(0, realism.cappedPredictedLikes);
-        const alignmentBonus = scoreAlignment(featureMap, planFeatureMap);
+        const alignmentBonus = scoreAlignment(featureMap, planFeatureMap, slotContext);
         return {
           score: effectivePredictedLikes + alignmentBonus - realism.penalty,
           meta: {
@@ -301,7 +341,9 @@ async function evolveSinglePublication(publication, planFeatureMap, gaConfig = {
             alignment_bonus: Number(alignmentBonus.toFixed(2)),
             creativity: featureMap.creativity,
             grammar_quality: featureMap.grammar_quality,
-            cta: featureMap.has_cta
+            cta: featureMap.has_cta,
+            cta_preference: slotContext?.ctaPreference || 'avoid',
+            target_tone_index: slotContext?.targetToneIndex ?? null
           }
         };
       });
@@ -350,7 +392,11 @@ export async function optimizePublicationsEvolution(publications = [], planFeatu
   const optimized = await mapWithConcurrency(
     publications,
     gaConfig.parallelism ?? config.parallelism ?? 3,
-    (publication, index) => evolveSinglePublication(publication, planFeatureMap, gaConfig, index)
+    (publication, index) =>
+      evolveSinglePublication(publication, planFeatureMap, gaConfig, index, {
+        targetToneIndex: resolveToneIndex(publication?.tone),
+        ctaPreference: resolveCtaPreference(publication)
+      })
   );
 
   const bestPublication = optimized
@@ -384,6 +430,26 @@ function assignCtaToFeatureMap(featureMap = {}, hasCta = false) {
     ...featureMap,
     has_cta: hasCta ? 1 : 0
   };
+}
+
+function assignToneToFeatureMap(featureMap = {}, tone = '') {
+  const targetToneIndex = resolveToneIndex(tone);
+  if (!Number.isInteger(targetToneIndex)) {
+    return featureMap;
+  }
+  const next = { ...featureMap };
+  for (let index = TONE_START; index <= TONE_END; index += 1) {
+    next[`tone_onehot_${index - TONE_START}`] = index - TONE_START === targetToneIndex ? 1 : 0;
+  }
+  return next;
+}
+
+function rankCtaPriority(publication = {}) {
+  const objective = String(publication?.objective || '').toLowerCase();
+  if (objective === 'convert') return 4;
+  if (objective === 'retain') return 3;
+  if (objective === 'engage' || objective === 'brand_building') return 2;
+  return 1;
 }
 
 function buildFinalPublication(basePublication, bestPublication, featureMap, predictedLikes, index, modelMetadata = null) {
@@ -421,7 +487,17 @@ function buildFinalPublication(basePublication, bestPublication, featureMap, pre
 }
 
 export async function fillPlanWithBestPublication(publications = [], bestPublication, planFeatureMap = {}, options = {}) {
-  const archetypes = Array.isArray(bestPublication)
+  const slotResults = Array.isArray(bestPublication)
+    ? bestPublication.filter((item) => item?.optimizedPublication || item?.publication_id)
+    : [];
+  const slotResultsById = new Map(
+    slotResults
+      .filter((item) => item?.optimizedPublication?.publication_id)
+      .map((item) => [item.optimizedPublication.publication_id, item])
+  );
+  const archetypes = slotResults.length
+    ? buildPublicationArchetypes(slotResults, options.maxArchetypes ?? 5)
+    : Array.isArray(bestPublication)
     ? bestPublication.filter(Boolean)
     : bestPublication
     ? [bestPublication]
@@ -434,38 +510,46 @@ export async function fillPlanWithBestPublication(publications = [], bestPublica
     };
   }
 
-  const rng = GA_UTILS.makeRng(options.seed ?? null);
   const totalCount = publications.length;
-  const ctaTargetCount = Math.max(0, Math.min(totalCount, Math.round(asNumber(planFeatureMap.cta_share, 0) * totalCount)));
-  const shuffledIndices = Array.from({ length: totalCount }, (_, index) => index);
-
-  for (let index = shuffledIndices.length - 1; index > 0; index -= 1) {
-    const swapIndex = Math.floor(rng() * (index + 1));
-    const temp = shuffledIndices[index];
-    shuffledIndices[index] = shuffledIndices[swapIndex];
-    shuffledIndices[swapIndex] = temp;
-  }
-
-  const ctaIndices = new Set(shuffledIndices.slice(0, ctaTargetCount));
+  const requiredCtaCount = publications.filter((publication) => resolveCtaPreference(publication) === 'required').length;
+  const ctaTargetCount = Math.max(
+    requiredCtaCount,
+    Math.max(0, Math.min(totalCount, Math.round(asNumber(planFeatureMap.cta_share, 0) * totalCount)))
+  );
+  const ctaIndices = new Set(
+    publications
+      .map((publication, index) => ({
+        index,
+        priority: rankCtaPriority(publication),
+        hasExistingCta: publication?.cta ? 1 : 0
+      }))
+      .sort((left, right) => right.priority - left.priority || right.hasExistingCta - left.hasExistingCta || left.index - right.index)
+      .slice(0, ctaTargetCount)
+      .map((item) => item.index)
+  );
   const usageByKey = new Map();
-  const selectedArchetypes = publications.map((publication) =>
+  const selectedSources = publications.map((publication, index) =>
+    slotResultsById.get(publication?.publication_id) ||
+    slotResults[index] ||
     selectArchetypeForPublication(publication, archetypes, usageByKey)
   );
   const featureVectors = publications.map((_, index) => {
-    const archetype = selectedArchetypes[index] || archetypes[0];
-    const baseFeatureMap = cloneFeatureMap(archetype?.ontology_features || {}, planFeatureMap);
+    const source = selectedSources[index]?.optimizedPublication || selectedSources[index] || archetypes[0];
+    const slotFeatureMap = selectedSources[index]?.featureMap || source?.ontology_features || {};
+    const baseFeatureMap = assignToneToFeatureMap(cloneFeatureMap(slotFeatureMap, planFeatureMap), publications[index]?.tone);
     return buildPostFeatureVectorFromFeatureMap(assignCtaToFeatureMap(baseFeatureMap, ctaIndices.has(index)));
   });
   const predictionResult = await predictPostLikesByFeatureVectors(featureVectors, { forceTrain: false });
 
   return {
     publications: publications.map((publication, index) => {
-      const archetype = selectedArchetypes[index] || archetypes[0];
-      const baseFeatureMap = cloneFeatureMap(archetype?.ontology_features || {}, planFeatureMap);
+      const source = selectedSources[index]?.optimizedPublication || selectedSources[index] || archetypes[0];
+      const slotFeatureMap = selectedSources[index]?.featureMap || source?.ontology_features || {};
+      const baseFeatureMap = assignToneToFeatureMap(cloneFeatureMap(slotFeatureMap, planFeatureMap), publication?.tone);
       const featureMap = assignCtaToFeatureMap(baseFeatureMap, ctaIndices.has(index));
       return buildFinalPublication(
         publication,
-        archetype,
+        source,
         featureMap,
         predictionResult.predictions[index],
         index,

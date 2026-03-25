@@ -1,23 +1,29 @@
 {
-  "created_at": "2026-03-24T12:13:16.034418+00:00",
+  "created_at": "2026-03-25T20:17:20.120621+00:00",
   "model_key": "content_plan",
-  "model_path": "C:\\University\\TKRP\\server\\data\\ml\\content_plan_likes_model.joblib",
-  "samples": 3,
-  "feature_dim": 6,
+  "model_path": "C:\\University\\TKRP\\data\\ml\\content_plan_likes_model.joblib",
+  "samples": 8,
+  "feature_dim": 12,
   "feature_names": [
     "unique_topics",
     "unique_tones",
     "avg_creativity",
     "cta_share",
     "posts_count",
-    "duration_days"
+    "duration_days",
+    "format_entropy",
+    "objective_entropy",
+    "audience_coverage",
+    "platform_coverage",
+    "topic_recurrence",
+    "timeline_density"
   ],
   "target_name": "content_plan_total_likes",
   "target_summary": {
-    "min": 28.0,
-    "max": 1282.0,
-    "mean": 472.3333435058594,
-    "median": 107.0
+    "min": 2.0,
+    "max": 107.0,
+    "mean": 57.75,
+    "median": 69.5
   },
   "metrics": {
     "mse": null,

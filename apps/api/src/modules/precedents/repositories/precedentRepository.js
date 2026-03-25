@@ -279,9 +279,11 @@ function buildEmbeddingTextForContentPlan(contentPlan) {
 }
 
 function filterByPlatform(items, platform) {
-  if (!platform) return items;
-  const normalizedPlatform = normalizeText(platform);
-  return items.filter((item) => normalizeText(item?.platform) === normalizedPlatform);
+  const normalizedPlatforms = Array.isArray(platform)
+    ? platform.map((value) => normalizeText(value)).filter(Boolean)
+    : [normalizeText(platform)].filter(Boolean);
+  if (normalizedPlatforms.length === 0) return items;
+  return items.filter((item) => normalizedPlatforms.includes(normalizeText(item?.platform)));
 }
 
 function filterByAudience(items, audienceSegments = [], getter) {
@@ -733,12 +735,12 @@ export async function searchPrecedents(query, options = {}) {
   const limit = Math.max(1, Math.min(Number(options.limit) || 5, 20));
 
   let filteredPublications = filterByAudience(
-    filterByPlatform(storage.publications, options.platform),
+    filterByPlatform(storage.publications, options.platforms || options.platform),
     options.audience_segments,
     (item) => item?.publication_model?.audience_segments || []
   );
   let filteredContentPlans = filterByAudience(
-    filterByPlatform(storage.content_plans, options.platform),
+    filterByPlatform(storage.content_plans, options.platforms || options.platform),
     options.audience_segments,
     (item) => item?.content_plan_model?.audience_segments || []
   );

@@ -71,7 +71,13 @@ export const PLAN_FEATURE_NAMES = [
   'avg_creativity',
   'cta_share',
   'posts_count',
-  'duration_days'
+  'duration_days',
+  'format_entropy',
+  'objective_entropy',
+  'audience_coverage',
+  'platform_coverage',
+  'topic_recurrence',
+  'timeline_density'
 ];
 
 function getSourceText(source = {}) {
@@ -86,8 +92,59 @@ function getSourceTone(source = {}) {
   return source.tone || source.publication_model?.tone || source.content_strategy_snapshot?.dominant_tone || '';
 }
 
+function getSourceFormat(source = {}) {
+  return source.format || source.publication_model?.format || '';
+}
+
+function getSourceObjective(source = {}) {
+  return source.objective || source.publication_model?.objective || '';
+}
+
+function getSourcePlatform(source = {}) {
+  return source.platform || source.publication_model?.platform || '';
+}
+
+function getSourceAudienceSegments(source = {}) {
+  const direct = Array.isArray(source.audience_segments) ? source.audience_segments : [];
+  const nested = Array.isArray(source.publication_model?.audience_segments) ? source.publication_model.audience_segments : [];
+  const legacy = Array.isArray(source.target_audience) ? source.target_audience : [];
+  return uniqueValues([...direct, ...nested, ...legacy].filter(Boolean));
+}
+
 function getSpcj(source = {}) {
   return source.publication_model?.spcj?.dimensions || source.spcj?.dimensions || {};
+}
+
+function normalizeKey(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function buildFrequencyMap(values = []) {
+  return values.reduce((acc, value) => {
+    const key = normalizeKey(value);
+    if (!key) return acc;
+    acc.set(key, (acc.get(key) || 0) + 1);
+    return acc;
+  }, new Map());
+}
+
+function calculateNormalizedEntropy(values = []) {
+  const frequency = Array.from(buildFrequencyMap(values).values());
+  if (frequency.length <= 1) return 0;
+  const total = frequency.reduce((sum, value) => sum + value, 0);
+  if (total <= 0) return 0;
+  const entropy = frequency.reduce((sum, count) => {
+    const probability = count / total;
+    return probability > 0 ? sum - (probability * Math.log2(probability)) : sum;
+  }, 0);
+  return clamp01(entropy / Math.log2(frequency.length));
+}
+
+function parsePlanDate(source = {}) {
+  const candidate = source.planned_date || source.planned_at || source.publication_model?.planned_at || null;
+  if (!candidate || typeof candidate !== 'string') return null;
+  const parsed = new Date(candidate);
+  return Number.isFinite(parsed.getTime()) ? parsed : null;
 }
 
 function buildCreativityScore(title, lead, text, spcj = {}) {
@@ -184,10 +241,20 @@ export function buildPlanFeatureMap(publications = [], options = {}) {
   const posts = Array.isArray(publications) ? publications : [];
   const topics = uniqueValues(posts.map((item) => item.topic || item.publication_model?.topic || null));
   const tones = uniqueValues(posts.map((item) => getSourceTone(item) || null));
+  const formats = posts.map((item) => getSourceFormat(item));
+  const objectives = posts.map((item) => getSourceObjective(item));
+  const audiences = uniqueValues(posts.flatMap((item) => getSourceAudienceSegments(item)));
+  const platforms = uniqueValues(posts.map((item) => getSourcePlatform(item) || null));
   const postFeatureMaps = posts.map((item) => buildPostFeatureMap(item));
   const startDate = options.startDate ? new Date(options.startDate) : null;
   const endDate = options.endDate ? new Date(options.endDate) : null;
   const explicitDuration = Number(options.durationDays || options.planningHorizonDays);
+  const expectedPlatforms = uniqueValues(
+    (Array.isArray(options.expectedPlatforms) ? options.expectedPlatforms : []).map((value) => normalizeKey(value))
+  );
+  const expectedAudience = uniqueValues(
+    (Array.isArray(options.targetAudience) ? options.targetAudience : []).map((value) => normalizeKey(value))
+  );
   const derivedDuration =
     startDate instanceof Date &&
     Number.isFinite(startDate.getTime()) &&
@@ -195,6 +262,31 @@ export function buildPlanFeatureMap(publications = [], options = {}) {
     Number.isFinite(endDate.getTime())
       ? Math.max(1, Math.round((endDate.getTime() - startDate.getTime()) / 86400000) + 1)
       : null;
+  const durationDays = clampPositive(explicitDuration || derivedDuration || posts.length || 1, 1);
+  const topicCounts = Array.from(buildFrequencyMap(posts.map((item) => item.topic || item.publication_model?.topic)).values());
+  const repeatedTopics = topicCounts.reduce((sum, count) => sum + Math.max(0, count - 1), 0);
+  const datedPosts = uniqueValues(
+    posts
+      .map((item) => {
+        const date = parsePlanDate(item);
+        return date ? date.toISOString().slice(0, 10) : null;
+      })
+      .filter(Boolean)
+  );
+  const audienceCoverage =
+    expectedAudience.length > 0
+      ? clamp01(
+          expectedAudience.filter((segment) => audiences.map((value) => normalizeKey(value)).includes(segment)).length /
+            expectedAudience.length
+        )
+      : clamp01(audiences.length / Math.max(1, posts.length || 1));
+  const platformCoverage =
+    expectedPlatforms.length > 0
+      ? clamp01(
+          expectedPlatforms.filter((platform) => platforms.map((value) => normalizeKey(value)).includes(platform)).length /
+            expectedPlatforms.length
+        )
+      : clamp01(platforms.length / Math.max(1, Math.min(3, posts.length || 1)));
 
   return {
     unique_topics: topics.length,
@@ -202,7 +294,13 @@ export function buildPlanFeatureMap(publications = [], options = {}) {
     avg_creativity: clamp01(average(postFeatureMaps.map((item) => item.creativity))),
     cta_share: clamp01(average(postFeatureMaps.map((item) => item.has_cta))),
     posts_count: posts.length,
-    duration_days: clampPositive(explicitDuration || derivedDuration || posts.length || 1, 1)
+    duration_days: durationDays,
+    format_entropy: calculateNormalizedEntropy(formats),
+    objective_entropy: calculateNormalizedEntropy(objectives),
+    audience_coverage: audienceCoverage,
+    platform_coverage: platformCoverage,
+    topic_recurrence: posts.length > 0 ? clamp01(repeatedTopics / posts.length) : 0,
+    timeline_density: clamp01(datedPosts.length / Math.max(1, durationDays))
   };
 }
 
@@ -219,24 +317,85 @@ function getPublicationLikes(item = {}) {
   return pickFirstFinite(item.raw_metrics?.likes, item.publication_model?.metrics_snapshot?.likes, item.likes);
 }
 
-function groupSnapshotByCompetitor(snapshot = {}) {
+function groupSnapshotByContext(snapshot = {}) {
   const groups = new Map();
   const ensureGroup = (key) => {
-    if (!groups.has(key)) groups.set(key, { publications: [], contentPlan: null });
+    if (!groups.has(key)) groups.set(key, { publications: [], contentPlans: [] });
     return groups.get(key);
   };
 
   (snapshot.publications || []).forEach((publication) => {
-    const key = publication.competitor_id || publication.competitor_name || publication.publication_id;
+    const key = [
+      publication.competitor_id || publication.competitor_name || publication.publication_id,
+      publication.platform || publication.publication_model?.platform || 'unknown'
+    ].join('::');
     ensureGroup(key).publications.push(publication);
   });
 
   (snapshot.content_plans || []).forEach((contentPlan) => {
-    const key = contentPlan.competitor_id || contentPlan.competitor_name || contentPlan.plan_id;
-    ensureGroup(key).contentPlan = contentPlan;
+    const key = [
+      contentPlan.competitor_id || contentPlan.competitor_name || contentPlan.plan_id,
+      contentPlan.platform || contentPlan.content_plan_model?.platform || 'unknown'
+    ].join('::');
+    ensureGroup(key).contentPlans.push(contentPlan);
   });
 
   return groups;
+}
+
+function createPlanPublicationStub(scheduleItem = {}, contentPlan = {}, linkedPublication = null) {
+  const linkedModel = linkedPublication?.publication_model || {};
+  const planModel = contentPlan?.content_plan_model || {};
+  return {
+    ...linkedPublication,
+    publication_model: linkedPublication?.publication_model || {
+      publication_id: scheduleItem?.publication_id || null,
+      topic: scheduleItem?.topic || linkedModel?.topic || null,
+      format: scheduleItem?.format || linkedModel?.format || null,
+      objective: scheduleItem?.objective || linkedModel?.objective || null,
+      tone:
+        linkedModel?.tone ||
+        linkedPublication?.tone ||
+        contentPlan?.content_strategy_snapshot?.dominant_tone ||
+        'expert',
+      audience_segments:
+        linkedModel?.audience_segments ||
+        planModel?.audience_segments ||
+        contentPlan?.content_strategy_snapshot?.core_audience_segments ||
+        [],
+      platform: linkedModel?.platform || linkedPublication?.platform || contentPlan?.platform || null
+    },
+    topic: scheduleItem?.topic || linkedPublication?.topic || linkedModel?.topic || null,
+    format: scheduleItem?.format || linkedPublication?.format || linkedModel?.format || null,
+    objective: scheduleItem?.objective || linkedPublication?.objective || linkedModel?.objective || null,
+    tone:
+      linkedPublication?.tone ||
+      linkedModel?.tone ||
+      contentPlan?.content_strategy_snapshot?.dominant_tone ||
+      'expert',
+    platform: linkedPublication?.platform || linkedModel?.platform || contentPlan?.platform || null,
+    planned_at: scheduleItem?.planned_at || null
+  };
+}
+
+function estimatePlanTargetLikes(schedulePublications = [], contextPublications = [], contentPlan = {}) {
+  const scheduleLikes = schedulePublications
+    .map((item) => clampPositive(getPublicationLikes(item), 0))
+    .filter((value) => Number.isFinite(value) && value > 0);
+  if (scheduleLikes.length > 0) {
+    return scheduleLikes.reduce((sum, value) => sum + value, 0);
+  }
+
+  const contextLikes = contextPublications
+    .map((item) => clampPositive(getPublicationLikes(item), 0))
+    .filter((value) => Number.isFinite(value) && value > 0);
+  if (contextLikes.length > 0 && schedulePublications.length > 0) {
+    return average(contextLikes) * schedulePublications.length;
+  }
+
+  const avgEngagement = clampPositive(contentPlan?.content_plan_model?.kpi_estimate?.avg_engagement_rate, 0);
+  const scheduleSize = schedulePublications.length || contextPublications.length || 1;
+  return avgEngagement * 100 * scheduleSize;
 }
 
 export function buildMlTrainingDatasets(snapshot = {}) {
@@ -244,18 +403,13 @@ export function buildMlTrainingDatasets(snapshot = {}) {
   const postTargets = [];
   const planFeatures = [];
   const planTargets = [];
-  const groups = groupSnapshotByCompetitor(snapshot);
+  const groups = groupSnapshotByContext(snapshot);
 
-  groups.forEach(({ publications, contentPlan }) => {
+  groups.forEach(({ publications, contentPlans }) => {
     if (!publications.length) return;
-    const planModel = contentPlan?.content_plan_model || {};
     const planFeatureMap = buildPlanFeatureMap(publications, {
-      durationDays: planModel.planning_horizon_days
+      durationDays: null
     });
-    const totalLikes = publications.reduce((sum, item) => sum + clampPositive(getPublicationLikes(item), 0), 0);
-
-    planFeatures.push(PLAN_FEATURE_NAMES.map((name) => planFeatureMap[name] ?? 0));
-    planTargets.push(totalLikes);
 
     publications.forEach((publication) => {
       const likes = getPublicationLikes(publication);
@@ -267,7 +421,41 @@ export function buildMlTrainingDatasets(snapshot = {}) {
       postFeatures.push(featureVector);
       postTargets.push(clampPositive(likes, 0));
     });
+
+    const publicationById = new Map(
+      publications
+        .filter((publication) => publication?.publication_id)
+        .map((publication) => [publication.publication_id, publication])
+    );
+    const observedPlans = Array.isArray(contentPlans) ? contentPlans : [];
+    observedPlans.forEach((contentPlan) => {
+      const planModel = contentPlan?.content_plan_model || {};
+      const schedule = Array.isArray(planModel.publication_schedule) ? planModel.publication_schedule : [];
+      const schedulePublications =
+        schedule.length > 0
+          ? schedule.map((item) => createPlanPublicationStub(item, contentPlan, publicationById.get(item?.publication_id)))
+          : publications;
+      const sampleFeatureMap = buildPlanFeatureMap(schedulePublications, {
+        durationDays: planModel.planning_horizon_days,
+        expectedPlatforms: [contentPlan?.platform || planModel?.platform].filter(Boolean),
+        targetAudience:
+          planModel?.audience_segments ||
+          contentPlan?.content_strategy_snapshot?.core_audience_segments ||
+          []
+      });
+      planFeatures.push(PLAN_FEATURE_NAMES.map((name) => sampleFeatureMap[name] ?? 0));
+      planTargets.push(clampPositive(estimatePlanTargetLikes(schedulePublications, publications, contentPlan), 0));
+    });
   });
+
+  if (planFeatures.length === 0) {
+    groups.forEach(({ publications }) => {
+      const totalLikes = publications.reduce((sum, item) => sum + clampPositive(getPublicationLikes(item), 0), 0);
+      const fallbackPlanFeatureMap = buildPlanFeatureMap(publications, {});
+      planFeatures.push(PLAN_FEATURE_NAMES.map((name) => fallbackPlanFeatureMap[name] ?? 0));
+      planTargets.push(totalLikes);
+    });
+  }
 
   return {
     postDataset: {

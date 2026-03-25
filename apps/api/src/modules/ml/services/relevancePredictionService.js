@@ -427,11 +427,25 @@ export async function predictContentPlanLikes(planOrPublications, options = {}) 
     : Array.isArray(planOrPublications?.publications)
     ? planOrPublications.publications
     : [];
+  const expectedPlatforms =
+    options.expectedPlatforms ||
+    (Array.isArray(planOrPublications?.platforms) ? planOrPublications.platforms : []);
+  const targetAudience =
+    options.targetAudience ||
+    (Array.isArray(planOrPublications?.target_audience)
+      ? planOrPublications.target_audience
+      : Array.isArray(planOrPublications?.audience_segments)
+      ? planOrPublications.audience_segments
+      : []);
   const planFeatureMap = buildPlanFeatureMap(publications, {
-    durationDays: options.durationDays || planOrPublications?.planning_horizon?.duration_days
+    durationDays: options.durationDays || planOrPublications?.planning_horizon?.duration_days,
+    expectedPlatforms,
+    targetAudience
   });
   const featureVector = buildPlanFeatureVector(publications, {
-    durationDays: planFeatureMap.duration_days
+    durationDays: planFeatureMap.duration_days,
+    expectedPlatforms,
+    targetAudience
   });
   const { predictions, metadata } = await predictByFeatureVectors('content_plan', [featureVector], options);
   const predictedLikes = capContentPlanLikes(predictions[0], metadata);

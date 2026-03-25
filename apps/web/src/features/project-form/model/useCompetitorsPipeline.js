@@ -144,7 +144,6 @@ export function useCompetitorsPipeline(addToast, options = {}) {
         );
         const usageInfo = result.usage ? ` (использовано токенов: ${result.usage.total_tokens || 'N/A'})` : '';
         addToast(`Данные успешно обогащены!${usageInfo}`, 'success');
-        localStorage.setItem('enrichedCompetitorsData', JSON.stringify(result.enriched_data));
       } else if (result.enriched_data === null && result.raw_response) {
         const usageInfo = result.usage ? ` (использовано токенов: ${result.usage.total_tokens || 'N/A'})` : '';
         addToast(`Обогащение завершено, но JSON невалидный. Файл скачан для проверки.${usageInfo}`, 'warning');
@@ -285,7 +284,6 @@ export function useCompetitorsPipeline(addToast, options = {}) {
           setCompetitorsFileName('competitors_from_urls_enriched.json');
           const usageInfo = result.usage ? ` (токенов: ${result.usage.total_tokens || 'N/A'})` : '';
           addToast(`Данные обогащены автоматически${usageInfo}`, 'success');
-          localStorage.setItem('enrichedCompetitorsData', JSON.stringify(result.enriched_data));
         } else if (result.error) {
           addToast(`Обогащение не удалось: ${result.error}`, 'error');
         }

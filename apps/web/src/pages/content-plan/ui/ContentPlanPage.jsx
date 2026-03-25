@@ -12,8 +12,7 @@ import PostEditModal from '../../../features/content-plan/ui/PostEditModal'
 import PlanEditModal from '../../../features/content-plan/ui/PlanEditModal'
 import {
   getCurrentHistoryEntry,
-  getCurrentOptimization,
-  getCurrentPlan,
+  getCurrentPlanState,
   getPlanHistory,
   loadPlanFromHistory,
   savePlanSnapshot
@@ -118,11 +117,14 @@ const ContentPlanPage = () => {
   )
 
   useEffect(() => {
-    const savedPlan = getCurrentPlan()
-    if (savedPlan) setContentPlan(ensureUniquePublicationIds(savedPlan))
-    setOptimizationMeta(getCurrentOptimization())
-    setPlanHistory(getPlanHistory())
-    setLoading(false)
+    const loadCurrentPlan = async () => {
+      const state = await getCurrentPlanState()
+      if (state?.plan) setContentPlan(ensureUniquePublicationIds(state.plan))
+      setOptimizationMeta(state?.optimization || null)
+      setPlanHistory(getPlanHistory())
+      setLoading(false)
+    }
+    loadCurrentPlan()
   }, [])
 
   useEffect(() => {
@@ -203,7 +205,7 @@ const ContentPlanPage = () => {
     setFilters((prev) => ({ ...prev, [name]: value }))
   }
 
-  const handleSavePostEdit = (nextPartialPublication) => {
+  const handleSavePostEdit = async (nextPartialPublication) => {
     if (!publicationToEdit?.publication_id || !safePlan) return
 
     const nextPublications = Array.isArray(safePlan.publications)
@@ -219,7 +221,7 @@ const ContentPlanPage = () => {
     })
 
     try {
-      savePlanSnapshot(nextPlan, { type: 'draft', optimization: null })
+      await savePlanSnapshot(nextPlan, { type: 'draft', optimization: null })
       setContentPlan(nextPlan)
       setOptimizationMeta(null)
       setPlanHistory(getPlanHistory())
@@ -229,7 +231,7 @@ const ContentPlanPage = () => {
     }
   }
 
-  const handleMovePublication = (publicationId, nextDate, nextPlatform) => {
+  const handleMovePublication = async (publicationId, nextDate, nextPlatform) => {
     if (!safePlan || !publicationId || !nextDate || !nextPlatform) return
     const nextPublications = Array.isArray(safePlan.publications)
       ? safePlan.publications.map((item) =>
@@ -248,7 +250,7 @@ const ContentPlanPage = () => {
     const type = optimizationMeta ? 'optimized' : 'draft'
     const optimization = optimizationMeta || null
     try {
-      savePlanSnapshot(nextPlan, { type, optimization })
+      await savePlanSnapshot(nextPlan, { type, optimization })
       setContentPlan(nextPlan)
       setPlanHistory(getPlanHistory())
     } catch (e) {
@@ -256,7 +258,7 @@ const ContentPlanPage = () => {
     }
   }
 
-  const handleSavePlanEdit = (nextPlanFields) => {
+  const handleSavePlanEdit = async (nextPlanFields) => {
     if (!safePlan) return
 
     const nextPlan = ensureUniquePublicationIds({
@@ -268,7 +270,7 @@ const ContentPlanPage = () => {
     })
 
     try {
-      savePlanSnapshot(nextPlan, { type: 'draft', optimization: null })
+      await savePlanSnapshot(nextPlan, { type: 'draft', optimization: null })
       setContentPlan(nextPlan)
       setOptimizationMeta(null)
       setPlanHistory(getPlanHistory())
@@ -278,11 +280,11 @@ const ContentPlanPage = () => {
     }
   }
 
-  const handleLoadHistoryEntry = (entryId, entryType, savedAt) => {
-    const plan = loadPlanFromHistory(entryId, entryType, savedAt)
-    if (!plan) return
-    setContentPlan(ensureUniquePublicationIds(plan))
-    setOptimizationMeta(getCurrentOptimization())
+  const handleLoadHistoryEntry = async (entryId, entryType, savedAt) => {
+    const snapshot = await loadPlanFromHistory(entryId, entryType, savedAt)
+    if (!snapshot?.plan) return
+    setContentPlan(ensureUniquePublicationIds(snapshot.plan))
+    setOptimizationMeta(snapshot.optimization || null)
     setPlanHistory(getPlanHistory())
   }
 

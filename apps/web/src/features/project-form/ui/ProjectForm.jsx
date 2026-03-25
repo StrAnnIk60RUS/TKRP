@@ -68,6 +68,21 @@ const toOptionLabelMap = (options = []) =>
     return acc
   }, {})
 
+const buildAudienceSegmentsFromForm = (formData) =>
+  Array.from(
+    new Set(
+      [
+        formData.consumerCategory,
+        ...String(formData.consumerDemographics || '')
+          .split(/[,\n;]/)
+          .map((item) => item.trim()),
+        ...String(formData.consumerPurchaseGoal || '')
+          .split(/[,\n;]/)
+          .map((item) => item.trim())
+      ].filter(Boolean)
+    )
+  ).slice(0, 8)
+
 const ProjectForm = () => {
   const navigate = useNavigate()
   const { isDeveloper, isAnalyst, isExtendedMode } = useUserRole()
@@ -107,6 +122,7 @@ const ProjectForm = () => {
   const operationControllersRef = useRef({})
   const operationRetryRef = useRef({})
   const restoreDraftCancelledRef = useRef(false)
+  const hasRestoredDraftRef = useRef(false)
 
   const precedentRetrieval = precedentSearchResults?.retrieval || null
 
@@ -427,35 +443,56 @@ const ProjectForm = () => {
   ])
 
   useEffect(() => {
+    const restoreLocalDraft = () => {
+      if (restoreDraftCancelledRef.current) return
+      if (hasRestoredDraftRef.current) return
+
+      const savedDraft = localStorage.getItem('projectFormDraft')
+      if (!savedDraft) {
+        hasRestoredDraftRef.current = true
+        return
+      }
+
+      try {
+        const draft = JSON.parse(savedDraft)
+        setFormData(draft)
+      } catch (e) {
+        console.error('Ошибка загрузки локального черновика:', e)
+      }
+
+      hasRestoredDraftRef.current = true
+    }
+
     const restoreDraft = async () => {
+      // Всегда пробуем локальный черновик; серверный — только когда backend подтвержден как доступный.
+      if (restoreDraftCancelledRef.current) return
+      if (isEnrichmentServerAvailable !== true) {
+        restoreLocalDraft()
+        return
+      }
+
       try {
         const serverDraftResponse = await getServerDraft()
         if (restoreDraftCancelledRef.current) return
         const serverDraft = serverDraftResponse?.draft?.formData
         if (serverDraft && typeof serverDraft === 'object') {
+          hasRestoredDraftRef.current = true
           setFormData(serverDraft)
           return
         }
       } catch (error) {
         console.error('Ошибка загрузки server-side черновика:', error)
       }
-      if (restoreDraftCancelledRef.current) return
 
-      const savedDraft = localStorage.getItem('projectFormDraft')
-      if (savedDraft) {
-        try {
-          const draft = JSON.parse(savedDraft)
-          setFormData(draft)
-        } catch (e) {
-          console.error('Ошибка загрузки локального черновика:', e)
-        }
-      }
+      restoreLocalDraft()
     }
 
     restoreDraft()
-  }, [])
+  }, [isEnrichmentServerAvailable])
 
   useEffect(() => {
+    if (isEnrichmentServerAvailable !== true) return
+
     const loadPrecedentsSummary = async () => {
       try {
         const response = await getPrecedentsSummary()
@@ -466,7 +503,7 @@ const ProjectForm = () => {
     }
 
     loadPrecedentsSummary()
-  }, [])
+  }, [isEnrichmentServerAvailable])
 
   useEffect(() => {
     setCurrentStep((prev) => Math.min(prev, wizardSteps.length))
@@ -477,6 +514,7 @@ const ProjectForm = () => {
     const hasNormalizedPublicationModel = !!firstPost?.publication_model
 
     if (!hasNormalizedPublicationModel) return
+    if (isEnrichmentServerAvailable !== true) return
 
     const refreshPrecedentsSummary = async () => {
       try {
@@ -488,7 +526,7 @@ const ProjectForm = () => {
     }
 
     refreshPrecedentsSummary()
-  }, [competitorsData])
+  }, [competitorsData, isEnrichmentServerAvailable])
 
   useEffect(() => {
     const hasData = Object.values(formData).some(val => 
@@ -498,13 +536,15 @@ const ProjectForm = () => {
     if (hasData) {
       const timeoutId = setTimeout(() => {
         localStorage.setItem('projectFormDraft', JSON.stringify(formData))
-        saveServerDraft({ formData }).catch((error) => {
-          console.error('Ошибка сохранения server-side черновика:', error)
-        })
+        if (isEnrichmentServerAvailable === true) {
+          saveServerDraft({ formData }).catch((error) => {
+            console.error('Ошибка сохранения server-side черновика:', error)
+          })
+        }
       }, 1000)
       return () => clearTimeout(timeoutId)
     }
-  }, [formData])
+  }, [formData, isEnrichmentServerAvailable])
 
   const removeToast = (id) => {
     dispatch({ type: 'REMOVE_TOAST', payload: id })
@@ -578,8 +618,8 @@ const ProjectForm = () => {
           {
             query,
             limit: 5,
-            platform: formData.platforms[0] || undefined,
-            audience_segments: formData.consumerCategory ? [formData.consumerCategory] : []
+            platforms: formData.platforms,
+            audience_segments: buildAudienceSegmentsFromForm(formData)
           },
           { signal }
         )
@@ -740,7 +780,7 @@ const ProjectForm = () => {
         // Если LLM вернул черновой контент-план, сохраняем его для страницы просмотра
         if (response?.draft?.draft_content_plan) {
           try {
-            savePlanSnapshot(response.draft.draft_content_plan, {
+            await savePlanSnapshot(response.draft.draft_content_plan, {
               type: 'draft'
             })
           } catch (e) {
@@ -768,7 +808,7 @@ const ProjectForm = () => {
     }
 
     const precedentPubs = Array.isArray(precedentSearchResults?.publications)
-      ? precedentSearchResults.publications.map((item) => item.data).filter(Boolean)
+      ? precedentSearchResults.publications.filter(Boolean)
       : []
 
     const gaConfig = buildGaConfigFromForm(formData)
@@ -850,7 +890,7 @@ const ProjectForm = () => {
 
         if (response?.optimized_content_plan) {
           try {
-            savePlanSnapshot(response.optimized_content_plan, {
+            await savePlanSnapshot(response.optimized_content_plan, {
               type: 'optimized',
               optimization: {
                 optimized_at: new Date().toISOString(),

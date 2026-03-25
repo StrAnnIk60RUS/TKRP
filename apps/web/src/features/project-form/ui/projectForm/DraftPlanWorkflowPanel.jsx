@@ -27,6 +27,8 @@ const DraftPlanWorkflowPanel = ({
   const planFeatures = optimizedPlan?.plan_features || optimizationResult?.stage1?.plan_features || null
   const bestPublication = optimizationResult?.best_publication || null
   const bestPublicationFeatures = bestPublication?.ontology_features || null
+  const objectiveBreakdown = optimizationResult?.stage1?.ga?.best_meta?.objective_breakdown || null
+  const bestPostMeta = bestPublicationId => optimizationResult?.stage2?.publications?.find((item) => item.publication_id === bestPublicationId)?.ga?.best_meta || null
   const draftDayMode = draftPlan?.schedule_preferences?.publication_day_mode || publicationDayMode
   const optimizedDayMode = optimizedPlan?.schedule_preferences?.publication_day_mode || draftDayMode
   const gaChanges = draftPlan && optimizedPlan
@@ -175,6 +177,12 @@ const DraftPlanWorkflowPanel = ({
                 {bestPublicationFeatures && <div>Креативность поста: {formatNumber(bestPublicationFeatures.creativity)}</div>}
                 {bestPublicationFeatures && <div>CTA у лучшего поста: {bestPublicationFeatures.has_cta ? 'да' : 'нет'}</div>}
                 {bestPublicationFeatures && <div>Тонов в посте: {bestPublicationFeatures.tones_count ?? '—'}</div>}
+                {objectiveBreakdown && <div>Audience alignment: {formatNumber(objectiveBreakdown.audience_alignment)}</div>}
+                {objectiveBreakdown && <div>Ontology consistency: {formatNumber(objectiveBreakdown.ontology_consistency)}</div>}
+                {objectiveBreakdown && <div>Format mix fit: {formatNumber(objectiveBreakdown.format_mix_fit)}</div>}
+                {bestPublication && bestPostMeta(bestPublication.publication_id) && (
+                  <div>CTA strategy: {bestPostMeta(bestPublication.publication_id)?.cta_preference || '—'}</div>
+                )}
                 {optimizationResult?.stage2?.cta_distribution && (
                   <div>
                     CTA распределено: {optimizationResult.stage2.cta_distribution.assigned_count}/

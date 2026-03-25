@@ -62,19 +62,25 @@ export async function runHierarchicalOptimization(payload = {}) {
   );
   const filledPlanResult = await fillPlanWithBestPublication(
     contentPlanResult.optimizedPlan.publications,
-    postResult.archetypes,
+    postResult.publicationResults,
     contentPlanResult.planFeatureMap,
     stage2Config.ga || stage2Config
   );
   const finalPlanFeatureMap = buildPlanFeatureMap(filledPlanResult.publications, {
-    durationDays: contentPlanResult.optimizedPlan?.planning_horizon?.duration_days
+    durationDays: contentPlanResult.optimizedPlan?.planning_horizon?.duration_days,
+    expectedPlatforms: contentPlanResult.optimizedPlan?.platforms || draft?.platforms || [],
+    targetAudience: contentPlanResult.optimizedPlan?.target_audience || draft?.target_audience || []
   });
   const finalPlanPrediction = await predictContentPlanLikes(
     {
       ...contentPlanResult.optimizedPlan,
       publications: filledPlanResult.publications
     },
-    { forceTrain: false }
+    {
+      forceTrain: false,
+      expectedPlatforms: contentPlanResult.optimizedPlan?.platforms || draft?.platforms || [],
+      targetAudience: contentPlanResult.optimizedPlan?.target_audience || draft?.target_audience || []
+    }
   );
 
   const optimizedContentPlan = {
@@ -96,6 +102,7 @@ export async function runHierarchicalOptimization(payload = {}) {
       plan_features: contentPlanResult.planFeatureMap,
       ga: {
         best_score: contentPlanResult.ga.best_score,
+        best_meta: contentPlanResult.ga.best_meta || null,
         generations: contentPlanResult.ga.generations,
         stop_reason: contentPlanResult.ga.stop_reason,
         history: contentPlanResult.ga.history
@@ -104,6 +111,7 @@ export async function runHierarchicalOptimization(payload = {}) {
     stage2: {
       phase: 'post_evolution',
       best_post: postResult.bestPublication,
+      archetypes: postResult.archetypes,
       cta_distribution: {
         target_share: finalPlanFeatureMap.cta_share,
         target_count: filledPlanResult.ctaTargetCount,
@@ -114,6 +122,7 @@ export async function runHierarchicalOptimization(payload = {}) {
         predicted_likes: item.predictedLikes,
         ga: {
           best_score: item.ga.best_score,
+          best_meta: item.ga.best_meta || null,
           generations: item.ga.generations,
           stop_reason: item.ga.stop_reason,
           history: item.ga.history

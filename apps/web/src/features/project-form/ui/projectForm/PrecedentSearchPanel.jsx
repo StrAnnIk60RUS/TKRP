@@ -147,6 +147,10 @@ const PrecedentSearchPanel = ({
               <option value="example_three_month_plan">3 месяца</option>
               <option value="example_six_month_plan">6 месяцев</option>
               <option value="example_year_plan">12 месяцев</option>
+              <option value="example_dev_project_saas_unfamiliar_1m">DEV: SaaS (1 месяц)</option>
+              <option value="example_dev_project_edtech_unfamiliar_3m">DEV: EdTech (3 месяца)</option>
+              <option value="example_dev_project_fintech_b2g_unfamiliar_6m">DEV: FinTech/B2G (6 месяцев)</option>
+              <option value="example_dev_project_outsourcing_unfamiliar_1m_daily">DEV: Аутсорс/delivery (1 месяц)</option>
             </select>
             <button
               type="button"

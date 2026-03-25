@@ -305,3 +305,31 @@ export async function saveServerDraft(payload, requestOptions = {}) {
     throw error
   }
 }
+
+export async function savePlanSnapshotToServer(payload, requestOptions = {}) {
+  try {
+    return await fetchJsonOrThrow(`${API_URL}/api/plan/snapshots`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload),
+      signal: requestOptions.signal
+    })
+  } catch (error) {
+    console.error('Ошибка в savePlanSnapshotToServer:', error)
+    throw error
+  }
+}
+
+export async function getPlanSnapshotFromServer(token, requestOptions = {}) {
+  try {
+    return await fetchJsonOrThrow(`${API_URL}/api/plan/snapshots/${encodeURIComponent(token)}`, {
+      method: 'GET',
+      signal: requestOptions.signal
+    })
+  } catch (error) {
+    console.error('Ошибка в getPlanSnapshotFromServer:', error)
+    throw error
+  }
+}

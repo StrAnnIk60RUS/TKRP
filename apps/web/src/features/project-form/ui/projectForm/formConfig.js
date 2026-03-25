@@ -111,7 +111,11 @@ export const demoHorizonExampleOptions = {
   example_month_plan: '1 месяц',
   example_three_month_plan: '3 месяца',
   example_six_month_plan: '6 месяцев',
-  example_year_plan: '12 месяцев'
+  example_year_plan: '12 месяцев',
+  example_dev_project_saas_unfamiliar_1m: 'DEV: SaaS (1 месяц) — обход чеклиста',
+  example_dev_project_edtech_unfamiliar_3m: 'DEV: EdTech (3 месяца) — обход чеклиста',
+  example_dev_project_fintech_b2g_unfamiliar_6m: 'DEV: FinTech/B2G (6 месяцев) — обход чеклиста',
+  example_dev_project_outsourcing_unfamiliar_1m_daily: 'DEV: Аутсорс/delivery (1 месяц) — обход чеклиста'
 }
 
 export const demoExampleFormData = {

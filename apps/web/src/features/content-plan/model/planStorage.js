@@ -1,5 +1,6 @@
-const CURRENT_PLAN_KEY = 'currentContentPlan'
-const CURRENT_OPTIMIZATION_KEY = 'currentContentPlanOptimization'
+import { getPlanSnapshotFromServer, savePlanSnapshotToServer } from '../../../shared/api/enrichmentService'
+
+const CURRENT_SNAPSHOT_TOKEN_KEY = 'currentContentPlanSnapshotToken'
 const CURRENT_HISTORY_ENTRY_KEY = 'currentContentPlanHistoryEntry'
 const PLAN_HISTORY_KEY = 'contentPlanHistory'
 const MAX_HISTORY_ITEMS = 12
@@ -16,8 +17,7 @@ function buildEntryFingerprint(entry) {
     id: entry?.id || null,
     type: entry?.type || null,
     summary: entry?.summary || null,
-    plan: entry?.plan || null,
-    optimization: entry?.optimization || null
+    snapshot_token: entry?.snapshot_token || null
   }
   return stableSerialize(payload)
 }
@@ -42,59 +42,43 @@ function safeWriteJson(key, value) {
   }
 }
 
-function saveCurrentSnapshot(plan, metadata = {}) {
-  const currentSaved = safeWriteJson(CURRENT_PLAN_KEY, plan)
-  const shouldUpdateOptimization = Object.prototype.hasOwnProperty.call(metadata, 'optimization')
-  let optimizationSaved = true
-
-  if (shouldUpdateOptimization) {
-    if (metadata.optimization === null) {
-      try {
-        localStorage.removeItem(CURRENT_OPTIMIZATION_KEY)
-        optimizationSaved = true
-      } catch (error) {
-        console.error(`Ошибка удаления ${CURRENT_OPTIMIZATION_KEY}:`, error)
-        optimizationSaved = false
-      }
-    } else {
-      optimizationSaved = safeWriteJson(CURRENT_OPTIMIZATION_KEY, metadata.optimization)
-    }
-  }
-
-  return { currentSaved, optimizationSaved }
-}
-
-function buildHistoryEntry(plan, metadata = {}) {
+function buildHistorySummary(plan, optimization = null) {
   const publications = Array.isArray(plan?.publications) ? plan.publications : []
   const formats = Array.from(new Set(publications.map((item) => item?.format).filter(Boolean)))
-
   return {
-    id: plan?.plan_id || `plan_${Date.now()}`,
-    saved_at: new Date().toISOString(),
-    type: metadata.type || 'draft',
-    plan,
-    optimization: metadata.optimization || null,
-    summary: {
-      plan_id: plan?.plan_id || 'unknown',
-      publications_count: publications.length,
-      platforms: Array.isArray(plan?.platforms) ? plan.platforms : [],
-      start_date: plan?.planning_horizon?.start_date || null,
-      end_date: plan?.planning_horizon?.end_date || null,
-      formats,
-      avg_engagement_rate: plan?.kpi_targets?.avg_engagement_rate ?? null,
-      estimated_conversions: plan?.kpi_targets?.estimated_conversions ?? null,
-      has_notes: Boolean(plan?.notes),
-      optimization_valid: metadata.optimization?.stage2?.constraints_check?.valid ?? null
-    }
+    plan_id: plan?.plan_id || 'unknown',
+    publications_count: publications.length,
+    platforms: Array.isArray(plan?.platforms) ? plan.platforms : [],
+    start_date: plan?.planning_horizon?.start_date || null,
+    end_date: plan?.planning_horizon?.end_date || null,
+    formats,
+    avg_engagement_rate: plan?.kpi_targets?.avg_engagement_rate ?? null,
+    estimated_conversions: plan?.kpi_targets?.estimated_conversions ?? null,
+    has_notes: Boolean(plan?.notes),
+    optimization_valid: optimization?.stage2?.constraints_check?.valid ?? null
   }
 }
 
-export function getCurrentPlan() {
-  return safeReadJson(CURRENT_PLAN_KEY, null)
+function getCurrentSnapshotToken() {
+  return safeReadJson(CURRENT_SNAPSHOT_TOKEN_KEY, null)
 }
 
-export function getCurrentOptimization() {
-  return safeReadJson(CURRENT_OPTIMIZATION_KEY, null)
+export async function getCurrentPlanState() {
+  const token = getCurrentSnapshotToken()
+  if (!token) return null
+  try {
+    const response = await getPlanSnapshotFromServer(token)
+    const snapshot = response?.snapshot || null
+    if (!snapshot?.plan) return null
+    return {
+      plan: snapshot.plan,
+      optimization: snapshot.optimization || null,
+      token
+    }
+  } catch (error) {
+    console.error('Ошибка загрузки текущего snapshot плана:', error)
+    return null
+  }
 }
 
 export function getPlanHistory() {
@@ -107,28 +91,43 @@ export function getCurrentHistoryEntry() {
   return safeReadJson(CURRENT_HISTORY_ENTRY_KEY, null)
 }
 
-export function savePlanSnapshot(plan, metadata = {}) {
+export async function savePlanSnapshot(plan, metadata = {}) {
   if (!plan || typeof plan !== 'object') return false
 
-  const { currentSaved, optimizationSaved } = saveCurrentSnapshot(plan, metadata)
-
-  const entry = buildHistoryEntry(plan, metadata)
+  const optimization = Object.prototype.hasOwnProperty.call(metadata, 'optimization')
+    ? metadata.optimization || null
+    : null
+  const saveResponse = await savePlanSnapshotToServer({
+    plan,
+    optimization
+  })
+  const snapshot = saveResponse?.snapshot
+  if (!snapshot?.token) return false
+  const entry = {
+    id: plan?.plan_id || `plan_${Date.now()}`,
+    saved_at: snapshot.saved_at || new Date().toISOString(),
+    type: metadata.type || 'draft',
+    snapshot_token: snapshot.token,
+    summary: snapshot.summary || buildHistorySummary(plan, optimization)
+  }
   const history = getPlanHistory()
   const entryFingerprint = buildEntryFingerprint(entry)
 
   const historyWithoutSameFingerprint = history.filter((item) => buildEntryFingerprint(item) !== entryFingerprint)
   const nextHistory = [entry, ...historyWithoutSameFingerprint].slice(0, MAX_HISTORY_ITEMS)
 
+  safeWriteJson(CURRENT_SNAPSHOT_TOKEN_KEY, snapshot.token)
   safeWriteJson(CURRENT_HISTORY_ENTRY_KEY, {
     id: entry.id,
     type: entry.type,
-    saved_at: entry.saved_at
+    saved_at: entry.saved_at,
+    snapshot_token: entry.snapshot_token
   })
   const historySaved = safeWriteJson(PLAN_HISTORY_KEY, nextHistory)
-  return currentSaved && optimizationSaved && historySaved
+  return historySaved
 }
 
-export function loadPlanFromHistory(entryId, entryType = null, savedAt = null) {
+export async function loadPlanFromHistory(entryId, entryType = null, savedAt = null) {
   const entry = getPlanHistory().find((item) => {
     if (item?.id !== entryId) return false
     if (entryType === null) return true
@@ -136,15 +135,19 @@ export function loadPlanFromHistory(entryId, entryType = null, savedAt = null) {
     if (savedAt === null) return true
     return item?.saved_at === savedAt
   })
-  if (!entry?.plan) return null
-  saveCurrentSnapshot(entry.plan, {
-    type: entry.type || 'draft',
-    optimization: entry.optimization || null
-  })
+  if (!entry?.snapshot_token) return null
+  const response = await getPlanSnapshotFromServer(entry.snapshot_token)
+  const snapshot = response?.snapshot || null
+  if (!snapshot?.plan) return null
+  safeWriteJson(CURRENT_SNAPSHOT_TOKEN_KEY, entry.snapshot_token)
   safeWriteJson(CURRENT_HISTORY_ENTRY_KEY, {
     id: entry.id,
     type: entry.type || 'draft',
-    saved_at: entry.saved_at
+    saved_at: entry.saved_at,
+    snapshot_token: entry.snapshot_token
   })
-  return entry.plan
+  return {
+    plan: snapshot.plan,
+    optimization: snapshot.optimization || null
+  }
 }
