@@ -1,4 +1,4 @@
-import {
+﻿import {
   deletePlanSnapshotOnServer,
   getPlanSnapshotFromServer,
   savePlanSnapshotToServer
@@ -7,7 +7,9 @@ import {
 const CURRENT_SNAPSHOT_TOKEN_KEY = 'currentContentPlanSnapshotToken'
 const CURRENT_HISTORY_ENTRY_KEY = 'currentContentPlanHistoryEntry'
 const PLAN_HISTORY_KEY = 'contentPlanHistory'
-const MAX_HISTORY_ITEMS = 12
+
+/** Локальная история в браузере (токены + метаданные). На сервере лимит файлов — env PLAN_SNAPSHOT_MAX_FILES (по умолчанию 200). */
+export const MAX_LOCAL_PLAN_HISTORY_ENTRIES = 12
 
 function stableSerialize(value) {
   if (value === null || typeof value !== 'object') return JSON.stringify(value)
@@ -132,6 +134,17 @@ function isSnapshotNotFoundError(error) {
   return msg.includes('Snapshot не найден')
 }
 
+export function formatPlanSnapshotApiError(error) {
+  const msg = String(error?.message || error || '')
+  if (/Failed to fetch|NetworkError|Network request failed|ECONNREFUSED|load failed/i.test(msg)) {
+    return 'Нет соединения с сервером API. Запустите backend (порт 3001) и проверьте VITE_ENRICHMENT_API_URL.'
+  }
+  if (/\b413\b|слишком большой|too large|payload/i.test(msg)) {
+    return 'План слишком большой для сохранения на сервере. Уменьшите объём данных или увеличьте PLAN_SNAPSHOT_MAX_PAYLOAD_BYTES на API.'
+  }
+  return msg || 'Не удалось выполнить операцию со снимком плана.'
+}
+
 export async function getCurrentPlanState() {
   const token = getCurrentSnapshotToken()
   if (!token) return null
@@ -155,7 +168,6 @@ export function getPlanHistory() {
   return Array.isArray(history) ? history : []
 }
 
-/** @returns {{ id: string, type: string, saved_at: string } | null} */
 export function getCurrentHistoryEntry() {
   return safeReadJson(CURRENT_HISTORY_ENTRY_KEY, null)
 }
@@ -165,7 +177,7 @@ export function getPlanSnapshotToken() {
 }
 
 export async function savePlanSnapshot(plan, metadata = {}) {
-  if (!plan || typeof plan !== 'object') return false
+  if (!plan || typeof plan !== 'object') return { ok: false, message: 'Некорректный план' }
 
   const planToSave = normalizePlanDisplayName(plan)
 
@@ -179,9 +191,18 @@ export async function savePlanSnapshot(plan, metadata = {}) {
   if (typeof metadata.token === 'string' && metadata.token.trim()) {
     body.token = metadata.token.trim()
   }
-  const saveResponse = await savePlanSnapshotToServer(body)
+
+  let saveResponse
+  try {
+    saveResponse = await savePlanSnapshotToServer(body)
+  } catch (error) {
+    console.error('Ошибка savePlanSnapshotToServer:', error)
+    return { ok: false, message: formatPlanSnapshotApiError(error) }
+  }
+
   const snapshot = saveResponse?.snapshot
-  if (!snapshot?.token) return false
+  if (!snapshot?.token) return { ok: false, message: 'Сервер не вернул токен снимка' }
+
   const entry = {
     id: planToSave?.plan_id || `plan_${Date.now()}`,
     saved_at: snapshot.saved_at || new Date().toISOString(),
@@ -194,7 +215,7 @@ export async function savePlanSnapshot(plan, metadata = {}) {
 
   const historyWithoutSameFingerprint = history.filter((item) => buildEntryFingerprint(item) !== entryFingerprint)
   const tokenDeduped = historyWithoutSameFingerprint.filter((item) => item.snapshot_token !== entry.snapshot_token)
-  const nextHistory = [entry, ...tokenDeduped].slice(0, MAX_HISTORY_ITEMS)
+  const nextHistory = [entry, ...tokenDeduped].slice(0, MAX_LOCAL_PLAN_HISTORY_ENTRIES)
 
   safeWriteJson(CURRENT_SNAPSHOT_TOKEN_KEY, snapshot.token)
   safeWriteJson(CURRENT_HISTORY_ENTRY_KEY, {
@@ -204,12 +225,46 @@ export async function savePlanSnapshot(plan, metadata = {}) {
     snapshot_token: entry.snapshot_token
   })
   const historySaved = safeWriteJson(PLAN_HISTORY_KEY, nextHistory)
-  return historySaved
+  if (!historySaved) return { ok: false, message: 'Не удалось записать историю в localStorage' }
+  return { ok: true }
 }
 
-/**
- * @returns {Promise<{ plan: object, optimization: object|null } | { missingSnapshot: true } | null>}
- */
+export async function openSnapshotByToken(rawToken) {
+  const token = typeof rawToken === 'string' ? rawToken.trim() : ''
+  if (!token) return null
+  try {
+    const response = await getPlanSnapshotFromServer(token)
+    const snapshot = response?.snapshot || null
+    if (!snapshot?.plan) return null
+    const optimization = snapshot.optimization || null
+    const type = optimization ? 'optimized' : 'draft'
+    const plan = snapshot.plan
+    const entry = {
+      id: plan?.plan_id || `plan_${Date.now()}`,
+      saved_at: snapshot.saved_at || new Date().toISOString(),
+      type,
+      snapshot_token: token,
+      summary: snapshot.summary || buildHistorySummary(plan, optimization)
+    }
+    const history = getPlanHistory()
+    const tokenDeduped = history.filter((item) => item?.snapshot_token !== token)
+    const nextHistory = [entry, ...tokenDeduped].slice(0, MAX_LOCAL_PLAN_HISTORY_ENTRIES)
+    safeWriteJson(CURRENT_SNAPSHOT_TOKEN_KEY, token)
+    safeWriteJson(CURRENT_HISTORY_ENTRY_KEY, {
+      id: entry.id,
+      type: entry.type,
+      saved_at: entry.saved_at,
+      snapshot_token: token
+    })
+    safeWriteJson(PLAN_HISTORY_KEY, nextHistory)
+    return { plan, optimization }
+  } catch (error) {
+    console.error('Ошибка openSnapshotByToken:', error)
+    if (isSnapshotNotFoundError(error)) return { missingSnapshot: true }
+    return { networkError: true, message: formatPlanSnapshotApiError(error) }
+  }
+}
+
 export async function loadPlanFromHistory(entryId, entryType = null, savedAt = null) {
   const entry = getPlanHistory().find((item) => {
     if (item?.id !== entryId) return false
@@ -243,14 +298,10 @@ export async function loadPlanFromHistory(entryId, entryType = null, savedAt = n
       removeHistoryEntryFromLocalList(entry)
       return { missingSnapshot: true }
     }
-    return null
+    return { networkError: true, message: formatPlanSnapshotApiError(error) }
   }
 }
 
-/**
- * Удаляет запись из истории и файл snapshot на сервере.
- * @returns {Promise<{ ok: boolean, loaded?: { plan: object, optimization: object|null } | null }>}
- */
 export async function removePlanFromHistory(entryId, entryType, savedAt) {
   const history = getPlanHistory()
   const entry = history.find((item) => {
@@ -283,11 +334,16 @@ export async function removePlanFromHistory(entryId, entryType, savedAt) {
   safeWriteJson(PLAN_HISTORY_KEY, nextHistory)
 
   let loaded = null
+  let loadNetworkError = null
   if (wasCurrent) {
     if (nextHistory.length > 0) {
       const first = nextHistory[0]
       loaded = await loadPlanFromHistory(first.id, first.type, first.saved_at)
-      if (!loaded?.plan) {
+      if (loaded?.networkError) {
+        loadNetworkError = loaded.message
+        clearCurrentPlanPointers()
+        loaded = null
+      } else if (!loaded?.plan) {
         clearCurrentPlanPointers()
         loaded = null
       }
@@ -296,5 +352,5 @@ export async function removePlanFromHistory(entryId, entryType, savedAt) {
     }
   }
 
-  return { ok: true, loaded, hadCurrentRemoved: wasCurrent }
+  return { ok: true, loaded, hadCurrentRemoved: wasCurrent, loadNetworkError }
 }

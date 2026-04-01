@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useUserRole } from '../../../app/providers/UserRoleContext'
 import PlanHistoryPanel from '../../../features/content-plan/ui/PlanHistoryPanel'
@@ -16,92 +16,29 @@ import {
   getPlanHistory,
   getPlanSnapshotToken,
   loadPlanFromHistory,
+  openSnapshotByToken,
   removePlanFromHistory,
   savePlanSnapshot
 } from '../../../features/content-plan/model/planStorage'
+import { listPlanSnapshotsFromServer } from '../../../shared/api/enrichmentService'
 import { exportToExcel, exportToPdf } from '../../../shared/lib/contentPlanExport'
 import { platformOptions } from '../../../features/project-form/ui/projectForm/formConfig'
 import './ContentPlanPage.css'
 
-const DEFAULT_FILTERS = {
-  search: '',
-  platform: 'all',
-  format: 'all',
-  dateFrom: '',
-  dateTo: ''
-}
-
-const ensureUniquePublicationIds = (plan) => {
-  if (!plan || typeof plan !== 'object') return plan
-  const pubs = Array.isArray(plan.publications) ? plan.publications : []
-  if (!pubs.length) return plan
-
-  const used = new Set()
-  const normalized = pubs.map((pub, idx) => {
-    const base = typeof pub?.publication_id === 'string' ? pub.publication_id.trim() : ''
-    let next = base || `pub_${String(idx + 1).padStart(3, '0')}`
-    while (used.has(next)) next = `${next}_${idx + 1}`
-    used.add(next)
-    return { ...pub, publication_id: next }
-  })
-
-  return { ...plan, publications: normalized }
-}
-
-const MAX_PLAN_DISPLAY_NAME_LEN = 120
-
-const sanitizeExportBasename = (name) => {
-  const t = typeof name === 'string' ? name.trim().slice(0, 80) : ''
-  if (!t) return null
-  const cleaned = t.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').replace(/\s+/g, '_')
-  return cleaned || null
-}
-
-const getPlatformsFromPublications = (pubs) => {
-  const allowed = new Set(['vk', 'linkedin'])
-  const set = new Set()
-  pubs.forEach((p) => {
-    if (allowed.has(p?.platform)) set.add(p.platform)
-  })
-  return Array.from(set)
-}
-
-const getDateTimestamp = (value) => {
-  if (!value) return 0
-  const timestamp = new Date(value).getTime()
-  return Number.isNaN(timestamp) ? 0 : timestamp
-}
-
-const sortPublicationsByDate = (pubs) =>
-  [...pubs].sort((a, b) => getDateTimestamp(a?.planned_date) - getDateTimestamp(b?.planned_date))
-
-const normalizeText = (value) => (typeof value === 'string' ? value.toLowerCase() : '')
-const clamp01 = (value) => Math.max(0, Math.min(1, Number(value) || 0))
-
-const matchesFilters = (publication, filters) => {
-  if (filters.platform !== 'all' && publication.platform !== filters.platform) return false
-  if (filters.format !== 'all' && publication.format !== filters.format) return false
-
-  const plannedDate = publication.planned_date || ''
-  if (filters.dateFrom && plannedDate && plannedDate < filters.dateFrom) return false
-  if (filters.dateTo && plannedDate && plannedDate > filters.dateTo) return false
-
-  if (filters.search.trim()) {
-    const haystack = [
-      publication.topic,
-      publication.key_message,
-      publication.cta,
-      publication.objective,
-      publication.tone
-    ]
-      .map(normalizeText)
-      .join(' ')
-
-    if (!haystack.includes(filters.search.trim().toLowerCase())) return false
-  }
-
-  return true
-}
+import ContentPlanEmptyState from '../../../features/content-plan/ui/ContentPlanEmptyState'
+import {
+  DEFAULT_FILTERS,
+  MAX_PLAN_DISPLAY_NAME_LEN,
+  ensureUniquePublicationIds,
+  sanitizeExportBasename,
+  getPlatformsFromPublications,
+  sortPublicationsByDate,
+  clamp01,
+  formatSavedAt,
+  formatSavedPlatforms,
+  extractSnapshotTokenFromInput,
+  matchesFilters
+} from '../../../features/content-plan/lib/contentPlanPageUtils'
 
 const ContentPlanPage = () => {
   const navigate = useNavigate()
@@ -117,28 +54,112 @@ const ContentPlanPage = () => {
   const [downloadMenuOpen, setDownloadMenuOpen] = useState(false)
   const [isEditingPlanName, setIsEditingPlanName] = useState(false)
   const [planNameDraft, setPlanNameDraft] = useState('')
+  const [savedSnapshots, setSavedSnapshots] = useState([])
+  const [savedListLoading, setSavedListLoading] = useState(false)
+  const [savedListError, setSavedListError] = useState(false)
+  const [tokenInput, setTokenInput] = useState('')
+  const [openingToken, setOpeningToken] = useState(false)
+  const [savedPlansLibraryOpen, setSavedPlansLibraryOpen] = useState(false)
+  const [savedPlansFilter, setSavedPlansFilter] = useState('')
 
   const safePlan = useMemo(() => ensureUniquePublicationIds(contentPlan), [contentPlan])
   const publications = useMemo(
     () => (Array.isArray(safePlan?.publications) ? sortPublicationsByDate(safePlan.publications) : []),
     [safePlan]
   )
-  const platforms = Array.isArray(safePlan?.platforms) ? safePlan.platforms : []
+  const platforms = useMemo(
+    () => (Array.isArray(safePlan?.platforms) ? safePlan.platforms : []),
+    [safePlan?.platforms]
+  )
   const formatOptions = useMemo(
     () => Array.from(new Set(publications.map((item) => item?.format).filter(Boolean))),
     [publications]
   )
 
+  const relatedPlanHistory = useMemo(() => {
+    if (!Array.isArray(planHistory) || planHistory.length === 0) return []
+    const pid = safePlan?.plan_id
+    if (pid) {
+      return planHistory.filter((h) => h?.id === pid)
+    }
+    const token = getPlanSnapshotToken()
+    if (token) {
+      return planHistory.filter((h) => h?.snapshot_token === token)
+    }
+    return []
+  }, [planHistory, safePlan?.plan_id])
+
+  const filteredSavedSnapshots = useMemo(() => {
+    const q = savedPlansFilter.trim().toLowerCase()
+    if (!q) return savedSnapshots
+    return savedSnapshots.filter((item) => {
+      const hay = [
+        item.summary?.display_name,
+        item.summary?.plan_id,
+        item.token,
+        item.summary?.start_date,
+        item.summary?.end_date,
+        formatSavedAt(item.saved_at),
+        formatSavedPlatforms(item.summary?.platforms)
+      ]
+        .map((x) => String(x || '').toLowerCase())
+        .join(' ')
+      return hay.includes(q)
+    })
+  }, [savedSnapshots, savedPlansFilter])
+
+  const refreshSavedSnapshots = useCallback(async () => {
+    setSavedListLoading(true)
+    setSavedListError(false)
+    try {
+      const res = await listPlanSnapshotsFromServer()
+      setSavedSnapshots(Array.isArray(res?.snapshots) ? res.snapshots : [])
+    } catch (e) {
+      console.error('Не удалось загрузить список сохранённых планов:', e)
+      setSavedListError(true)
+      setSavedSnapshots([])
+    } finally {
+      setSavedListLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
+    let cancelled = false
     const loadCurrentPlan = async () => {
+      const tokenFromUrl = new URLSearchParams(window.location.search).get('token')?.trim()
+      if (tokenFromUrl) {
+        const opened = await openSnapshotByToken(tokenFromUrl)
+        if (cancelled) return
+        if (opened?.plan) {
+          setContentPlan(ensureUniquePublicationIds(opened.plan))
+          setOptimizationMeta(opened.optimization || null)
+          setPlanHistory(getPlanHistory())
+          navigate('/content-plan', { replace: true })
+          setLoading(false)
+          return
+        }
+        if (opened?.missingSnapshot) {
+          window.alert('Снимок по ссылке не найден на сервере.')
+          navigate('/content-plan', { replace: true })
+        }
+      }
       const state = await getCurrentPlanState()
+      if (cancelled) return
       if (state?.plan) setContentPlan(ensureUniquePublicationIds(state.plan))
       setOptimizationMeta(state?.optimization || null)
       setPlanHistory(getPlanHistory())
       setLoading(false)
     }
     loadCurrentPlan()
-  }, [])
+    return () => {
+      cancelled = true
+    }
+  }, [navigate])
+
+  useEffect(() => {
+    if (loading || contentPlan != null) return
+    refreshSavedSnapshots()
+  }, [loading, contentPlan, refreshSavedSnapshots])
 
   useEffect(() => {
     if (!downloadMenuOpen) return
@@ -250,8 +271,11 @@ const ContentPlanPage = () => {
     const type = optimizationMeta ? 'optimized' : 'draft'
     const optimization = optimizationMeta || null
     try {
-      const ok = await savePlanSnapshot(nextPlan, { type, optimization, token })
-      if (!ok) return
+      const saved = await savePlanSnapshot(nextPlan, { type, optimization, token })
+      if (!saved.ok) {
+        window.alert(saved.message)
+        return
+      }
       setContentPlan(nextPlan)
       setPlanHistory(getPlanHistory())
       setIsEditingPlanName(false)
@@ -275,8 +299,17 @@ const ContentPlanPage = () => {
       platforms: getPlatformsFromPublications(nextPublications)
     })
 
+    const token = getPlanSnapshotToken()
     try {
-      await savePlanSnapshot(nextPlan, { type: 'draft', optimization: null })
+      const saved = await savePlanSnapshot(nextPlan, {
+        type: 'draft',
+        optimization: null,
+        ...(token ? { token } : {})
+      })
+      if (!saved.ok) {
+        window.alert(saved.message)
+        return
+      }
       setContentPlan(nextPlan)
       setOptimizationMeta(null)
       setPlanHistory(getPlanHistory())
@@ -304,8 +337,17 @@ const ContentPlanPage = () => {
 
     const type = optimizationMeta ? 'optimized' : 'draft'
     const optimization = optimizationMeta || null
+    const token = getPlanSnapshotToken()
     try {
-      await savePlanSnapshot(nextPlan, { type, optimization })
+      const saved = await savePlanSnapshot(nextPlan, {
+        type,
+        optimization,
+        ...(token ? { token } : {})
+      })
+      if (!saved.ok) {
+        window.alert(saved.message)
+        return
+      }
       setContentPlan(nextPlan)
       setPlanHistory(getPlanHistory())
     } catch (e) {
@@ -324,8 +366,17 @@ const ContentPlanPage = () => {
       notes: nextPlanFields.notes
     })
 
+    const token = getPlanSnapshotToken()
     try {
-      await savePlanSnapshot(nextPlan, { type: 'draft', optimization: null })
+      const saved = await savePlanSnapshot(nextPlan, {
+        type: 'draft',
+        optimization: null,
+        ...(token ? { token } : {})
+      })
+      if (!saved.ok) {
+        window.alert(saved.message)
+        return
+      }
       setContentPlan(nextPlan)
       setOptimizationMeta(null)
       setPlanHistory(getPlanHistory())
@@ -344,8 +395,12 @@ const ContentPlanPage = () => {
       )
       return
     }
+    if (snapshot?.networkError) {
+      window.alert(snapshot.message)
+      return
+    }
     if (!snapshot?.plan) {
-      window.alert('Не удалось загрузить версию плана. Проверьте соединение с API и попробуйте снова.')
+      window.alert('Не удалось загрузить версию плана.')
       return
     }
     setContentPlan(ensureUniquePublicationIds(snapshot.plan))
@@ -364,6 +419,11 @@ const ContentPlanPage = () => {
       const result = await removePlanFromHistory(entryId, entryType, savedAt)
       if (!result.ok) return
       setPlanHistory(getPlanHistory())
+      if (result.loadNetworkError) {
+        window.alert(
+          'Текущая версия убрана из истории, но следующий план не загрузился: ' + result.loadNetworkError
+        )
+      }
       if (result.hadCurrentRemoved) {
         if (result.loaded?.plan) {
           setContentPlan(ensureUniquePublicationIds(result.loaded.plan))
@@ -376,6 +436,46 @@ const ContentPlanPage = () => {
     } catch (e) {
       console.error('Не удалось удалить план из истории:', e)
     }
+  }
+
+  const handleOpenSnapshotByToken = async (rawToken) => {
+    const token = extractSnapshotTokenFromInput(typeof rawToken === 'string' ? rawToken : '')
+    if (!token) {
+      window.alert('Вставьте рабочую ссылку на план или скопированный из неё идентификатор (32 символа).')
+      return
+    }
+    setOpeningToken(true)
+    try {
+      const result = await openSnapshotByToken(token)
+      if (result?.missingSnapshot) {
+        window.alert('Снимок не найден на сервере.')
+        await refreshSavedSnapshots()
+        return
+      }
+      if (result?.networkError) {
+        window.alert(result.message)
+        return
+      }
+      if (!result?.plan) {
+        window.alert('Не удалось открыть план.')
+        return
+      }
+      setContentPlan(ensureUniquePublicationIds(result.plan))
+      setOptimizationMeta(result.optimization || null)
+      setPlanHistory(getPlanHistory())
+      setTokenInput('')
+      setSavedPlansLibraryOpen(false)
+    } finally {
+      setOpeningToken(false)
+    }
+  }
+
+  const handleToggleSavedLibrary = () => {
+    setSavedPlansLibraryOpen((prev) => {
+      const next = !prev
+      if (next) refreshSavedSnapshots()
+      return next
+    })
   }
 
   const baseFilename =
@@ -413,6 +513,8 @@ const ContentPlanPage = () => {
     setDownloadMenuOpen(false)
   }
 
+  const currentSnapshotToken = getPlanSnapshotToken()
+
   if (loading) {
     return (
       <div className="content-plan-page">
@@ -426,15 +528,22 @@ const ContentPlanPage = () => {
 
   if (!contentPlan) {
     return (
-      <div className="content-plan-page">
-        <div className="empty-state">
-          <h2>Контент-план не найден</h2>
-          <p>Создайте новый контент-план на главной странице</p>
-          <button className="primary-btn" onClick={() => navigate('/')}>
-            Создать контент-план
-          </button>
-        </div>
-      </div>
+      <ContentPlanEmptyState
+        navigate={navigate}
+        savedSnapshots={savedSnapshots}
+        savedListLoading={savedListLoading}
+        savedListError={savedListError}
+        refreshSavedSnapshots={refreshSavedSnapshots}
+        savedPlansFilter={savedPlansFilter}
+        onSavedPlansFilterChange={setSavedPlansFilter}
+        filteredSavedSnapshots={filteredSavedSnapshots}
+        tokenInput={tokenInput}
+        onTokenInputChange={setTokenInput}
+        openingToken={openingToken}
+        onOpenByToken={handleOpenSnapshotByToken}
+        formatSavedAt={formatSavedAt}
+        formatSavedPlatforms={formatSavedPlatforms}
+      />
     )
   }
 
@@ -539,6 +648,110 @@ const ContentPlanPage = () => {
         </div>
       </div>
 
+      <div className="saved-plans-library-bar">
+        <button type="button" className="secondary-btn" onClick={handleToggleSavedLibrary}>
+          {savedPlansLibraryOpen ? 'Скрыть список планов' : 'Все сохранённые планы'}
+        </button>
+      </div>
+
+      {savedPlansLibraryOpen && (
+        <section className="plan-section saved-plans-library-panel" aria-label="Сохранённые планы на сервере">
+          <p className="saved-plans-intro saved-plans-intro-compact">
+            Поиск по названию, дате, платформам или ID плана. По ссылке — в блоке ниже списка.
+          </p>
+          {savedListLoading && <p className="saved-plans-hint">Загрузка списка…</p>}
+          {savedListError && (
+            <div className="saved-plans-error-row">
+              <p className="saved-plans-error">Не удалось загрузить список. Проверьте API (порт 3001).</p>
+              <button type="button" className="secondary-btn" onClick={() => refreshSavedSnapshots()}>
+                Повторить
+              </button>
+            </div>
+          )}
+          {!savedListLoading && !savedListError && savedSnapshots.length > 0 && (
+            <div className="saved-plans-search-row saved-plans-search-row-inline">
+              <input
+                type="search"
+                className="saved-plans-search-input"
+                value={savedPlansFilter}
+                onChange={(e) => setSavedPlansFilter(e.target.value)}
+                placeholder="Поиск по названию, дате, платформам или ID плана"
+                aria-label="Поиск среди сохранённых планов"
+              />
+            </div>
+          )}
+          {!savedListLoading && !savedListError && savedSnapshots.length === 0 && (
+            <p className="saved-plans-hint">Нет сохранённых снимков.</p>
+          )}
+          {!savedListLoading &&
+            !savedListError &&
+            savedSnapshots.length > 0 &&
+            filteredSavedSnapshots.length === 0 && (
+              <p className="saved-plans-hint">Ничего не найдено по запросу.</p>
+            )}
+          {!savedListLoading && !savedListError && filteredSavedSnapshots.length > 0 && (
+            <div className="precedent-cards saved-plans-cards">
+              {filteredSavedSnapshots.map((item) => {
+                const isCurrent = item.token === currentSnapshotToken
+                return (
+                  <div
+                    key={item.token}
+                    className={`precedent-card plan-history-card ${isCurrent ? 'is-current' : ''}`}
+                  >
+                    <div className="precedent-card-header">
+                      <span
+                        className="precedent-card-title"
+                        title={String(item.summary?.display_name || item.summary?.plan_id || item.token)}
+                      >
+                        {item.summary?.display_name?.trim() || item.summary?.plan_id || 'Сохранённый план'}
+                      </span>
+                    </div>
+                    <div className="precedent-card-body">
+                      <div>Сохранён: {formatSavedAt(item.saved_at)}</div>
+                      <div>Публикаций: {item.summary?.publications_count ?? 0}</div>
+                      <div>Платформы: {formatSavedPlatforms(item.summary?.platforms) || 'не указаны'}</div>
+                    </div>
+                    {isCurrent && <div className="plan-history-current-badge">Открыт сейчас</div>}
+                    <div className="plan-history-card-actions">
+                      <button
+                        type="button"
+                        className="secondary-btn"
+                        disabled={openingToken || isCurrent}
+                        onClick={() => handleOpenSnapshotByToken(item.token)}
+                      >
+                        {isCurrent ? 'Открыт' : 'Открыть'}
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+          <details className="saved-plans-link-details saved-plans-link-details-inline">
+            <summary>Открыть по ссылке из браузера</summary>
+            <div className="saved-plans-token-row saved-plans-token-row-inline saved-plans-token-row-details">
+              <input
+                type="text"
+                className="saved-plans-token-input"
+                value={tokenInput}
+                onChange={(e) => setTokenInput(e.target.value)}
+                placeholder="Ссылка или идентификатор из адресной строки"
+                disabled={openingToken}
+                aria-label="Ссылка на сохранённый план"
+              />
+              <button
+                type="button"
+                className="secondary-btn"
+                disabled={openingToken || !tokenInput.trim()}
+                onClick={() => handleOpenSnapshotByToken(tokenInput)}
+              >
+                {openingToken ? 'Открытие…' : 'Открыть план'}
+              </button>
+            </div>
+          </details>
+        </section>
+      )}
+
       <PlanSummaryBar
         summary={summary}
         optimizationMeta={optimizationMeta}
@@ -547,13 +760,15 @@ const ContentPlanPage = () => {
 
       <div className="content-plan-content">
         <PlanHistoryPanel
-          history={planHistory}
+          history={relatedPlanHistory}
           onLoad={handleLoadHistoryEntry}
           onDelete={handleDeleteHistoryEntry}
           currentPlanId={contentPlan.plan_id}
           currentPlanType={currentPlanType}
           currentSavedAt={currentSavedAt}
           currentSummary={currentSummary}
+          subtitle="Здесь только версии текущего плана (один и тот же идентификатор плана в данных). Чтобы открыть другой сохранённый план, используйте «Все сохранённые планы» выше."
+          emptyMessage="Для этого плана в локальной истории нет других версий. Другие снимки на диске откройте через «Все сохранённые планы»."
         />
 
         <section className="plan-section">

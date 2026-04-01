@@ -70,14 +70,16 @@ const PlanHistoryPanel = ({
   currentPlanId,
   currentPlanType,
   currentSavedAt = null,
-  currentSummary
+  currentSummary,
+  subtitle = 'Быстро переключайтесь между сохранёнными версиями и сравнивайте их с текущим состоянием.',
+  emptyMessage = 'История пока пуста. После генерации или оптимизации здесь появятся сохраненные версии.'
 }) => {
   if (!Array.isArray(history) || history.length === 0) {
     return (
       <section className="plan-section">
         <h2 className="section-title">История планов</h2>
         <div className="empty-state">
-          <p>История пока пуста. После генерации или оптимизации здесь появятся сохраненные версии.</p>
+          <p>{emptyMessage}</p>
         </div>
       </section>
     )
@@ -88,9 +90,7 @@ const PlanHistoryPanel = ({
       <div className="plan-history-header">
         <div>
           <h2 className="section-title">История планов</h2>
-          <p className="plan-history-subtitle">
-            Быстро переключайтесь между сохранёнными версиями и сравнивайте их с текущим состоянием.
-          </p>
+          <p className="plan-history-subtitle">{subtitle}</p>
         </div>
       </div>
       <div className="precedent-cards">
