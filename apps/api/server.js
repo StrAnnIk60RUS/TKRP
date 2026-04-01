@@ -10,6 +10,11 @@ import {
   createCorsOptions,
   createRateLimitMiddleware
 } from './src/shared/http/security.js';
+import { runRuntimeRetentionOnStartup } from './src/shared/runtime/runtimeRetention.js';
+import {
+  apiNotFoundHandler,
+  globalErrorHandler
+} from './src/shared/http/expressHttp.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -19,6 +24,10 @@ dotenv.config({ path: path.resolve(__dirname, '..', '..', '.env') });
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+if (process.env.TRUST_PROXY === '1' || process.env.TRUST_PROXY === 'true') {
+  app.set('trust proxy', 1);
+}
 
 app.use(attachRequestContext);
 app.use(cors(createCorsOptions()));
@@ -36,10 +45,12 @@ app.get('/health', (req, res) => {
 });
 
 app.use('/api', apiRoutes);
+app.use('/api', apiNotFoundHandler);
+
+app.use(globalErrorHandler);
 
 app.listen(PORT, () => {
   console.log(`🚀 LLM Enrichment Server запущен на http://localhost:${PORT}`);
   console.log(`📡 LLM API: ${OPENROUTER_API_KEY ? '✅ Настроен' : '❌ Не настроен'}`);
+  void runRuntimeRetentionOnStartup();
 });
-
-
