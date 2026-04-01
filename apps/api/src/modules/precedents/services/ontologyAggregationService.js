@@ -11,12 +11,6 @@ function slugify(value, fallback = 'item') {
   return normalized || fallback;
 }
 
-function pushUniqueById(items, item) {
-  if (!item?.id) return;
-  if (items.some((existing) => existing.id === item.id)) return;
-  items.push(item);
-}
-
 function groupSnapshotByContext(snapshot = {}) {
   const groups = new Map();
   const publications = Array.isArray(snapshot?.publications) ? snapshot.publications : [];
@@ -257,60 +251,104 @@ export function buildOntologyFromSnapshot(snapshot = {}) {
   };
 }
 
+/**
+ * Листы XLSX из агрегированной онтологии ({@link buildOntologyFromSnapshot} → `global`).
+ * Без дублирования по конкуренту/платформе: каждая строка — уникальный элемент модели.
+ */
 export function buildOntologyExportSheets(ontology = {}) {
-  const contexts = Array.isArray(ontology?.contexts) ? ontology.contexts : [];
   const global = ontology?.global || {};
+  const summary = ontology?.source_summary || {};
+  const generatedAt = ontology?.generated_at || '';
 
-  const classesRows = [['Конкурент', 'Платформа', 'Класс']];
-  const entitiesRows = [['Конкурент', 'Платформа', 'Сущность', 'Класс']];
-  const relationsRows = [['Конкурент', 'Платформа', 'Субъект', 'Предикат', 'Объект', 'Источник']];
-  const entityClassRows = [['Конкурент', 'Платформа', 'Сущность', 'Класс', 'Confidence']];
-  const templatesRows = [['Конкурент', 'Платформа', 'Subject class', 'Predicate', 'Object class', 'Source label']];
-  const hierarchyRows = [['Конкурент', 'Платформа', 'Дочерняя сущность', 'Отношение', 'Родительская сущность']];
-  const synonymsRows = [['Конкурент', 'Платформа', 'Каноническая сущность', 'Синоним/вариант']];
-  const metaEntitiesRows = [['Сущность', 'Класс', 'Частота', 'Контексты', 'Платформы']];
+  const metaRows = [
+    ['Параметр', 'Значение'],
+    ['Сформировано', generatedAt],
+    ['Контекстов (источников данных)', summary.contexts_count ?? ''],
+    ['Публикаций в снимке', summary.publications_count ?? ''],
+    ['Контент-планов в снимке', summary.content_plans_count ?? '']
+  ];
 
-  contexts.forEach((context) => {
-    const competitor = context.competitor_name || context.competitor_id || '—';
-    const platform = context.platform || '—';
-
-    (context.classes || []).forEach((cls) => classesRows.push([competitor, platform, cls.id]));
-    (context.entities || []).forEach((entity) =>
-      entitiesRows.push([competitor, platform, entity.label, entity.class_id])
-    );
-    (context.entity_class_links || []).forEach((link) => {
-      const entity = (context.entities || []).find((item) => item.id === link.entity_id);
-      entityClassRows.push([competitor, platform, entity?.label || link.entity_id, link.class_id, link.confidence]);
-    });
-    (context.relation_templates || []).forEach((template) =>
-      templatesRows.push([
-        competitor,
-        platform,
-        template.subject_class,
-        template.predicate,
-        template.object_class,
-        template.source_label || ''
-      ])
-    );
-    (context.triples || []).forEach((triple) =>
-      relationsRows.push([
-        competitor,
-        platform,
-        triple.subject_label,
-        triple.predicate,
-        triple.object_label,
-        triple.evidence || ''
-      ])
-    );
-    (context.hierarchy || []).forEach((item) =>
-      hierarchyRows.push([competitor, platform, item.child_label, item.predicate, item.parent_label])
-    );
-    (context.synonyms || []).forEach((item) =>
-      synonymsRows.push([competitor, platform, item.canonical_label, item.synonym])
-    );
+  const classes = Array.isArray(global.classes) ? global.classes : [];
+  const classesRows = [['ID класса', 'Метка', 'Число контекстов']];
+  classes.forEach((cls) => {
+    classesRows.push([cls.id, cls.label || cls.id, (cls.context_ids || []).length]);
   });
 
-  (global.meta_entities || []).forEach((item) => {
+  const entities = Array.isArray(global.entities) ? global.entities : [];
+  const entityById = new Map(entities.map((e) => [e.id, e]));
+  const entitiesRows = [['ID сущности', 'Сущность', 'Класс', 'Число контекстов', 'Конкуренты', 'Платформы']];
+  entities.forEach((entity) => {
+    entitiesRows.push([
+      entity.id,
+      entity.label,
+      entity.class_id,
+      (entity.context_ids || []).length,
+      Array.isArray(entity.competitor_names) ? entity.competitor_names.join(', ') : '',
+      Array.isArray(entity.platforms) ? entity.platforms.join(', ') : ''
+    ]);
+  });
+
+  const triples = Array.isArray(global.triples) ? global.triples : [];
+  const relationsRows = [['Субъект', 'Предикат', 'Объект', 'Число контекстов', 'Доказательства']];
+  triples.forEach((triple) => {
+    relationsRows.push([
+      triple.subject_label,
+      triple.predicate,
+      triple.object_label,
+      (triple.context_ids || []).length,
+      Array.isArray(triple.evidences) ? triple.evidences.join(' | ') : triple.evidence || ''
+    ]);
+  });
+
+  const links = Array.isArray(global.entity_class_links) ? global.entity_class_links : [];
+  const entityClassRows = [
+    ['ID сущности', 'Сущность', 'Класс', 'Уверенность', 'Число контекстов']
+  ];
+  links.forEach((link) => {
+    const label = entityById.get(link.entity_id)?.label || '';
+    entityClassRows.push([
+      link.entity_id,
+      label,
+      link.class_id,
+      link.confidence ?? '',
+      link.contexts_count ?? (link.context_ids || []).length
+    ]);
+  });
+
+  const templates = Array.isArray(global.relation_templates) ? global.relation_templates : [];
+  const templatesRows = [
+    ['Класс субъекта', 'Предикат', 'Класс объекта', 'Метки источников', 'Число контекстов']
+  ];
+  templates.forEach((template) => {
+    templatesRows.push([
+      template.subject_class,
+      template.predicate,
+      template.object_class,
+      Array.isArray(template.source_labels) ? template.source_labels.join(', ') : '',
+      (template.context_ids || []).length
+    ]);
+  });
+
+  const hierarchy = Array.isArray(global.hierarchy) ? global.hierarchy : [];
+  const hierarchyRows = [['Дочерняя сущность', 'Отношение', 'Родительская сущность', 'Число контекстов']];
+  hierarchy.forEach((item) => {
+    hierarchyRows.push([
+      item.child_label,
+      item.predicate,
+      item.parent_label,
+      (item.context_ids || []).length
+    ]);
+  });
+
+  const synonyms = Array.isArray(global.synonyms) ? global.synonyms : [];
+  const synonymsRows = [['Каноническая сущность', 'Синоним или вариант', 'Число контекстов']];
+  synonyms.forEach((item) => {
+    synonymsRows.push([item.canonical_label, item.synonym, (item.context_ids || []).length]);
+  });
+
+  const metaEntities = Array.isArray(global.meta_entities) ? global.meta_entities : [];
+  const metaEntitiesRows = [['Сущность', 'Класс', 'Частота (контекстов)', 'Конкуренты', 'Платформы']];
+  metaEntities.forEach((item) => {
     metaEntitiesRows.push([
       item.label,
       item.class_id,
@@ -321,6 +359,7 @@ export function buildOntologyExportSheets(ontology = {}) {
   });
 
   return {
+    metaRows,
     classesRows,
     entitiesRows,
     relationsRows,

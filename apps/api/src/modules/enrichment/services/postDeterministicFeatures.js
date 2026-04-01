@@ -49,7 +49,7 @@ function detectLists(content) {
   if (!content || typeof content !== 'string') return 0;
   const lines = content.split('\n');
   const hasList = lines.some((line) =>
-    /^\s*(?:[-*•]|\d+[\.\)])\s+\S+/.test(line)
+    /^\s*(?:[-*•]|\d+[.)])\s+\S+/.test(line)
   );
   return hasList ? 1 : 0;
 }

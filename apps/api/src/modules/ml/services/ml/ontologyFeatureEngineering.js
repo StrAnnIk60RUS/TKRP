@@ -16,7 +16,6 @@ import {
   estimateSentenceLengthBucket,
   getLeadParagraph,
   getTitleLine,
-  mapTernaryToUnit,
   normalizeByRange,
   pickFirstFinite,
   resolveToneFlags,

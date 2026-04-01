@@ -93,7 +93,8 @@ function contentPlanSourceTrust(plan) {
  * @returns {{ reliability: number, factors: Object }}
  */
 export function computePublicationReliability(item) {
-  const retrievalScore = clamp01(Number(item?.score) ?? 0);
+  const rawScore = Number(item?.score);
+  const retrievalScore = clamp01(Number.isFinite(rawScore) ? rawScore : 0);
   const data = item?.data || {};
   const completeness = publicationCompleteness(data);
   const sourceTrust = publicationSourceTrust(data);
@@ -117,7 +118,8 @@ export function computePublicationReliability(item) {
  * Вычисляет надёжность контент-плана-прецедента.
  */
 export function computeContentPlanReliability(item) {
-  const retrievalScore = clamp01(Number(item?.score) ?? 0);
+  const rawScore = Number(item?.score);
+  const retrievalScore = clamp01(Number.isFinite(rawScore) ? rawScore : 0);
   const data = item?.data || {};
   const completeness = contentPlanCompleteness(data);
   const sourceTrust = contentPlanSourceTrust(data);

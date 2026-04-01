@@ -124,6 +124,7 @@ router.get('/ontology', (req, res) => {
 router.get('/ontology/export', (req, res) => {
   try {
     const {
+      metaRows,
       classesRows,
       entitiesRows,
       relationsRows,
@@ -135,6 +136,9 @@ router.get('/ontology/export', (req, res) => {
     } = getOntologyExportData();
 
     const wb = XLSX.utils.book_new();
+
+    const wsMeta = XLSX.utils.aoa_to_sheet(metaRows);
+    XLSX.utils.book_append_sheet(wb, wsMeta, 'Сводка');
 
     const wsClasses = XLSX.utils.aoa_to_sheet(classesRows);
     XLSX.utils.book_append_sheet(wb, wsClasses, 'Классы');

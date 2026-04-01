@@ -1,7 +1,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { buildOntologyFromSnapshot } from '../src/modules/precedents/services/ontologyAggregationService.js'
+import {
+  buildOntologyFromSnapshot,
+  buildOntologyExportSheets
+} from '../src/modules/precedents/services/ontologyAggregationService.js'
 
 test('buildOntologyFromSnapshot creates typed entities, triples and hierarchy', () => {
   const snapshot = {
@@ -89,5 +92,52 @@ test('buildOntologyFromSnapshot creates typed entities, triples and hierarchy', 
         item.object_class === 'audience_segment'
     )
   )
+})
+
+test('buildOntologyExportSheets exports merged global ontology (not per-competitor rows)', () => {
+  const snapshot = {
+    publications: [],
+    content_plans: [
+      {
+        plan_id: 'plan-1',
+        competitor_id: 'c1',
+        competitor_name: 'Comp A',
+        platform: 'linkedin',
+        ontology_support: {
+          classes: ['topic', 'segment'],
+          entities: ['alpha', 'B2B'],
+          relations: []
+        },
+        content_plan_model: { audience_segments: ['B2B'], publication_schedule: [] }
+      },
+      {
+        plan_id: 'plan-2',
+        competitor_id: 'c2',
+        competitor_name: 'Comp B',
+        platform: 'twitter',
+        ontology_support: {
+          classes: ['topic', 'segment'],
+          entities: ['beta', 'B2B'],
+          relations: []
+        },
+        content_plan_model: { audience_segments: ['B2B'], publication_schedule: [] }
+      }
+    ]
+  }
+
+  const ontology = buildOntologyFromSnapshot(snapshot)
+  const sheets = buildOntologyExportSheets(ontology)
+
+  assert.equal(sheets.metaRows[1][0], 'Сформировано')
+  assert.ok(sheets.metaRows[1][1])
+  assert.equal(sheets.classesRows[0].includes('Конкурент'), false)
+  assert.equal(sheets.classesRows[0][0], 'ID класса')
+  assert.ok(sheets.classesRows.length >= 3)
+
+  const classIds = sheets.classesRows.slice(1).map((r) => r[0])
+  assert.equal(new Set(classIds).size, classIds.length)
+
+  assert.equal(sheets.entitiesRows[0][0], 'ID сущности')
+  assert.equal(sheets.relationsRows[0][0], 'Субъект')
 })
 
