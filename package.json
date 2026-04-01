@@ -10,8 +10,10 @@
     "dev:server": "npm run dev --prefix apps/api",
     "build": "vite build --config apps/web/vite.config.js",
     "preview": "vite preview --config apps/web/vite.config.js",
-    "lint": "node ./tools/scripts/lint-project.mjs",
-    "test": "node --test apps/web/tests/frontend-formUtils.test.js apps/api/tests/ontologyAggregation.test.js apps/api/tests/security.test.js",
+    "install:api": "npm install --prefix apps/api",
+    "lint": "node ./tools/scripts/lint-project.mjs && eslint apps/web apps/api",
+    "format": "prettier --write \"apps/web/**/*.{js,jsx}\" \"apps/api/**/*.js\" \"eslint.config.js\"",
+    "test": "node --test apps/web/tests/frontend-formUtils.test.js apps/api/tests/ontologyAggregation.test.js apps/api/tests/security.test.js apps/api/tests/planRoutes.integration.test.js apps/api/tests/routeUtils.test.js apps/api/tests/expressHttp.integration.test.js",
     "check": "npm run lint && npm run test && npm run build"
   },
   "dependencies": {
@@ -23,10 +25,17 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@eslint/js": "^9.15.0",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "@vitejs/plugin-react": "^4.2.0",
     "concurrently": "^9.2.1",
+    "eslint": "^9.15.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-react": "^7.37.2",
+    "eslint-plugin-react-hooks": "^5.0.0",
+    "globals": "^15.12.0",
+    "prettier": "^3.4.2",
     "vite": "^5.0.0"
   }
 }
