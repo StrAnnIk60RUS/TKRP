@@ -42,6 +42,10 @@ server/data/runtime/
 server/data/precedents-store/
 server/.data/
 
+# App API runtime (plan snapshots, wizard drafts, parser jobs)
+data/runtime/
+apps/api/.data/
+
 # Python cache / bytecode
 __pycache__/
 *.py[cod]
