@@ -2,18 +2,12 @@
  * Анализ плана на риски: однообразие, воронка, слабые гипотезы
  */
 
-function parseNumber(val) {
-  if (val == null || val === '') return null
-  const n = Number(val)
-  return Number.isFinite(n) ? n : null
-}
-
 /**
  * @param {Object} plan - draft_content_plan или optimized_content_plan
- * @param {Object} formData - данные формы
+ * @param {Object} _formData - данные формы (зарезервировано для будущих проверок)
  * @returns {Array<{ id: string, severity: 'high'|'medium'|'low', label: string, detail: string }>}
  */
-export function buildRiskSummary(plan, formData = {}) {
+export function buildRiskSummary(plan, _formData = {}) {
   const risks = []
   if (!plan || typeof plan !== 'object') return risks
 
@@ -22,12 +16,12 @@ export function buildRiskSummary(plan, formData = {}) {
   const formats = new Set(publications.map((p) => p.format).filter(Boolean))
   const objectives = new Set(publications.map((p) => p.objective).filter(Boolean))
   const tones = new Set(publications.map((p) => p.tone).filter(Boolean))
-  if (publications.length >= 10 && (formats.size <= 1 || objectives.size <= 1)) {
+  if (publications.length >= 10 && (formats.size <= 1 || objectives.size <= 1 || tones.size <= 1)) {
     risks.push({
       id: 'low_diversity',
       severity: 'medium',
       label: 'Низкое разнообразие плана',
-      detail: `Форматов: ${formats.size}, целей: ${objectives.size}. План может казаться однообразным аудитории.`
+      detail: `Форматов: ${formats.size}, целей: ${objectives.size}, тонов: ${tones.size}. План может казаться однообразным аудитории.`
     })
   }
 

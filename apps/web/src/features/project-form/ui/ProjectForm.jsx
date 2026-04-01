@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef, useReducer, useCallback } from 'react'
+import React, { useMemo, useEffect, useRef, useReducer, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ToastContainer } from '../../../shared/ui/Toast'
 import CompetitorsStep from './competitors/CompetitorsStep'
@@ -488,6 +488,7 @@ const ProjectForm = () => {
     }
 
     restoreDraft()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- restore runs when server availability is known; setFormData stable
   }, [isEnrichmentServerAvailable])
 
   useEffect(() => {
@@ -507,6 +508,7 @@ const ProjectForm = () => {
 
   useEffect(() => {
     setCurrentStep((prev) => Math.min(prev, wizardSteps.length))
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- clamp when wizardSteps.length changes; setCurrentStep stable
   }, [wizardSteps.length])
 
   useEffect(() => {
@@ -699,7 +701,7 @@ const ProjectForm = () => {
     }
   }
 
-  const handleReset = () => {
+  const _handleReset = () => {
     if (window.confirm('Вы уверены, что хотите очистить все поля формы?')) {
       setFormData(initialFormData)
       setErrors({})
@@ -724,7 +726,7 @@ const ProjectForm = () => {
     await loadExample(exampleName)
   }
 
-  const handleLoadExample = () => {
+  const _handleLoadExample = () => {
     if (window.confirm('Загрузить пример данных? Текущие данные будут заменены.')) {
       // Пример данных из project_data_example.json
       setFormData(demoExampleFormData)
@@ -776,11 +778,15 @@ const ProjectForm = () => {
         // Если LLM вернул черновой контент-план, сохраняем его для страницы просмотра
         if (response?.draft?.draft_content_plan) {
           try {
-            await savePlanSnapshot(response.draft.draft_content_plan, {
+            const saved = await savePlanSnapshot(response.draft.draft_content_plan, {
               type: 'draft'
             })
+            if (!saved.ok) {
+              addToast(saved.message || 'Не удалось сохранить снимок плана на сервере', 'error')
+            }
           } catch (e) {
-            console.error('Не удалось сохранить контент-план в localStorage:', e)
+            console.error('Не удалось сохранить контент-план:', e)
+            addToast(e?.message || 'Ошибка сохранения снимка плана', 'error')
           }
         }
         if (response?.rag) {
@@ -884,7 +890,7 @@ const ProjectForm = () => {
 
         if (response?.optimized_content_plan) {
           try {
-            await savePlanSnapshot(response.optimized_content_plan, {
+            const saved = await savePlanSnapshot(response.optimized_content_plan, {
               type: 'optimized',
               optimization: {
                 optimized_at: new Date().toISOString(),
@@ -892,8 +898,12 @@ const ProjectForm = () => {
                 stage2: response.stage2 || null
               }
             })
+            if (!saved.ok) {
+              addToast(saved.message || 'Не удалось сохранить оптимизированный план на сервере', 'error')
+            }
           } catch (e) {
-            console.error('Не удалось сохранить оптимизированный план в localStorage:', e)
+            console.error('Не удалось сохранить оптимизированный план:', e)
+            addToast(e?.message || 'Ошибка сохранения снимка плана', 'error')
           }
         }
       })

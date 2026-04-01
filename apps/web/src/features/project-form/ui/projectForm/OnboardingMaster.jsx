@@ -7,7 +7,7 @@ import './OnboardingMaster.css'
  * Мастер онбординга: выбор режима (быстрый/расширенный) и шаблона под тип проекта.
  */
 const OnboardingMaster = ({
-  currentRole,
+  currentRole: _currentRole,
   onApplyTemplate,
   onModeHint,
   isCompact = false
