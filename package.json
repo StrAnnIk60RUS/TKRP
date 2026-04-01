@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Веб-приложение для автоматизации продвижения IT-проектов",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "concurrently \"npm:dev:vite\" \"npm:dev:server\"",
     "dev:vite": "vite --config apps/web/vite.config.js",

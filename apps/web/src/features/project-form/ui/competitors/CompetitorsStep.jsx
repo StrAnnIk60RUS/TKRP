@@ -11,6 +11,7 @@ const CompetitorsStep = ({
   isEnrichmentServerAvailable,
   canEnrich,
   showEnrichButton = true,
+  precedentsAlreadyInDb = false,
   onUrlChange,
   onAddUrl,
   onRemoveUrl,
@@ -45,9 +46,19 @@ const CompetitorsStep = ({
         <div className="competitors-step-header">
           <span className="actions-label">Конкуренты: ссылки и данные</span>
           <span className="actions-description">
-            Шаг 1. Введите ссылки на страницы/аккаунты конкурентов в VK или LinkedIn, затем запустите парсинг.
+            Шаг 1. Парсинг и обогащение нужны только если данных конкурентов ещё нет в базе прецедентов. Если вы уже
+            проходили этот цикл раньше, можно перейти к следующим шагам.
           </span>
         </div>
+
+        {precedentsAlreadyInDb && !competitorsData && (
+          <div className="ui-callout ui-callout-light" style={{ marginBottom: '0.75rem' }}>
+            <div className="ui-callout-title">База прецедентов уже содержит данные</div>
+            <div className="ui-callout-text">
+              Повторный парсинг и обогащение не обязательны. При необходимости добавьте новых конкурентов ниже.
+            </div>
+          </div>
+        )}
 
         <div className="ui-panel competitors-dashboard">
           <div className="ui-panel-header">
@@ -176,7 +187,7 @@ const CompetitorsStep = ({
         {competitorsData && (
           <div className="competitors-status">
             <span className="competitors-status-text">
-              ✓ Данные конкурентов получены из парсера
+              ✓ Данные конкурентов в форме
               {competitorsFileName && ` (${competitorsFileName})`}
               {` — ${competitorsData.competitors?.length || 0} конкурентов`}
             </span>
@@ -195,7 +206,7 @@ const CompetitorsStep = ({
                   isEnrichmentServerAvailable === false
                     ? 'Сервер обогащения недоступен'
                     : !canEnrich
-                    ? 'Сначала выполните успешный парсинг конкурентов'
+                    ? 'Сначала получите данные конкурентов (кнопка «Спарсить»)'
                     : 'Обогатить данные конкурентов'
                 }
               >
@@ -218,10 +229,11 @@ const CompetitorsStep = ({
           <div className="ui-empty">
             <div className="ui-empty-title">Данных конкурентов пока нет</div>
             <div className="ui-empty-text">
-              Добавьте 1–3 ссылки, выберите лимит постов и нажмите <strong>Спарсить</strong>.
+              Если база прецедентов уже заполнена с прошлых запусков, этот блок можно не тратить. Иначе добавьте
+              ссылки, выберите лимит и нажмите <strong>Спарсить</strong>.
               {showEnrichButton
-                ? ' После этого появится кнопка Обогатить и данные будут добавлены в базу прецедентов.'
-                : ' Данные будут автоматически обогащены и добавлены в базу прецедентов.'}
+                ? ' После парсинга доступна кнопка «Обогатить» (повтор не нужен для уже обогащённых данных).'
+                : ' После парсинга данные обогатятся автоматически.'}
             </div>
           </div>
         )}

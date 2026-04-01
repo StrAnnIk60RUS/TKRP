@@ -114,6 +114,17 @@ body.theme-light .role-select {
   color: #1a1a2e;
 }
 
+body.theme-light .theme-toggle-btn {
+  color: #111827;
+  border-color: #d97706;
+}
+
+body.theme-light .theme-toggle-btn:hover {
+  background: #f8b500;
+  border-color: #f8b500;
+  color: #1a1a2e;
+}
+
 .main-nav {
   display: flex;
   gap: 8px;

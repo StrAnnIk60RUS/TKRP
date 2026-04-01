@@ -91,14 +91,26 @@ export function exportToExcel(contentPlan, filename) {
   const ws = XLSX.utils.aoa_to_sheet(wsData)
   XLSX.utils.book_append_sheet(wb, ws, 'Публикации')
 
+  const displayName =
+    typeof contentPlan?.display_name === 'string' && contentPlan.display_name.trim()
+      ? contentPlan.display_name.trim()
+      : null
+
   const params = contentPlan?.planning_horizon
     ? [
         ['Параметр', 'Значение'],
+        ...(displayName ? [['Название плана', displayName]] : []),
         ['Период', `${contentPlan.planning_horizon.start_date || '—'} — ${contentPlan.planning_horizon.end_date || '—'}`],
         ['Платформы', Array.isArray(contentPlan.platforms) ? contentPlan.platforms.join(', ').toUpperCase() : '—'],
         ['Всего публикаций', String(pubs.length)]
       ]
-    : [['Нет данных']]
+    : displayName
+      ? [
+          ['Параметр', 'Значение'],
+          ['Название плана', displayName],
+          ['Всего публикаций', String(pubs.length)]
+        ]
+      : [['Нет данных']]
 
   const wsParams = XLSX.utils.aoa_to_sheet(params)
   XLSX.utils.book_append_sheet(wb, wsParams, 'Параметры плана')
@@ -122,8 +134,14 @@ export async function exportToPdf(contentPlan, options = {}) {
   const pubs = Array.isArray(contentPlan?.publications) ? contentPlan.publications : []
   const rows = buildPublicationRows(pubs)
 
+  const pdfTitleName =
+    typeof contentPlan?.display_name === 'string' && contentPlan.display_name.trim()
+      ? contentPlan.display_name.trim()
+      : null
+
   doc.setFontSize(14)
-  doc.text(isOptimized ? 'Оптимизированный контент-план' : 'Контент-план', 14, 12)
+  const headline = isOptimized ? 'Оптимизированный контент-план' : 'Контент-план'
+  doc.text(pdfTitleName ? `${headline}: ${pdfTitleName}` : headline, 14, 12)
   doc.setFontSize(10)
   const period =
     contentPlan?.planning_horizon?.start_date && contentPlan?.planning_horizon?.end_date

@@ -14,7 +14,9 @@ import {
   getCurrentHistoryEntry,
   getCurrentPlanState,
   getPlanHistory,
+  getPlanSnapshotToken,
   loadPlanFromHistory,
+  removePlanFromHistory,
   savePlanSnapshot
 } from '../../../features/content-plan/model/planStorage'
 import { exportToExcel, exportToPdf } from '../../../shared/lib/contentPlanExport'
@@ -44,6 +46,15 @@ const ensureUniquePublicationIds = (plan) => {
   })
 
   return { ...plan, publications: normalized }
+}
+
+const MAX_PLAN_DISPLAY_NAME_LEN = 120
+
+const sanitizeExportBasename = (name) => {
+  const t = typeof name === 'string' ? name.trim().slice(0, 80) : ''
+  if (!t) return null
+  const cleaned = t.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').replace(/\s+/g, '_')
+  return cleaned || null
 }
 
 const getPlatformsFromPublications = (pubs) => {
@@ -104,6 +115,8 @@ const ContentPlanPage = () => {
   const [filters, setFilters] = useState(DEFAULT_FILTERS)
   const [viewMode, setViewMode] = useState('cards')
   const [downloadMenuOpen, setDownloadMenuOpen] = useState(false)
+  const [isEditingPlanName, setIsEditingPlanName] = useState(false)
+  const [planNameDraft, setPlanNameDraft] = useState('')
 
   const safePlan = useMemo(() => ensureUniquePublicationIds(contentPlan), [contentPlan])
   const publications = useMemo(
@@ -196,6 +209,10 @@ const ContentPlanPage = () => {
       platforms,
       start_date: safePlan?.planning_horizon?.start_date || null,
       end_date: safePlan?.planning_horizon?.end_date || null,
+      display_name:
+        typeof safePlan?.display_name === 'string' && safePlan.display_name.trim()
+          ? safePlan.display_name.trim().slice(0, MAX_PLAN_DISPLAY_NAME_LEN)
+          : null,
       optimization_valid: optimizationMeta?.stage2?.constraints_check?.valid ?? null,
       optimization_messages: optimizationMeta?.stage2?.constraints_check?.messages ?? null
     }),
@@ -204,6 +221,43 @@ const ContentPlanPage = () => {
 
   const handleFilterChange = (name, value) => {
     setFilters((prev) => ({ ...prev, [name]: value }))
+  }
+
+  const beginEditPlanName = () => {
+    setPlanNameDraft(
+      typeof safePlan?.display_name === 'string' ? safePlan.display_name : ''
+    )
+    setIsEditingPlanName(true)
+  }
+
+  const cancelEditPlanName = () => {
+    setIsEditingPlanName(false)
+    setPlanNameDraft('')
+  }
+
+  const handleSavePlanDisplayName = async () => {
+    if (!safePlan) return
+    const token = getPlanSnapshotToken()
+    if (!token) {
+      console.error('Нет токена snapshot — нельзя сохранить название')
+      return
+    }
+    const trimmed = planNameDraft.trim().slice(0, MAX_PLAN_DISPLAY_NAME_LEN)
+    const nextPlan = { ...safePlan }
+    if (trimmed) nextPlan.display_name = trimmed
+    else delete nextPlan.display_name
+
+    const type = optimizationMeta ? 'optimized' : 'draft'
+    const optimization = optimizationMeta || null
+    try {
+      const ok = await savePlanSnapshot(nextPlan, { type, optimization, token })
+      if (!ok) return
+      setContentPlan(nextPlan)
+      setPlanHistory(getPlanHistory())
+      setIsEditingPlanName(false)
+    } catch (e) {
+      console.error('Не удалось сохранить название плана:', e)
+    }
   }
 
   const handleSavePostEdit = async (nextPartialPublication) => {
@@ -283,13 +337,50 @@ const ContentPlanPage = () => {
 
   const handleLoadHistoryEntry = async (entryId, entryType, savedAt) => {
     const snapshot = await loadPlanFromHistory(entryId, entryType, savedAt)
-    if (!snapshot?.plan) return
+    setPlanHistory(getPlanHistory())
+    if (snapshot?.missingSnapshot) {
+      window.alert(
+        'Эта версия плана больше не найдена на сервере (файл удалён или среда сброшена). Запись убрана из истории.'
+      )
+      return
+    }
+    if (!snapshot?.plan) {
+      window.alert('Не удалось загрузить версию плана. Проверьте соединение с API и попробуйте снова.')
+      return
+    }
     setContentPlan(ensureUniquePublicationIds(snapshot.plan))
     setOptimizationMeta(snapshot.optimization || null)
-    setPlanHistory(getPlanHistory())
   }
 
-  const baseFilename = `content_plan_${new Date().toISOString().split('T')[0]}`
+  const handleDeleteHistoryEntry = async (entryId, entryType, savedAt) => {
+    if (
+      !window.confirm(
+        'Удалить эту версию контент-плана из истории? Файл на сервере будет удалён, восстановить её будет нельзя.'
+      )
+    ) {
+      return
+    }
+    try {
+      const result = await removePlanFromHistory(entryId, entryType, savedAt)
+      if (!result.ok) return
+      setPlanHistory(getPlanHistory())
+      if (result.hadCurrentRemoved) {
+        if (result.loaded?.plan) {
+          setContentPlan(ensureUniquePublicationIds(result.loaded.plan))
+          setOptimizationMeta(result.loaded.optimization || null)
+        } else {
+          setContentPlan(null)
+          setOptimizationMeta(null)
+        }
+      }
+    } catch (e) {
+      console.error('Не удалось удалить план из истории:', e)
+    }
+  }
+
+  const baseFilename =
+    sanitizeExportBasename(safePlan?.display_name) ||
+    `content_plan_${new Date().toISOString().split('T')[0]}`
 
   const handleDownloadJson = () => {
     if (!contentPlan) return
@@ -404,9 +495,48 @@ const ContentPlanPage = () => {
             </div>
           </div>
         </div>
-        <p className="page-subtitle">
-          ID плана: <strong>{contentPlan.plan_id || 'Неизвестно'}</strong>
-        </p>
+        <div className="plan-page-meta">
+          <div className="plan-display-name-row">
+            <span className="plan-display-name-label">Название</span>
+            {isEditingPlanName ? (
+              <div className="plan-display-name-edit">
+                <input
+                  type="text"
+                  className="plan-display-name-input"
+                  value={planNameDraft}
+                  onChange={(e) => setPlanNameDraft(e.target.value.slice(0, MAX_PLAN_DISPLAY_NAME_LEN))}
+                  placeholder="Например, VK — весна 2026"
+                  maxLength={MAX_PLAN_DISPLAY_NAME_LEN}
+                  autoFocus
+                  aria-label="Название контент-плана"
+                />
+                <button type="button" className="secondary-btn plan-display-name-btn" onClick={handleSavePlanDisplayName}>
+                  Сохранить
+                </button>
+                <button type="button" className="secondary-btn plan-display-name-btn" onClick={cancelEditPlanName}>
+                  Отмена
+                </button>
+              </div>
+            ) : (
+              <div className="plan-display-name-view">
+                <span className="plan-display-name-value">
+                  {contentPlan.display_name?.trim() ? contentPlan.display_name.trim() : 'Без названия'}
+                </span>
+                <button
+                  type="button"
+                  className="secondary-btn plan-display-name-btn"
+                  onClick={beginEditPlanName}
+                  title="Изменить название плана"
+                >
+                  Изменить
+                </button>
+              </div>
+            )}
+          </div>
+          <p className="page-subtitle">
+            ID плана: <strong>{contentPlan.plan_id || 'Неизвестно'}</strong>
+          </p>
+        </div>
       </div>
 
       <PlanSummaryBar
@@ -419,6 +549,7 @@ const ContentPlanPage = () => {
         <PlanHistoryPanel
           history={planHistory}
           onLoad={handleLoadHistoryEntry}
+          onDelete={handleDeleteHistoryEntry}
           currentPlanId={contentPlan.plan_id}
           currentPlanType={currentPlanType}
           currentSavedAt={currentSavedAt}

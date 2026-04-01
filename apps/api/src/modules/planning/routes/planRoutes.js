@@ -6,7 +6,7 @@ import { searchPrecedents } from '../../precedents/repositories/precedentReposit
 import { buildRagQueryFromForm, normalizeDraftPlanResponse } from './shared/planUtils.js';
 import { sendRouteError } from '../../../shared/http/routeUtils.js';
 import { loadDraft, saveDraft } from '../services/draftStore.js';
-import { loadSnapshot, saveSnapshot } from '../services/planSnapshotStore.js';
+import { deleteSnapshot, loadSnapshot, saveSnapshot } from '../services/planSnapshotStore.js';
 
 const router = Router();
 let currentWizardDraft = null;
@@ -173,6 +173,26 @@ router.get('/snapshots/:token', async (req, res) => {
     });
   } catch (error) {
     return sendRouteError(res, req, 500, 'Внутренняя ошибка сервера в /api/plan/snapshots/:token', error);
+  }
+});
+
+router.delete('/snapshots/:token', async (req, res) => {
+  try {
+    const token = req.params?.token;
+    const result = await deleteSnapshot(token);
+    if (!result.ok && result.reason === 'invalid_token') {
+      return res.status(400).json({
+        success: false,
+        error: 'Некорректный токен snapshot',
+        request_id: req.requestId
+      });
+    }
+    return res.json({
+      success: true,
+      request_id: req.requestId
+    });
+  } catch (error) {
+    return sendRouteError(res, req, 500, 'Внутренняя ошибка сервера при удалении snapshot', error);
   }
 });
 

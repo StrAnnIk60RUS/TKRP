@@ -22,6 +22,10 @@ const Layout = ({ children }) => {
     localStorage.setItem('theme', theme)
   }, [theme])
 
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [location.pathname])
+
   const toggleTheme = () => {
     setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'))
   }

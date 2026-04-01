@@ -1,8 +1,8 @@
 {
-  "created_at": "2026-03-25T20:17:20.120621+00:00",
+  "created_at": "2026-03-26T20:28:45.940853+00:00",
   "model_key": "content_plan",
   "model_path": "C:\\University\\TKRP\\data\\ml\\content_plan_likes_model.joblib",
-  "samples": 8,
+  "samples": 18,
   "feature_dim": 12,
   "feature_names": [
     "unique_topics",
@@ -20,15 +20,15 @@
   ],
   "target_name": "content_plan_total_likes",
   "target_summary": {
-    "min": 2.0,
+    "min": 1.0,
     "max": 107.0,
-    "mean": 57.75,
-    "median": 69.5
+    "mean": 26.52902603149414,
+    "median": 4.0
   },
   "metrics": {
-    "mse": null,
-    "mae": null,
-    "r2": null
+    "mse": 4485.423828125,
+    "mae": 49.14762496948242,
+    "r2": -2.7199976444244385
   },
   "model_type": "sklearn.MLPRegressor(via StandardScaler + log1p target transform)"
 }

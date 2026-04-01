@@ -161,6 +161,63 @@
   box-shadow: 6px 6px 0 0 #cbd5e0;
 }
 
+.plan-page-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.plan-display-name-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.plan-display-name-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #4a5568;
+}
+
+.plan-display-name-view,
+.plan-display-name-edit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.plan-display-name-value {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #1a1a2e;
+  max-width: 100%;
+  word-break: break-word;
+}
+
+.plan-display-name-input {
+  flex: 1;
+  min-width: 200px;
+  max-width: 480px;
+  padding: 10px 12px;
+  border: 2px solid #1a1a2e;
+  font-size: 1rem;
+  font-weight: 600;
+  background: #fff;
+}
+
+.plan-display-name-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(255, 107, 157, 0.35);
+}
+
+.plan-display-name-btn {
+  padding: 8px 14px;
+  font-size: 0.9rem;
+}
+
 .page-subtitle {
   font-size: 1rem;
   color: #2d2d44;
@@ -435,6 +492,57 @@
   line-height: 1.5;
 }
 
+/* История планов: карточки на этой странице вне .project-form */
+.content-plan-page .plan-section .precedent-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.content-plan-page .plan-history-card.precedent-card {
+  background: #ffffff;
+  border: 2px solid #1a1a2e;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.content-plan-page .plan-history-card .precedent-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.content-plan-page .plan-history-card .precedent-card-title {
+  color: #1a1a2e;
+  font-weight: 700;
+  line-height: 1.3;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.content-plan-page .plan-history-card .precedent-card-score {
+  color: #ff6b9d;
+  font-weight: 800;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.content-plan-page .plan-history-card .precedent-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: #1a1a2e;
+  font-size: 0.85rem;
+}
+
 .plan-history-card.is-current {
   border-color: #16a34a;
   box-shadow: 4px 4px 0 0 #16a34a;
@@ -469,6 +577,30 @@
   color: #9c4221;
   font-size: 0.82rem;
   line-height: 1.45;
+}
+
+.plan-history-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+  align-items: center;
+}
+
+.history-delete-btn {
+  padding: 10px 16px;
+  border: 2px solid #b91c1c;
+  background: #fff;
+  color: #b91c1c;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.history-delete-btn:hover {
+  background: #fef2f2;
+  color: #991b1b;
 }
 
 .plan-filters-grid {

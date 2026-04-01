@@ -25,7 +25,6 @@ export const mapExamplePayloadToFormData = (data = {}) => ({
   contentPlanStartDate: data.content_plan_info?.timeline?.start_date || '',
   contentPlanEndDate: data.content_plan_info?.timeline?.end_date || '',
   publicationFrequency: data.content_plan_info?.publication_frequency || '',
-  postsPerWeek: data.content_plan_info?.posts_per_week?.toString() || '',
   publicationDayMode: data.content_plan_info?.publication_day_mode === 'shared' ? 'shared' : 'spread',
   minPublications: data.content_plan_info?.min_publications?.toString() || '',
   keyDates: data.content_plan_info?.key_dates || '',
@@ -76,12 +75,6 @@ export function validateFieldValue(name, value, formData) {
       break
     case 'publicationFrequency':
       if (!value) error = 'Выберите частоту публикаций'
-      break
-    case 'postsPerWeek':
-      if (value) {
-        const num = parseFloat(value)
-        if (Number.isNaN(num) || num <= 0 || num > 30) error = 'От 0.1 до 30'
-      }
       break
     case 'minPublications':
       if (!value) error = 'Укажите количество'
@@ -193,7 +186,6 @@ export function buildSafeFormInputForGeneration(formData) {
     contentPlanStartDate: formData.contentPlanStartDate || formatDateISO(now),
     contentPlanEndDate: formData.contentPlanEndDate || formatDateISO(end),
     publicationFrequency: formData.publicationFrequency || 'weekly',
-    postsPerWeek: formData.postsPerWeek || '',
     publicationDayMode: formData.publicationDayMode === 'shared' ? 'shared' : 'spread',
     minPublications: formData.minPublications || '8',
     contentFormats: formData.contentFormats.length ? formData.contentFormats : ['text'],
@@ -264,6 +256,23 @@ export function hasPrecedentsForWorkflow(precedentSearchResults, precedentsSumma
   return pubs + plans > 0
 }
 
+export function hasLocalCompetitorsInForm(competitorsData) {
+  return Array.isArray(competitorsData?.competitors) && competitorsData.competitors.length > 0
+}
+
+export function hasPersistedPrecedentsInDb(precedentsSummary) {
+  const pubs = Number(precedentsSummary?.publications_count) || 0
+  const plans = Number(precedentsSummary?.content_plans_count) || 0
+  return pubs + plans > 0
+}
+
+/**
+ * Парсинг/обогащение на шаге 1 не обязательны, если прецеденты уже накоплены в БД (прошлые запуски).
+ */
+export function competitorsStepRequirementMet(competitorsData, precedentsSummary) {
+  return hasLocalCompetitorsInForm(competitorsData) || hasPersistedPrecedentsInDb(precedentsSummary)
+}
+
 export function buildReviewChecklist(
   formData,
   competitorsData,
@@ -292,8 +301,9 @@ export function buildReviewChecklist(
     },
     {
       id: 'competitors',
-      label: 'Есть данные конкурентов',
-      done: Array.isArray(competitorsData?.competitors) && competitorsData.competitors.length > 0
+      label:
+        'Конкуренты в форме или база прецедентов уже заполнена (повторный парсинг/обогащение не требуются)',
+      done: competitorsStepRequirementMet(competitorsData, precedentsSummary)
     },
     {
       id: 'precedents',

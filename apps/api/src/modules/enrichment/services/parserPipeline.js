@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { createHash } from 'crypto';
 import { enrichCompetitorsData } from '../../../../openrouter.js';
 import { runPythonProcess } from '../../../shared/runtime/pythonRuntime.js';
 
@@ -39,9 +40,17 @@ function detectPlatform(url) {
   return 'unknown';
 }
 
+function buildCompetitorId(sourceUrl, platform) {
+  const normalized = typeof sourceUrl === 'string' ? sourceUrl.trim() : '';
+  const hash = createHash('sha1').update(normalized).digest('hex').slice(0, 12);
+  return `parser_${platform || 'unknown'}_${hash}`;
+}
+
 function mapPostsToCompetitorsData(url, posts) {
   const firstPost = posts[0];
   const platform = detectPlatform(url);
+  const competitorId = buildCompetitorId(url, platform);
+  const accountName = firstPost?.account_name || 'Unknown';
 
   const mapAttachmentsSummary = (attachments) => {
     if (!Array.isArray(attachments) || attachments.length === 0) {
@@ -81,11 +90,15 @@ function mapPostsToCompetitorsData(url, posts) {
     },
     competitors: [
       {
-        competitor_id: 'parser_1',
-        name: firstPost.account_name || 'Unknown',
+        competitor_id: competitorId,
+        name: accountName,
         platform,
         follower_count: null,
-        posts: posts.map((p, index) => ({
+        posts: posts.map((p) => ({
+          // Python-parser отдаёт стабильный `url` поста (для VK это wall-...; для LinkedIn это post url).
+          // Используем его дальше, чтобы `publication_id` не сводился к fallback по индексу.
+          url: typeof p?.url === 'string' ? p.url : null,
+          source_post_id: p?.source_post_id || p?.post_id || null,
           content: p.text || '',
           datetime: p.datetime || null,
           metrics: {

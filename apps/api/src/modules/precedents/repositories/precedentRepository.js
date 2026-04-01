@@ -32,6 +32,21 @@ const DEDUP_SIMILARITY_THRESHOLD = Math.min(
   1,
   Math.max(0.5, Number(process.env.DEDUP_SIMILARITY_THRESHOLD) || 0.95)
 );
+
+/**
+ * Более строгий порог для сравнения "новых кандидатов" с уже существующими в базе.
+ * Делает дедуп более "разрешающим": новые посты с близким, но не идентичным смыслом
+ * чаще проходят и реально добавляются в базу.
+ */
+const DEDUP_SIMILARITY_THRESHOLD_EXISTING = Math.min(
+  1,
+  Math.max(
+    0.5,
+    Number(process.env.DEDUP_SIMILARITY_THRESHOLD_EXISTING) ||
+      // По умолчанию: поднять порог на +0.04 относительно общего.
+      DEDUP_SIMILARITY_THRESHOLD + 0.04
+  )
+);
 const DEDUP_SEMANTIC_ENABLED = process.env.DEDUP_SEMANTIC_ENABLED !== 'false';
 
 let storageMutationQueue = Promise.resolve();
@@ -220,7 +235,8 @@ function getEmbeddingForItem(item) {
  * Дедупликация выполняется и против existingItems, и внутри пачки newItems.
  * @param {Object[]} newItems - новые элементы (должны иметь embedding)
  * @param {Object[]} existingItems - существующие элементы в хранилище
- * @param {string} idField - имя поля ID (для совместимости, не используется)
+ * @param {string} idField - имя поля ID (если оно есть, используем его для более
+ * безопасной дедупликации: считаем дублем только когда и semantic близко, и ключ совпадает)
  * @returns {{ filtered: Object[], skipped: Object[], skipped_count: number }}
  */
 function filterSemanticDuplicates(newItems, existingItems, idField) {
@@ -228,9 +244,17 @@ function filterSemanticDuplicates(newItems, existingItems, idField) {
     return { filtered: newItems || [], skipped: [], skipped_count: 0 };
   }
 
-  const keptEmbeddings = existingItems
-    .map((item) => getEmbeddingForItem(item))
-    .filter(Boolean);
+  const getItemId = (item) => (idField ? item?.[idField] : null);
+
+  const keptExisting = existingItems
+    .map((item) => ({
+      emb: getEmbeddingForItem(item),
+      id: getItemId(item)
+    }))
+    .filter((x) => Array.isArray(x.emb));
+
+  // Dedup "внутри пачки" (между newItems) остаётся прежним и использует базовый порог.
+  const keptNew = [];
 
   const filtered = [];
   const skipped = [];
@@ -242,12 +266,40 @@ function filterSemanticDuplicates(newItems, existingItems, idField) {
       continue;
     }
 
+    const newId = getItemId(newItem);
     let isDuplicate = false;
-    for (const keptEmb of keptEmbeddings) {
-      const sim = cosineSimilarity(newEmb, keptEmb);
-      if (sim >= DEDUP_SIMILARITY_THRESHOLD) {
+
+    // 1) Сначала проверяем против существующей базы: более строгий порог.
+    for (const kept of keptExisting) {
+      const sim = cosineSimilarity(newEmb, kept.emb);
+      if (sim < DEDUP_SIMILARITY_THRESHOLD_EXISTING) continue;
+
+      // Если ID присутствует у обоих элементов — считаем дублем только при совпадении ключа.
+      // Если один из ID отсутствует — fallback к semantic-dedup.
+      if (
+        !newId ||
+        !kept.id ||
+        String(newId) === String(kept.id)
+      ) {
         isDuplicate = true;
         break;
+      }
+    }
+
+    // 2) Если не нашли дубль в базе, проверяем "почти-дубликаты" внутри пачки.
+    if (!isDuplicate) {
+      for (const kept of keptNew) {
+        const sim = cosineSimilarity(newEmb, kept.emb);
+        if (sim < DEDUP_SIMILARITY_THRESHOLD) continue;
+
+        if (
+          !newId ||
+          !kept.id ||
+          String(newId) === String(kept.id)
+        ) {
+          isDuplicate = true;
+          break;
+        }
       }
     }
 
@@ -255,7 +307,7 @@ function filterSemanticDuplicates(newItems, existingItems, idField) {
       skipped.push(newItem);
     } else {
       filtered.push(newItem);
-      keptEmbeddings.push(newEmb);
+      keptNew.push({ emb: newEmb, id: newId });
     }
   }
 

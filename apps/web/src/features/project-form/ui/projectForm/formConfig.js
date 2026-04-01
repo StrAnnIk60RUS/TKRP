@@ -13,7 +13,6 @@ export const initialFormData = {
   contentPlanStartDate: '',
   contentPlanEndDate: '',
   publicationFrequency: '',
-  postsPerWeek: '',
   publicationDayMode: 'spread',
   minPublications: '',
   keyDates: '',
@@ -141,7 +140,6 @@ export const demoExampleFormData = {
   contentPlanStartDate: '2026-03-01',
   contentPlanEndDate: '2026-05-31',
   publicationFrequency: '3-4_per_week',
-  postsPerWeek: '3.5',
   publicationDayMode: 'spread',
   minPublications: '46',
   keyDates:

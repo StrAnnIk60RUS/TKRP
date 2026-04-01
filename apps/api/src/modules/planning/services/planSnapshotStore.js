@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'fs/promises';
+import { mkdir, readFile, unlink, writeFile } from 'fs/promises';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
@@ -30,11 +30,19 @@ function buildSnapshotPath(token) {
   return join(SNAPSHOT_DIR, `${token}.json`);
 }
 
+function snapshotDisplayName(plan) {
+  const raw = plan?.display_name;
+  if (typeof raw !== 'string') return null;
+  const t = raw.trim().slice(0, 120);
+  return t || null;
+}
+
 function buildSnapshotSummary(plan, optimization = null) {
   const publications = Array.isArray(plan?.publications) ? plan.publications : [];
   const formats = Array.from(new Set(publications.map((item) => item?.format).filter(Boolean)));
   return {
     plan_id: plan?.plan_id || 'unknown',
+    display_name: snapshotDisplayName(plan),
     publications_count: publications.length,
     platforms: Array.isArray(plan?.platforms) ? plan.platforms : [],
     start_date: plan?.planning_horizon?.start_date || null,
@@ -86,10 +94,15 @@ export async function loadSnapshot(token) {
     const parsed = JSON.parse(raw);
     const snapshot = parsed?.snapshot || {};
     if (!snapshot?.plan || typeof snapshot.plan !== 'object') return null;
+    const baseSummary =
+      parsed?.summary || buildSnapshotSummary(snapshot.plan, snapshot.optimization || null);
     return {
       token,
       saved_at: parsed?.saved_at || null,
-      summary: parsed?.summary || buildSnapshotSummary(snapshot.plan, snapshot.optimization || null),
+      summary: {
+        ...baseSummary,
+        display_name: snapshotDisplayName(snapshot.plan)
+      },
       plan: snapshot.plan,
       optimization: snapshot.optimization || null
     };
@@ -98,4 +111,19 @@ export async function loadSnapshot(token) {
     console.error('Ошибка загрузки snapshot плана:', error.message || error);
     return null;
   }
+}
+
+/** @returns {{ ok: true } | { ok: false, reason: 'invalid_token' }} */
+export async function deleteSnapshot(token) {
+  if (!isValidToken(token)) {
+    return { ok: false, reason: 'invalid_token' };
+  }
+  try {
+    await unlink(buildSnapshotPath(token));
+  } catch (error) {
+    if (error?.code !== 'ENOENT') {
+      throw error;
+    }
+  }
+  return { ok: true };
 }

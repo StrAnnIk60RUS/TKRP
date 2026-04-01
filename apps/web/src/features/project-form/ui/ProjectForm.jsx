@@ -10,7 +10,6 @@ import PrecedentSearchPanel from './projectForm/PrecedentSearchPanel'
 import OnboardingMaster from './projectForm/OnboardingMaster'
 import FieldHint from './projectForm/FieldHint'
 import DraftPlanWorkflowPanel from './projectForm/DraftPlanWorkflowPanel'
-import OptimizationTracePanel from './projectForm/OptimizationTracePanel'
 import TechnicalDetailsPanel from './projectForm/TechnicalDetailsPanel'
 import OperationStatusPanel from './projectForm/OperationStatusPanel'
 import { getCurrentProcessId, initialWizardState, wizardReducer } from './projectForm/wizardState'
@@ -46,6 +45,9 @@ import {
   buildReviewChecklist,
   buildSafeFormInputForGeneration,
   buildSuggestedPrecedentQuery,
+  competitorsStepRequirementMet,
+  hasLocalCompetitorsInForm,
+  hasPersistedPrecedentsInDb,
   hasPrecedentsForWorkflow,
   mapExamplePayloadToFormData,
   parseNumberOrNull,
@@ -192,6 +194,10 @@ const ProjectForm = () => {
   const setDemoHorizonExample = (payload) => dispatch({ type: 'SET_DEMO_HORIZON', payload })
   const setIsEditMode = (payload) => dispatch({ type: 'SET_EDIT_MODE', payload })
 
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [currentStep])
+
   const addToast = (message, type = 'success') => {
     toastCounterRef.current += 1
     const id = `${Date.now()}-${toastCounterRef.current}-${Math.random().toString(36).substr(2, 9)}`
@@ -272,8 +278,8 @@ const ProjectForm = () => {
     [formData, competitorsData, precedentSearchResults, draftPlanResult, precedentsSummary]
   )
   const explainabilitySignals = useMemo(() => {
-    const hasCompetitorData =
-      Array.isArray(competitorsData?.competitors) && competitorsData.competitors.length > 0
+    const competitorsStepOk = competitorsStepRequirementMet(competitorsData, precedentsSummary)
+    const hasLocalCompetitors = hasLocalCompetitorsInForm(competitorsData)
     return [
       {
         key: 'project_description',
@@ -305,11 +311,22 @@ const ProjectForm = () => {
       },
       {
         key: 'competitors',
-        label: hasCompetitorData ? 'Есть данные конкурентов' : 'Нет данных конкурентов',
-        done: hasCompetitorData
+        label: competitorsStepOk
+          ? hasLocalCompetitors
+            ? 'Есть данные конкурентов в форме'
+            : 'База прецедентов уже есть — парсинг/обогащение сейчас не нужны'
+          : 'Нужны данные конкурентов в форме или непустая база прецедентов',
+        done: competitorsStepOk
       }
     ]
-  }, [formData, competitorsData, consumerCategoryLabelMap, platformLabelMap, contentFormatLabelMap])
+  }, [
+    formData,
+    competitorsData,
+    precedentsSummary,
+    consumerCategoryLabelMap,
+    platformLabelMap,
+    contentFormatLabelMap
+  ])
 
   /** Для SMM: блокировка действий до выполнения пунктов проверки и чеклиста. */
   const { canSearchPrecedents, canGenerateDraft, smmBlockedReasonsForSearch, smmBlockedReasonsForGenerate } =
@@ -322,7 +339,9 @@ const ProjectForm = () => {
       const reasonsForSearch = []
       if (!backendOk) reasonsForSearch.push('Backend недоступен')
       if (!requiredFieldsDone) reasonsForSearch.push('Обязательные поля формы не заполнены')
-      if (!competitorsDone) reasonsForSearch.push('Нет данных конкурентов')
+      if (!competitorsDone) {
+        reasonsForSearch.push('Нет данных конкурентов в форме и база прецедентов пуста')
+      }
 
       const reasonsForGenerate = [...reasonsForSearch]
       if (!precedentsDone) reasonsForGenerate.push('Прецеденты не подобраны')
@@ -341,7 +360,7 @@ const ProjectForm = () => {
 
   const stepStatuses = useMemo(() => {
     const hasCompetitorUrls = competitorUrls.some((url) => typeof url === 'string' && url.trim() !== '')
-    const hasCompetitorData = (competitorsData?.competitors?.length || 0) > 0
+    const competitorsStepDone = competitorsStepRequirementMet(competitorsData, precedentsSummary)
     const projectFields = [
       'producerName',
       'producerActivitySpecification',
@@ -385,7 +404,7 @@ const ProjectForm = () => {
     const base = [
       isParsingFromUrls || isEnriching
         ? 'in_progress'
-        : hasCompetitorData
+        : competitorsStepDone
         ? 'completed'
         : hasCompetitorUrls
         ? 'in_progress'
@@ -408,6 +427,7 @@ const ProjectForm = () => {
   }, [
     competitorUrls,
     competitorsData,
+    precedentsSummary,
     currentStep,
     draftPlanResult,
     isExtendedMode,
@@ -726,15 +746,10 @@ const ProjectForm = () => {
     }
 
     if (!isDeveloper) {
-      const hasCompetitors = Array.isArray(competitorsData?.competitors) && competitorsData.competitors.length > 0
       const hasPrecedents = hasPrecedentsForWorkflow(precedentSearchResults, precedentsSummary)
-      if (!hasCompetitors) {
-        addToast('Перед генерацией добавьте и обогатите конкурентов', 'error')
-        return
-      }
       if (!hasPrecedents) {
         addToast(
-          'Перед генерацией нужны прецеденты в базе: загрузите демо, выполните поиск или дождитесь сводки по базе.',
+          'Перед генерацией нужны прецеденты в базе: демо, поиск или данные с прошлых запусков. Парсинг и обогащение на шаге 1 не обязательны, если база уже заполнена.',
           'error'
         )
         return
@@ -811,9 +826,7 @@ const ProjectForm = () => {
       parseNumberOrNull(draft?.kpi_targets?.avg_engagement_rate) ??
       0
     const explicitPostsPerWeek =
-      parseNumberOrNull(formData.postsPerWeek) ??
-      PUBLICATION_FREQUENCY_TO_WEEKLY[formData.publicationFrequency] ??
-      null
+      PUBLICATION_FREQUENCY_TO_WEEKLY[formData.publicationFrequency] ?? null
     const dateStart = formData.contentPlanStartDate || draft?.planning_horizon?.start_date || null
     const dateEnd = formData.contentPlanEndDate || draft?.planning_horizon?.end_date || null
     const horizonDays =
@@ -830,7 +843,7 @@ const ProjectForm = () => {
     }
 
     if (!derivedPostsPerWeek || derivedPostsPerWeek <= 0) {
-      addToast('Укажите posts per week или выберите частоту публикаций', 'error')
+      addToast('Выберите частоту публикаций или скорректируйте горизонт и число публикаций', 'error')
       return
     }
 
@@ -981,6 +994,7 @@ const ProjectForm = () => {
               isEnrichmentServerAvailable={isEnrichmentServerAvailable}
               canEnrich={canEnrich}
               showEnrichButton={isDeveloper}
+              precedentsAlreadyInDb={hasPersistedPrecedentsInDb(precedentsSummary)}
               onUrlChange={handleCompetitorUrlChange}
               onAddUrl={handleAddCompetitorUrl}
               onRemoveUrl={handleRemoveCompetitorUrl}
@@ -1243,51 +1257,28 @@ const ProjectForm = () => {
             </div>
           </div>
 
-          <div className="form-row">
-            <div className="form-group">
-              <label htmlFor="publicationFrequency" className="form-label">
-                Частота публикаций <span className="required">*</span>
-              </label>
-              <select
-                id="publicationFrequency"
-                name="publicationFrequency"
-                value={formData.publicationFrequency}
-                onChange={handleChange}
-                onBlur={handleBlur}
-                className={`form-select ${hasError('publicationFrequency') ? 'error' : ''}`}
-                disabled={!isEditMode}
-              >
-                <option value="">Выберите частоту</option>
-                {frequencyOptions.map(option => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </select>
-              {hasError('publicationFrequency') && <span className="error-message">{errors.publicationFrequency}</span>}
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="postsPerWeek" className="form-label">
-                Постов в неделю <FieldHint fieldName="postsPerWeek" />
-              </label>
-              <input
-                type="number"
-                id="postsPerWeek"
-                name="postsPerWeek"
-                value={formData.postsPerWeek}
-                onChange={handleChange}
-                onBlur={handleBlur}
-                className={`form-input ${hasError('postsPerWeek') ? 'error' : ''}`}
-                placeholder="Например, 3.5"
-                min="0.1"
-                max="30"
-                step="0.1"
-                disabled={!isEditMode}
-              />
-              {hasError('postsPerWeek') && <span className="error-message">{errors.postsPerWeek}</span>}
-              <small className="form-hint">
-                Переопределяет частоту выше и идет как явная константа в GA контент-плана.
-              </small>
-            </div>
+          <div className="form-group">
+            <label htmlFor="publicationFrequency" className="form-label">
+              Частота публикаций <span className="required">*</span>
+            </label>
+            <select
+              id="publicationFrequency"
+              name="publicationFrequency"
+              value={formData.publicationFrequency}
+              onChange={handleChange}
+              onBlur={handleBlur}
+              className={`form-select ${hasError('publicationFrequency') ? 'error' : ''}`}
+              disabled={!isEditMode}
+            >
+              <option value="">Выберите частоту</option>
+              {frequencyOptions.map(option => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+            {hasError('publicationFrequency') && <span className="error-message">{errors.publicationFrequency}</span>}
+            <small className="form-hint">
+              Одно значение для чернового плана и для эволюции (GA): средняя интенсивность задаётся выбранным вариантом.
+            </small>
           </div>
 
           <div className="form-group">
@@ -1651,10 +1642,6 @@ const ProjectForm = () => {
               publicationDayMode={formData.publicationDayMode}
               isDeveloper={isDeveloper}
             />
-
-            {!!optimizationResult?.optimized_content_plan && (
-              <OptimizationTracePanel optimizationResult={optimizationResult} />
-            )}
 
             {(draftPlanResult?.draft?.draft_content_plan || optimizationResult?.optimized_content_plan) && (
               <section className="form-section precedent-workflow-section">

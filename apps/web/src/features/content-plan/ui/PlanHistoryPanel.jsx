@@ -54,12 +54,19 @@ const buildDiffSummary = (item, currentSummary) => {
     diffs.push(`ограничения: ${constraintStatusLabel(item.summary)}`)
   }
 
+  const curName = String(currentSummary.display_name || '').trim()
+  const itemName = String(item.summary?.display_name || '').trim()
+  if (curName !== itemName) {
+    diffs.push(itemName ? `название: «${itemName}»` : 'без пользовательского названия')
+  }
+
   return diffs
 }
 
 const PlanHistoryPanel = ({
   history,
   onLoad,
+  onDelete,
   currentPlanId,
   currentPlanType,
   currentSavedAt = null,
@@ -100,7 +107,12 @@ const PlanHistoryPanel = ({
               className={`precedent-card plan-history-card ${isCurrent ? 'is-current' : ''}`}
             >
               <div className="precedent-card-header">
-                <span className="precedent-card-title">{item.summary?.plan_id || item.id}</span>
+                <span
+                  className="precedent-card-title"
+                  title={String(item.summary?.display_name || item.summary?.plan_id || item.id)}
+                >
+                  {item.summary?.display_name?.trim() || item.summary?.plan_id || item.id}
+                </span>
                 <span className="precedent-card-score">{item.type === 'optimized' ? 'optimized' : 'draft'}</span>
               </div>
               <div className="precedent-card-body">
@@ -126,13 +138,24 @@ const PlanHistoryPanel = ({
                 </div>
               )}
 
-              <button
-                type="button"
-                className="secondary-btn"
-                onClick={() => onLoad(item.id, item.type, item.saved_at)}
-              >
-                {isCurrent ? 'Открыта сейчас' : 'Загрузить'}
-              </button>
+              <div className="plan-history-card-actions">
+                <button
+                  type="button"
+                  className="secondary-btn"
+                  onClick={() => onLoad(item.id, item.type, item.saved_at)}
+                >
+                  {isCurrent ? 'Открыта сейчас' : 'Загрузить'}
+                </button>
+                {typeof onDelete === 'function' && (
+                  <button
+                    type="button"
+                    className="history-delete-btn"
+                    onClick={() => onDelete(item.id, item.type, item.saved_at)}
+                  >
+                    Удалить
+                  </button>
+                )}
+              </div>
             </div>
           )
         })}

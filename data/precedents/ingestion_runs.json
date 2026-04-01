@@ -574,5 +574,149 @@
       "embedding_model": "intfloat/multilingual-e5-large",
       "embedding_error": null
     }
+  },
+  {
+    "run_id": "ingest_1774554915221",
+    "created_at": "2026-03-26T19:55:15.221Z",
+    "source": "api_enrich",
+    "competitors_count": 10,
+    "publications_processed": 367,
+    "content_plans_processed": 10,
+    "inserted_publications": 0,
+    "updated_publications": 305,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 3,
+    "dedup": {
+      "publications_skipped_duplicates": 62,
+      "content_plans_skipped_duplicates": 7,
+      "dedup_enabled": true,
+      "dedup_error": null
+    },
+    "embedding": {
+      "publications_embedded": 367,
+      "content_plans_embedded": 10,
+      "embedding_model": "intfloat/multilingual-e5-large",
+      "embedding_error": null
+    }
+  },
+  {
+    "run_id": "ingest_1774555833737",
+    "created_at": "2026-03-26T20:10:33.737Z",
+    "source": "api_enrich",
+    "competitors_count": 10,
+    "publications_processed": 367,
+    "content_plans_processed": 10,
+    "inserted_publications": 0,
+    "updated_publications": 0,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 0,
+    "dedup": {
+      "publications_skipped_duplicates": 367,
+      "content_plans_skipped_duplicates": 10,
+      "dedup_enabled": true,
+      "dedup_error": null
+    },
+    "embedding": {
+      "publications_embedded": 367,
+      "content_plans_embedded": 10,
+      "embedding_model": "intfloat/multilingual-e5-large",
+      "embedding_error": null
+    }
+  },
+  {
+    "run_id": "ingest_1774556364962",
+    "created_at": "2026-03-26T20:19:24.962Z",
+    "source": "api_enrich",
+    "competitors_count": 10,
+    "publications_processed": 10,
+    "content_plans_processed": 10,
+    "inserted_publications": 1,
+    "updated_publications": 0,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 0,
+    "dedup": {
+      "publications_skipped_duplicates": 9,
+      "content_plans_skipped_duplicates": 10,
+      "dedup_enabled": true,
+      "dedup_error": null
+    },
+    "embedding": {
+      "publications_embedded": 10,
+      "content_plans_embedded": 10,
+      "embedding_model": "intfloat/multilingual-e5-large",
+      "embedding_error": null
+    }
+  },
+  {
+    "run_id": "ingest_1774556483688",
+    "created_at": "2026-03-26T20:21:23.688Z",
+    "source": "api_enrich",
+    "competitors_count": 10,
+    "publications_processed": 10,
+    "content_plans_processed": 10,
+    "inserted_publications": 9,
+    "updated_publications": 0,
+    "inserted_content_plans": 10,
+    "updated_content_plans": 0,
+    "dedup": {
+      "publications_skipped_duplicates": 1,
+      "content_plans_skipped_duplicates": 0,
+      "dedup_enabled": true,
+      "dedup_error": null
+    },
+    "embedding": {
+      "publications_embedded": 10,
+      "content_plans_embedded": 10,
+      "embedding_model": "intfloat/multilingual-e5-large",
+      "embedding_error": null
+    }
+  },
+  {
+    "run_id": "ingest_1774556924806",
+    "created_at": "2026-03-26T20:28:44.806Z",
+    "source": "api_enrich",
+    "competitors_count": 10,
+    "publications_processed": 367,
+    "content_plans_processed": 10,
+    "inserted_publications": 357,
+    "updated_publications": 0,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 0,
+    "dedup": {
+      "publications_skipped_duplicates": 10,
+      "content_plans_skipped_duplicates": 10,
+      "dedup_enabled": true,
+      "dedup_error": null
+    },
+    "embedding": {
+      "publications_embedded": 367,
+      "content_plans_embedded": 10,
+      "embedding_model": "intfloat/multilingual-e5-large",
+      "embedding_error": null
+    }
+  },
+  {
+    "run_id": "ingest_1774872337139",
+    "created_at": "2026-03-30T12:05:37.139Z",
+    "source": "api_enrich",
+    "competitors_count": 1,
+    "publications_processed": 1,
+    "content_plans_processed": 1,
+    "inserted_publications": 0,
+    "updated_publications": 0,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 0,
+    "dedup": {
+      "publications_skipped_duplicates": 1,
+      "content_plans_skipped_duplicates": 1,
+      "dedup_enabled": true,
+      "dedup_error": null
+    },
+    "embedding": {
+      "publications_embedded": 1,
+      "content_plans_embedded": 1,
+      "embedding_model": "intfloat/multilingual-e5-large",
+      "embedding_error": null
+    }
   }
 ]

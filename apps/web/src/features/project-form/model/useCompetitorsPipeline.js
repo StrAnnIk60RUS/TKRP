@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import {
   enrichCompetitorsData,
   checkEnrichmentServer,
-  parseAndEnrichByUrl,
   parseCompetitorByUrl
 } from '../../../shared/api/enrichmentService';
 
@@ -120,9 +119,14 @@ export function useCompetitorsPipeline(addToast, options = {}) {
     }
 
     const firstPost = competitorsData.competitors?.[0]?.posts?.[0];
-    if (firstPost?.content_category && firstPost?.tone) {
+    const alreadyEnriched =
+      firstPost &&
+      (firstPost.publication_model ||
+        (firstPost.topic && firstPost.tone) ||
+        (firstPost.content_category && firstPost.tone));
+    if (alreadyEnriched) {
       const confirmed = window.confirm(
-        'Данные уже содержат обогащенные поля (content_category, tone). Хотите обогатить их заново?'
+        'Данные уже выглядят обогащёнными (есть publication_model или семантические поля). Запустить обогащение заново?'
       );
       if (!confirmed) return;
     }

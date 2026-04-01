@@ -333,3 +333,15 @@ export async function getPlanSnapshotFromServer(token, requestOptions = {}) {
     throw error
   }
 }
+
+export async function deletePlanSnapshotOnServer(token, requestOptions = {}) {
+  try {
+    return await fetchJsonOrThrow(`${API_URL}/api/plan/snapshots/${encodeURIComponent(token)}`, {
+      method: 'DELETE',
+      signal: requestOptions.signal
+    })
+  } catch (error) {
+    console.error('Ошибка в deletePlanSnapshotOnServer:', error)
+    throw error
+  }
+}

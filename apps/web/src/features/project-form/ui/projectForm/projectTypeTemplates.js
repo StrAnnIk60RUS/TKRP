@@ -22,7 +22,6 @@ function buildTimeline(months, postsPerWeek) {
   return {
     contentPlanStartDate: start,
     contentPlanEndDate: end,
-    postsPerWeek: String(postsPerWeek),
     minPublications: computeMinPublications(start, end, postsPerWeek)
   }
 }

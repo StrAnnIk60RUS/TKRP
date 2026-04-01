@@ -60,6 +60,10 @@ function buildSourcePostId(competitor, competitorIndex, postIndex) {
 function buildSlimPost(post, competitor, competitorIndex, postIndex, config) {
   return {
     source_post_id: buildSourcePostId(competitor, competitorIndex, postIndex),
+    // Важно: сохраняем `url`, чтобы downstream мог построить стабильный `publication_id`.
+    // Иначе `precedentRepository` сохраняет `source_url: null`, а `publication_id`
+    // деградирует до fallback по индексу → upsert вместо insert и/или semantic-dedup фильтрует новые записи.
+    url: typeof post?.url === 'string' && post.url.trim().length ? post.url.trim() : null,
     platform: normalizePlatform(competitor?.platform),
     content: truncateText(post?.content, config.maxPostContentChars),
     datetime: post?.datetime || null,
