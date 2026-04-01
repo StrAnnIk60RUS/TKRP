@@ -5,7 +5,6 @@ function stripGaMeta(individual) {
   if (!Object.prototype.hasOwnProperty.call(individual, '__ga_score')) return individual;
   if (Array.isArray(individual)) {
     const next = individual.slice();
-    // eslint-disable-next-line no-underscore-dangle
     delete next.__ga_score;
     return next;
   }

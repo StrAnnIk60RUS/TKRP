@@ -1,4 +1,4 @@
-import { mkdir, readFile, unlink, writeFile } from 'fs/promises';
+﻿import { mkdir, readFile, readdir, unlink, writeFile } from 'fs/promises';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
@@ -17,6 +17,24 @@ const SNAPSHOT_DIR = join(
   'api',
   'plan-snapshots'
 );
+
+const DEFAULT_MAX_FILES = 200;
+const DEFAULT_MAX_PAYLOAD_BYTES = 5 * 1024 * 1024;
+
+function parseEnvPositiveInt(raw, fallback) {
+  const n = Number.parseInt(String(raw || ''), 10);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+export function getPlanSnapshotRetentionConfig() {
+  return {
+    maxFiles: parseEnvPositiveInt(process.env.PLAN_SNAPSHOT_MAX_FILES, DEFAULT_MAX_FILES),
+    maxPayloadBytes: parseEnvPositiveInt(
+      process.env.PLAN_SNAPSHOT_MAX_PAYLOAD_BYTES,
+      DEFAULT_MAX_PAYLOAD_BYTES
+    )
+  };
+}
 
 function isValidToken(token) {
   return typeof token === 'string' && /^[a-zA-Z0-9_-]{10,128}$/.test(token);
@@ -58,10 +76,34 @@ function buildSnapshotSummary(plan, optimization = null) {
   };
 }
 
+function utf8JsonFileBytes(payload) {
+  const text = JSON.stringify(payload, null, 2);
+  return Buffer.byteLength(text, 'utf8');
+}
+
+async function pruneSnapshotsBeyondLimit(maxKeep) {
+  const items = await listSnapshots();
+  if (items.length <= maxKeep) return { removed: 0 };
+  const victims = items.slice(maxKeep);
+  let removed = 0;
+  for (const item of victims) {
+    const r = await deleteSnapshot(item.token);
+    if (r.ok) removed += 1;
+  }
+  return { removed };
+}
+
+export async function runPlanSnapshotRetention() {
+  const { maxFiles } = getPlanSnapshotRetentionConfig();
+  return pruneSnapshotsBeyondLimit(maxFiles);
+}
+
 export async function saveSnapshot(plan, optimization = null, token = null) {
   if (!plan || typeof plan !== 'object') {
     throw new Error('Некорректный план для сохранения snapshot');
   }
+
+  const { maxFiles, maxPayloadBytes } = getPlanSnapshotRetentionConfig();
 
   const nextToken = isValidToken(token)
     ? token
@@ -77,14 +119,71 @@ export async function saveSnapshot(plan, optimization = null, token = null) {
     summary: buildSnapshotSummary(plan, optimization)
   };
 
+  const bytes = utf8JsonFileBytes(payload);
+  if (bytes > maxPayloadBytes) {
+    const err = new Error(
+      `Снимок плана превышает лимит размера (${bytes} байт > ${maxPayloadBytes}). Упростите план или увеличьте PLAN_SNAPSHOT_MAX_PAYLOAD_BYTES.`
+    );
+    err.code = 'PLAN_SNAPSHOT_TOO_LARGE';
+    throw err;
+  }
+
   await ensureSnapshotDir();
   await writeFile(buildSnapshotPath(nextToken), JSON.stringify(payload, null, 2), 'utf-8');
+
+  await pruneSnapshotsBeyondLimit(maxFiles);
 
   return {
     token: nextToken,
     saved_at: payload.saved_at,
     summary: payload.summary
   };
+}
+
+export async function listSnapshots() {
+  await ensureSnapshotDir();
+  let names = [];
+  try {
+    names = await readdir(SNAPSHOT_DIR);
+  } catch (error) {
+    if (error?.code === 'ENOENT') return [];
+    throw error;
+  }
+
+  const jsonFiles = names.filter((name) => name.endsWith('.json'));
+  const items = [];
+
+  for (const name of jsonFiles) {
+    const token = name.slice(0, -'.json'.length);
+    if (!isValidToken(token)) continue;
+    try {
+      const raw = await readFile(join(SNAPSHOT_DIR, name), 'utf-8');
+      const parsed = JSON.parse(raw);
+      const snapshot = parsed?.snapshot || {};
+      const plan = snapshot?.plan;
+      if (!plan || typeof plan !== 'object') continue;
+      const baseSummary =
+        parsed?.summary || buildSnapshotSummary(plan, snapshot.optimization || null);
+      items.push({
+        token,
+        saved_at: typeof parsed?.saved_at === 'string' ? parsed.saved_at : null,
+        summary: {
+          ...baseSummary,
+          display_name: snapshotDisplayName(plan)
+        }
+      });
+    } catch {
+      // skip unreadable or invalid files
+    }
+  }
+
+  items.sort((a, b) => {
+    const ta = a.saved_at ? Date.parse(a.saved_at) : 0;
+    const tb = b.saved_at ? Date.parse(b.saved_at) : 0;
+    return tb - ta;
+  });
+
+  return items;
 }
 
 export async function loadSnapshot(token) {
@@ -113,7 +212,6 @@ export async function loadSnapshot(token) {
   }
 }
 
-/** @returns {{ ok: true } | { ok: false, reason: 'invalid_token' }} */
 export async function deleteSnapshot(token) {
   if (!isValidToken(token)) {
     return { ok: false, reason: 'invalid_token' };

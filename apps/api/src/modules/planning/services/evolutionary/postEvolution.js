@@ -1,7 +1,6 @@
 import { buildPostFeatureVector, buildPostFeatureVectorFromFeatureMap, POST_FEATURE_NAMES } from '../../../ml/services/ml/ontologyFeatureEngineering.js';
 import { estimatePublicationKpiFromLikes, predictPostLikesByFeatureVectors } from '../../../ml/services/relevancePredictionService.js';
 import { runAsyncGeneticAlgorithm } from './asyncGaCore.js';
-import { GA_UTILS } from './gaCore.js';
 import { cloneJson, onePointCrossoverArrays } from './operators.js';
 
 const TONE_START = 24;
