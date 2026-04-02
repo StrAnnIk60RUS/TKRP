@@ -2,7 +2,13 @@ import { buildPostFeatureVector, buildPostFeatureVectorFromFeatureMap, POST_FEAT
 import { estimatePublicationKpiFromLikes, predictPostLikesByFeatureVectors } from '../../../ml/services/relevancePredictionService.js';
 import { runAsyncGeneticAlgorithm } from './asyncGaCore.js';
 import { GA_UTILS } from './gaCore.js';
-import { cloneJson, onePointCrossoverArrays } from './operators.js';
+import { 
+  cloneJson, 
+  onePointCrossoverArrays,
+  twoPointCrossoverArrays,
+  uniformCrossoverArrays,
+  inversionMutation
+} from './operators.js';
 
 const TONE_START = 24;
 const TONE_END = 28;
@@ -284,6 +290,39 @@ async function evolveSinglePublication(publication, planFeatureMap, gaConfig = {
   const baselinePredictedLikes = asNumber(baselinePrediction?.predictions?.[0], 0);
   const traces = [];
 
+  // ========== ВЫБОР МЕТОДОВ КРОССОВЕРА И МУТАЦИИ ==========
+  const crossoverMethod = gaConfig.crossoverMethod || 'one_point';
+  const mutationMethod = gaConfig.mutationMethod || 'random_replace';
+  const selectionMethod = gaConfig.selectionMethod || 'tournament';
+
+  // Выбираем функцию кроссовера
+  let crossoverFn;
+  switch (crossoverMethod) {
+    case 'two_point':
+      crossoverFn = twoPointCrossoverArrays;
+      break;
+    case 'uniform':
+      crossoverFn = uniformCrossoverArrays;
+      break;
+    case 'one_point':
+    default:
+      crossoverFn = onePointCrossoverArrays;
+  }
+
+  // Выбираем функцию мутации
+  let mutateFn;
+  switch (mutationMethod) {
+    case 'inversion':
+      mutateFn = (individual, rng) => {
+        // Инверсия применяется ко всему геному поста (вектор признаков)
+        return inversionMutation(individual, rng);
+      };
+      break;
+    case 'random_replace':
+    default:
+      mutateFn = (individual, rng) => mutateGenome(individual, constants, rng);
+  }
+
   const result = await runAsyncGeneticAlgorithm({
     direction: 'max',
     seed: gaConfig.seed ?? null,
@@ -296,6 +335,7 @@ async function evolveSinglePublication(publication, planFeatureMap, gaConfig = {
     mutationProbability: gaConfig.mutationProbability ?? 0.1,
     minImprovementEpsilon: gaConfig.minImprovementEpsilon ?? 0.25,
     minImprovementGenerations: gaConfig.minImprovementGenerations ?? 6,
+    selectionMethod: selectionMethod,  // НОВЫЙ параметр
     mutationProbabilitySchedule: (state, defaults) => {
       const base = clampProbability(
         gaConfig.mutationProbability ?? defaults.mutationProbability,
@@ -309,10 +349,10 @@ async function evolveSinglePublication(publication, planFeatureMap, gaConfig = {
     createIndividual: (rng) => createIndividual(baseVector, constants, rng),
     cloneIndividual: (individual) => cloneJson(individual),
     crossover: (left, right, rng) => {
-      const crossed = onePointCrossoverArrays(left, right, rng);
+      const crossed = crossoverFn(left, right, rng);
       return crossed.map((child) => repairGenome(child, constants));
     },
-    mutate: (individual, rng) => mutateGenome(individual, constants, rng),
+    mutate: mutateFn,
     cacheKeyForIndividual: (individual) => JSON.stringify(individual),
     scorePopulation: async (population) => {
       const repaired = population.map((item) => repairGenome(item, constants));

@@ -19,14 +19,19 @@ export const initialFormData = {
   contentFormats: [],
   videoDescription: '',
   platforms: [],
-  evoPopulationSize: '64',
-  evoGenerations: '80',
-  evoStagnationGenerations: '20',
-  evoTournamentSize: '5',
-  evoEliteSize: '4',
-  evoCrossoverProbability: '0.9',
-  evoMutationProbability: '0.08',
-  evoRandomSeed: ''
+  // GA параметры — оптимальные из бенчмарка
+  evoPopulationSize: '32',           // было 64 → 32
+  evoGenerations: '40',              // было 80 → 40
+  evoStagnationGenerations: '12',    // было 20 → 12
+  evoTournamentSize: '3',            // было 5 → 3
+  evoEliteSize: '6',                 // было 4 → 6
+  evoCrossoverProbability: '0.75',   // было 0.9 → 0.75
+  evoMutationProbability: '0.12',    // было 0.08 → 0.12
+  evoRandomSeed: '',
+  // НОВЫЕ поля — выбор методов
+  evoSelectionMethod: 'tournament',   // tournament | roulette | rank
+  evoCrossoverMethod: 'one_point',    // one_point | two_point | uniform
+  evoMutationMethod: 'random_replace' // random_replace | inversion
 }
 
 export const wizardSteps = [
@@ -148,12 +153,12 @@ export const demoExampleFormData = {
   videoDescription:
     'Короткие ролики (1-3 минуты) с демонстрацией функционала платформы, интервью с клиентами, объяснение сложных концепций простым языком. Профессиональная съемка, субтитры, брендинг CloudTech Solutions.',
   platforms: ['linkedin', 'vk'],
-  evoPopulationSize: '64',
-  evoGenerations: '80',
-  evoStagnationGenerations: '20',
-  evoTournamentSize: '5',
-  evoEliteSize: '4',
-  evoCrossoverProbability: '0.9',
-  evoMutationProbability: '0.08',
+  evoPopulationSize: '32',
+  evoGenerations: '40',
+  evoStagnationGenerations: '12',
+  evoTournamentSize: '3',
+  evoEliteSize: '6',
+  evoCrossoverProbability: '0.75',
+  evoMutationProbability: '0.12',
   evoRandomSeed: ''
 }

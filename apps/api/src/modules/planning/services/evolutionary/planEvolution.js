@@ -2,7 +2,10 @@ import { buildPlanFeatureMap, buildPlanFeatureVector } from '../../../ml/service
 import { predictContentPlanLikesByFeatureVectors } from '../../../ml/services/relevancePredictionService.js';
 import { buildOntologyFromSnapshot } from '../../../precedents/services/ontologyAggregationService.js';
 import { runAsyncGeneticAlgorithm } from './asyncGaCore.js';
-import { cloneJson, onePointCrossoverArrays, randomReplaceMutation } from './operators.js';
+import { cloneJson, onePointCrossoverArrays, randomReplaceMutation,
+  twoPointCrossoverArrays,    // НОВЫЙ
+  uniformCrossoverArrays,     // НОВЫЙ
+  inversionMutation      } from './operators.js';
 
 function asNumber(value, fallback = 0) {
   const numeric = Number(value);
@@ -440,6 +443,44 @@ export async function optimizeContentPlanEvolution(draftContentPlan, config = {}
     constraints = {},
     ga = {}
   } = config;
+  const crossoverMethod = ga.crossoverMethod || 'one_point';
+  const mutationMethod = ga.mutationMethod || 'random_replace';
+
+  let crossoverFn;
+switch (crossoverMethod) {
+  case 'two_point':
+    crossoverFn = twoPointCrossoverArrays;
+    break;
+  case 'uniform':
+    crossoverFn = uniformCrossoverArrays;
+    break;
+  case 'one_point':
+  default:
+    crossoverFn = onePointCrossoverArrays;
+}
+
+// Выбираем функцию мутации
+let mutateFn;
+switch (mutationMethod) {
+  case 'inversion':
+    mutateFn = (individual, rng) => {
+      if (!Array.isArray(individual) || individual.length === 0) return cloneJson(individual);
+      const slotIndex = Math.floor(rng() * individual.length);
+      const next = cloneJson(individual);
+      next[slotIndex] = randomReplaceMutation(next[slotIndex], geneDomains, rng);
+      return inversionMutation(next, rng);
+    };
+    break;
+  case 'random_replace':
+  default:
+    mutateFn = (individual, rng) => {
+      if (!Array.isArray(individual) || individual.length === 0) return cloneJson(individual);
+      const slotIndex = Math.floor(rng() * individual.length);
+      const next = cloneJson(individual);
+      next[slotIndex] = randomReplaceMutation(next[slotIndex], geneDomains, rng);
+      return next;
+    };
+}
   const precedentContext = buildPrecedentContext(precedentPublications, draftContentPlan);
   const planningHorizon = resolvePlanningHorizon(draftContentPlan, constraints);
   const targetPostCount = resolveTargetPostCount(draftContentPlan, constraints);
@@ -501,8 +542,8 @@ export async function optimizeContentPlanEvolution(draftContentPlan, config = {}
     },
     createIndividual,
     cloneIndividual,
-    crossover,
-    mutate,
+    crossover: crossoverFn,
+    mutate: mutateFn,
     cacheKeyForIndividual: (individual) => JSON.stringify(individual),
     scorePopulation: async (population) => {
       const candidatePlans = population.map((genome) =>

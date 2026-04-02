@@ -29,16 +29,19 @@
       "platforms": [
         "vk"
       ],
-      "evoPopulationSize": "64",
-      "evoGenerations": "80",
+      "evoPopulationSize": "20",
+      "evoGenerations": "12",
       "evoStagnationGenerations": "20",
       "evoTournamentSize": "5",
       "evoEliteSize": "4",
       "evoCrossoverProbability": "0.9",
-      "evoMutationProbability": "0.08",
-      "evoRandomSeed": ""
+      "evoMutationProbability": "0.082",
+      "evoRandomSeed": "",
+      "evoSelectionMethod": "roulette",
+      "evoMutationMethod": "inversion",
+      "evoCrossoverMethod": "two_point"
     },
-    "updated_at": "2026-04-01T19:26:13.912Z"
+    "updated_at": "2026-04-02T03:08:34.238Z"
   },
-  "updated_at": "2026-04-01T19:26:13.912Z"
+  "updated_at": "2026-04-02T03:08:34.241Z"
 }

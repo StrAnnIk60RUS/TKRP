@@ -13,7 +13,14 @@
     margin-bottom: 24px;
     position: relative;
   }
-
+.section-subtitle {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 24px 0 16px 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-color, #e2e8f0);
+  color: var(--text-secondary, #4a5568);
+}
   .quick-actions::before {
     content: '';
     position: absolute;

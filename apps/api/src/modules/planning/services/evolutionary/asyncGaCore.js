@@ -37,6 +37,45 @@ function tournamentSelect(population, scored, rng, tournamentSize, comparator) {
   return contenders[0]?.individual;
 }
 
+/**
+ * Пропорциональный отбор (рулетка) — вероятность пропорциональна fitness
+ */
+function rouletteSelect(population, scored, rng) {
+  const totalScore = scored.reduce((sum, item) => sum + Math.max(0, item.score), 0);
+  if (totalScore <= 0) {
+    return population[Math.floor(rng() * population.length)];
+  }
+  let threshold = rng() * totalScore;
+  let accumulated = 0;
+  for (let i = 0; i < population.length; i++) {
+    accumulated += Math.max(0, scored[i].score);
+    if (accumulated >= threshold) return population[i];
+  }
+  return population[population.length - 1];
+}
+
+/**
+ * Ранговый отбор — вероятность пропорциональна рангу (более стабилен)
+ */
+function rankSelect(population, scored, rng) {
+  // Сортируем по убыванию score
+  const sorted = scored
+    .map((item, idx) => ({ idx, score: item.score }))
+    .sort((a, b) => b.score - a.score);
+  
+  // Ранги: лучший получает ранг population.length, худший — 1
+  const totalRank = (population.length * (population.length + 1)) / 2;
+  let threshold = rng() * totalRank;
+  let accumulated = 0;
+  for (let i = 0; i < sorted.length; i++) {
+    const rank = population.length - i;
+    accumulated += rank;
+    if (accumulated >= threshold) return population[sorted[i].idx];
+  }
+  return population[sorted[sorted.length - 1].idx];
+}
+
+
 function defaultStop(state, config) {
   if (state.generation >= GA_UTILS.clampInt(config.maxGenerations, 1, 100000)) {
     return { stop: true, reason: 'max_generations' };
@@ -52,6 +91,7 @@ function defaultStop(state, config) {
 
 export async function runAsyncGeneticAlgorithm(options = {}) {
   const {
+    selectionMethod = 'tournament',  
     seed = null,
     populationSize = 40,
     maxGenerations = 40,
@@ -93,6 +133,17 @@ export async function runAsyncGeneticAlgorithm(options = {}) {
     const uniqueMissesByKey = new Map();
     const scored = new Array(population.length);
 
+        const selectParent = () => {
+      switch (selectionMethod) {
+        case 'roulette':
+          return rouletteSelect(population, scored, rng);
+        case 'rank':
+          return rankSelect(population, scored, rng);
+        case 'tournament':
+        default:
+          return tournamentSelect(population, scoreValues, rng, tournamentSize, comparator);
+      }
+    };
     for (let index = 0; index < population.length; index += 1) {
       const individual = population[index];
       const cacheKey = resolveCacheKey(individual, generation);
@@ -222,8 +273,8 @@ export async function runAsyncGeneticAlgorithm(options = {}) {
     }
 
     while (nextPopulation.length < popSize) {
-      const parentA = tournamentSelect(population, scoreValues, rng, tournamentSize, comparator);
-      const parentB = tournamentSelect(population, scoreValues, rng, tournamentSize, comparator);
+      const parentA = selectParent();
+      const parentB = selectParent();
       if (!parentA || !parentB) break;
 
       let childA = cloneIndividual(parentA);

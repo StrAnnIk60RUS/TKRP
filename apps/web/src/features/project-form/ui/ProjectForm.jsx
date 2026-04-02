@@ -1537,7 +1537,81 @@ const ProjectForm = () => {
               />
             </div>
           </div>
+{/* НОВЫЙ БЛОК — ВЫБОР МЕТОДОВ */}
+  <h3 className="section-subtitle" style={{ marginTop: '24px', marginBottom: '16px', fontSize: '1rem' }}>
+    Расширенные настройки (опционально)
+  </h3>
+  
+  <div className="form-row">
+    <div className="form-group">
+      <label htmlFor="evoSelectionMethod" className="form-label">
+        Метод отбора
+      </label>
+      <select
+        id="evoSelectionMethod"
+        name="evoSelectionMethod"
+        value={formData.evoSelectionMethod || 'tournament'}
+        onChange={handleChange}
+        onBlur={handleBlur}
+        className="form-select"
+        disabled={!isEditMode}
+      >
+        <option value="tournament">Турнирный отбор</option>
+        <option value="roulette">Пропорциональный (рулетка)</option>
+        <option value="rank">Ранговый отбор</option>
+      </select>
+      <small className="form-hint">
+        Как выбираются родители для скрещивания. Tournament — лучший из случайной группы, Roulette — пропорционально fitness, Rank — по рангу.
+      </small>
+    </div>
 
+    <div className="form-group">
+      <label htmlFor="evoCrossoverMethod" className="form-label">
+        Метод скрещивания
+      </label>
+      <select
+        id="evoCrossoverMethod"
+        name="evoCrossoverMethod"
+        value={formData.evoCrossoverMethod || 'one_point'}
+        onChange={handleChange}
+        onBlur={handleBlur}
+        className="form-select"
+        disabled={!isEditMode}
+      >
+        <option value="one_point">Одноточечное</option>
+        <option value="two_point">Двухточечное</option>
+        <option value="uniform">Равномерное</option>
+      </select>
+      <small className="form-hint">
+        Как комбинируются гены родителей. One-point обменивает всё после одной точки, Two-point — участок между двумя точками, Uniform — каждый ген с вероятностью 50%.
+      </small>
+    </div>
+  </div>
+
+  <div className="form-row">
+    <div className="form-group">
+      <label htmlFor="evoMutationMethod" className="form-label">
+        Метод мутации
+      </label>
+      <select
+        id="evoMutationMethod"
+        name="evoMutationMethod"
+        value={formData.evoMutationMethod || 'random_replace'}
+        onChange={handleChange}
+        onBlur={handleBlur}
+        className="form-select"
+        disabled={!isEditMode}
+      >
+        <option value="random_replace">Битовая (замена значения)</option>
+        <option value="inversion">Инверсия (разворот участка)</option>
+      </select>
+      <small className="form-hint">
+        Как изменяются гены потомков. Random_replace заменяет случайный ген, Inversion разворачивает случайный участок.
+      </small>
+    </div>
+    </div>
+
+    <div className="form-group"></div>
           {/* Скрещивание и мутация */}
           <div className="form-row">
             <div className="form-group">
