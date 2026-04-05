@@ -1,0 +1,65 @@
+{
+  "target_names": [
+    "likes",
+    "shares",
+    "views"
+  ],
+  "n_targets": 3,
+  "model_type": "MultiOutputRegressor(MLPRegressor)",
+  "feature_names": [
+    "paragraphs_exists",
+    "paragraphs_count_norm",
+    "sentence_length",
+    "has_lists",
+    "has_emphasis",
+    "readability",
+    "water_level",
+    "title_length_norm",
+    "title_has_question",
+    "title_has_intrigue",
+    "title_has_digit",
+    "title_emotionality",
+    "title_fits_notif",
+    "lead_length_norm",
+    "lead_is_hook",
+    "lead_connected",
+    "lead_introduces",
+    "has_main_idea",
+    "idea_clarity",
+    "is_complete",
+    "has_cta",
+    "uniqueness",
+    "evidence_level",
+    "creativity",
+    "tone_onehot_0",
+    "tone_onehot_1",
+    "tone_onehot_2",
+    "tone_onehot_3",
+    "tone_onehot_4",
+    "terminology_level",
+    "emotionality",
+    "grammar_quality",
+    "tech_quality",
+    "has_conclusion",
+    "tones_count",
+    "creativity_from_best_plan"
+  ],
+  "n_features": 36,
+  "target_summary": {
+    "likes": {
+      "min": 0.0,
+      "max": 364.0,
+      "mean": 12.368852459016393
+    },
+    "shares": {
+      "min": 0.0,
+      "max": 110.0,
+      "mean": 1.7397540983606556
+    },
+    "views": {
+      "min": 0.0,
+      "max": 60175.0,
+      "mean": 1150.1147540983607
+    }
+  }
+}

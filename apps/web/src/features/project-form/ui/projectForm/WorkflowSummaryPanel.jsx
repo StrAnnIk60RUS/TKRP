@@ -14,7 +14,7 @@ const getPublicationDayModeCopy = (mode) =>
 const WorkflowSummaryPanel = ({
   filledRequired,
   requiredCount,
-  progress: _progress,
+  progress,
   competitorsCount,
   precedentsSummary,
   isEnrichmentServerAvailable,

@@ -25,14 +25,16 @@ const USE_PERSISTENT_ML_WORKER = String(process.env.ML_PERSISTENT_WORKER || '1')
 
 const MODEL_SPECS = {
   post: {
-    modelPath: path.join(MODEL_DIR, 'post_likes_model.joblib'),
-    metadataPath: path.join(MODEL_DIR, 'post_likes_model_metadata.json'),
-    featureNames: POST_FEATURE_NAMES
+    modelPath: path.join(MODEL_DIR, 'post_metrics_model.joblib'),
+    metadataPath: path.join(MODEL_DIR, 'post_metrics_model_metadata.json'),
+    featureNames: POST_FEATURE_NAMES,
+    targetNames: ['likes', 'shares', 'views']
   },
   content_plan: {
-    modelPath: path.join(MODEL_DIR, 'content_plan_likes_model.joblib'),
-    metadataPath: path.join(MODEL_DIR, 'content_plan_likes_model_metadata.json'),
-    featureNames: PLAN_FEATURE_NAMES
+    modelPath: path.join(MODEL_DIR, 'plan_metrics_model.joblib'),
+    metadataPath: path.join(MODEL_DIR, 'plan_metrics_model_metadata.json'),
+    featureNames: PLAN_FEATURE_NAMES,
+    targetNames: ['total_likes', 'total_shares', 'total_views']
   }
 };
 
@@ -99,146 +101,57 @@ function getModelMetadata(modelKey) {
   return readJson(spec.metadataPath, null);
 }
 
-function normalizeLikesToUnitInterval(likes, metadata) {
-  const minTarget = Number(metadata?.target_summary?.min);
-  const maxTarget = Number(metadata?.target_summary?.max) || 1;
-  const safeLikes = clampPositive(likes);
-
-  if (Number.isFinite(minTarget) && maxTarget > minTarget) {
-    const bounded = Math.min(maxTarget, Math.max(minTarget, safeLikes));
-    const normalized = (bounded - minTarget) / (maxTarget - minTarget);
-    // Keep some headroom to avoid visual "all 100%" saturation in UI.
-    return clamp01(0.05 + normalized * 0.9);
-  }
-  if (maxTarget <= 0) return 0;
-  return clamp01((Math.log1p(safeLikes) / Math.log1p(maxTarget)) * 0.95);
-}
-
-function normalizeKey(value) {
-  return String(value || '').trim().toLowerCase();
-}
-
-function capContentPlanLikes(predictedLikes, metadata = null) {
-  const safeLikes = clampPositive(predictedLikes);
-  const maxTarget = Number(metadata?.target_summary?.max);
-  if (!Number.isFinite(maxTarget) || maxTarget <= 0) return safeLikes;
-  return Math.min(safeLikes, maxTarget * 1.15);
-}
-
-function getPublicationCalibrationSamples() {
-  const snapshot = readPrecedentSnapshot();
-  return (snapshot?.publications || [])
-    .map((item) => {
-      const model = item?.publication_model || {};
-      const kpiEstimate = model?.kpi_estimate || item?.expected_kpi || {};
-      const likes = clampPositive(item?.metrics?.likes ?? item?.expected_kpi?.predicted_likes ?? item?.likes);
-      const engagementRate = clamp01(kpiEstimate?.expected_engagement_rate ?? item?.engagement_rate ?? 0);
-      const conversionPotential = clamp01(
-        kpiEstimate?.expected_conversion_potential ?? item?.expected_kpi?.conversion_potential ?? 0
-      );
-      const reachPotential = clamp01(
-        kpiEstimate?.expected_reach_potential ?? item?.expected_kpi?.reach_potential ?? 0
-      );
-      return {
-        likes,
-        engagementRate,
-        conversionPotential,
-        reachPotential,
-        objective: normalizeKey(model?.objective || item?.objective),
-        format: normalizeKey(model?.format || item?.format),
-        tone: normalizeKey(model?.tone || item?.tone)
-      };
-    })
-    .filter((sample) => sample.likes > 0 && (sample.engagementRate > 0 || sample.conversionPotential > 0 || sample.reachPotential > 0))
-    .sort((left, right) => left.likes - right.likes);
-}
-
-function weightedAverage(entries = [], valueSelector, fallback = 0) {
-  let weightedSum = 0;
-  let totalWeight = 0;
-  for (const entry of entries) {
-    const value = Number(valueSelector(entry));
-    const weight = Number(entry?.weight);
-    if (!Number.isFinite(value) || !Number.isFinite(weight) || weight <= 0) continue;
-    weightedSum += value * weight;
-    totalWeight += weight;
-  }
-  if (totalWeight <= 0) return fallback;
-  return weightedSum / totalWeight;
-}
-
-export function estimatePublicationKpiFromLikes(predictedLikes, publication = {}, metadata = null) {
-  const safeLikes = clampPositive(predictedLikes);
-  const objective = normalizeKey(publication?.objective);
-  const format = normalizeKey(publication?.format);
-  const tone = normalizeKey(publication?.tone);
-  const hasCta =
-    Boolean(publication?.cta && String(publication.cta).trim()) ||
-    clamp01(publication?.ontology_features?.has_cta) > 0;
-  const fallbackEngagement = clamp01(0.01 + normalizeLikesToUnitInterval(safeLikes, metadata) * 0.11);
-  const samples = getPublicationCalibrationSamples();
-
-  if (!samples.length) {
-    return {
-      engagement_rate: fallbackEngagement,
-      conversion_potential: clamp01(fallbackEngagement * 1.35 + (hasCta ? 0.02 : 0.006)),
-      reach_potential: clamp01(0.18 + fallbackEngagement * 2.4)
-    };
-  }
-
-  const nearest = samples
-    .map((sample) => {
-      let distance = Math.abs(sample.likes - safeLikes);
-      if (objective && sample.objective) distance *= sample.objective === objective ? 0.72 : 1.08;
-      if (format && sample.format) distance *= sample.format === format ? 0.86 : 1.04;
-      if (tone && sample.tone) distance *= sample.tone === tone ? 0.92 : 1.03;
-      return {
-        sample,
-        weight: 1 / (distance + 5)
-      };
-    })
-    .sort((left, right) => right.weight - left.weight)
-    .slice(0, 12);
-
-  const engagementRate = clamp01(
-    weightedAverage(nearest, (entry) => entry.sample.engagementRate, fallbackEngagement) * 0.85 +
-      fallbackEngagement * 0.15
-  );
-  const objectiveAdjustment =
-    objective === 'convert'
-      ? 0.03
-      : objective === 'retain'
-      ? 0.015
-      : objective === 'engage'
-      ? 0.008
-      : objective === 'educate'
-      ? 0.004
-      : 0.01;
-  const formatAdjustment =
-    format === 'video' || format === 'reel'
-      ? 0.03
-      : format === 'image' || format === 'carousel'
-      ? 0.02
-      : format === 'combined'
-      ? 0.015
-      : 0.008;
-  const conversionPotential = clamp01(
-    weightedAverage(nearest, (entry) => entry.sample.conversionPotential, 0.05) * 0.8 +
-      engagementRate * 0.35 +
-      objectiveAdjustment +
-      (hasCta ? 0.012 : -0.004)
-  );
-  const reachPotential = clamp01(
-    weightedAverage(nearest, (entry) => entry.sample.reachPotential, 0.22) * 0.82 +
-      engagementRate * 0.55 +
-      formatAdjustment
-  );
-
+function getMlModelMetadata() {
   return {
-    engagement_rate: engagementRate,
-    conversion_potential: conversionPotential,
-    reach_potential: reachPotential
+    post: getModelMetadata('post'),
+    content_plan: getModelMetadata('content_plan')
   };
+}
+
+/**
+ * Нормализация отдельной метрики в интервал [0,1] для UI
+ * @param {number} value - предсказанное значение
+ * @param {object} metadata - метаданные модели с target_summary
+ * @param {string} metricName - имя метрики (likes, shares, views, total_likes и т.д.)
+ * @returns {number} нормализованное значение 0..1
+ */
+function normalizeMetricToUnitInterval(value, metadata, metricName) {
+  const safeValue = clampPositive(value);
+  const maxTarget = metadata?.target_summary?.[metricName]?.max ?? 1;
+  if (maxTarget <= 0) return 0;
+  // Используем log1p для сглаживания выбросов
+  return clamp01(Math.log1p(safeValue) / Math.log1p(maxTarget));
+}
+
+/**
+ * Нормализация лайков (оставлено для обратной совместимости)
+ */
+function normalizeLikesToUnitInterval(likes, metadata) {
+  return normalizeMetricToUnitInterval(likes, metadata, 'likes');
+}
+
+function capContentPlanMetrics(predictedMetrics, metadata = null) {
+  const [likes, shares, views] = predictedMetrics;
+  const maxLikes = Number(metadata?.target_summary?.total_likes?.max) || 0;
+  const maxShares = Number(metadata?.target_summary?.total_shares?.max) || 0;
+  const maxViews = Number(metadata?.target_summary?.total_views?.max) || 0;
+  
+  return [
+    maxLikes > 0 ? Math.min(clampPositive(likes), maxLikes * 1.15) : clampPositive(likes),
+    maxShares > 0 ? Math.min(clampPositive(shares), maxShares * 1.15) : clampPositive(shares),
+    maxViews > 0 ? Math.min(clampPositive(views), maxViews * 1.15) : clampPositive(views)
+  ];
+}
+
+/**
+ * Вычисление engagement rate из предсказанных метрик
+ * Формула: (likes + shares * 2) / views, кап на 1
+ */
+function calculateEngagementRateFromMetrics(metrics) {
+  const { likes, shares, views } = metrics;
+  if (views === 0) return 0;
+  const raw = (likes + shares * 2) / Math.max(1, views);
+  return clamp01(raw);
 }
 
 function runPythonModel(mode, modelKey, payload) {
@@ -259,7 +172,6 @@ function runPythonModel(mode, modelKey, payload) {
         payload: payload || {}
       })
       .catch(async (error) => {
-        // Fallback to one-shot execution if worker is unhealthy.
         try {
           mlWorker?.dispose?.();
         } catch (_disposeError) {
@@ -301,6 +213,7 @@ function enqueueTraining(modelKey, trainFactory) {
 function getTrainingPayload(modelKey) {
   const snapshot = readPrecedentSnapshot();
   const datasets = buildMlTrainingDatasets(snapshot);
+  
   if (modelKey === 'post') {
     return {
       features: datasets.postDataset.features,
@@ -322,40 +235,67 @@ async function ensureModelTrained(modelKey, options = {}) {
   if (!fs.existsSync(MODEL_DIR)) {
     fs.mkdirSync(MODEL_DIR, { recursive: true });
   }
-  await trainLikesModel(modelKey);
+  await trainMetricsModel(modelKey);
 }
 
-async function predictByFeatureVectors(modelKey, featureVectors, options = {}) {
+/**
+ * Предсказание метрик для постов по feature векторам
+ * @returns {Promise<{ predictions: number[][], metadata: object }>}
+ * predictions: массив массивов [[likes, shares, views], ...]
+ */
+async function predictPostMetricsByFeatureVectors(featureVectors, options = {}) {
   if (!Array.isArray(featureVectors) || featureVectors.length === 0) {
-    return { predictions: [], metadata: getModelMetadata(modelKey) };
+    return { predictions: [], metadata: null };
   }
 
-  await ensureModelTrained(modelKey, options);
+  await ensureModelTrained('post', options);
   const batches = chunkArray(featureVectors, 128);
-  const predictions = [];
+  const allPredictions = [];
   let metadata = null;
 
   for (const batch of batches) {
-    const result = await runPythonModel('predict', modelKey, { features: batch });
+    const result = await runPythonModel('predict', 'post', { features: batch });
     if (!result || !Array.isArray(result.predictions)) {
-      throw new Error(`Python predict returned invalid payload for model ${modelKey}`);
+      throw new Error(`Python predict returned invalid payload for post model`);
     }
-    predictions.push(...result.predictions.map((value) => clampPositive(value)));
+    allPredictions.push(...result.predictions);
     metadata = result.model_metadata || metadata;
   }
 
-  return { predictions, metadata };
+  return { predictions: allPredictions, metadata };
 }
 
-export async function predictPostLikesByFeatureVectors(featureVectors, options = {}) {
-  return predictByFeatureVectors('post', featureVectors, options);
+/**
+ * Предсказание метрик для планов по feature векторам
+ * @returns {Promise<{ predictions: number[][], metadata: object }>}
+ * predictions: массив массивов [[total_likes, total_shares, total_views], ...]
+ */
+async function predictPlanMetricsByFeatureVectors(featureVectors, options = {}) {
+  if (!Array.isArray(featureVectors) || featureVectors.length === 0) {
+    return { predictions: [], metadata: null };
+  }
+
+  await ensureModelTrained('content_plan', options);
+  const batches = chunkArray(featureVectors, 128);
+  const allPredictions = [];
+  let metadata = null;
+
+  for (const batch of batches) {
+    const result = await runPythonModel('predict', 'content_plan', { features: batch });
+    if (!result || !Array.isArray(result.predictions)) {
+      throw new Error(`Python predict returned invalid payload for plan model`);
+    }
+    allPredictions.push(...result.predictions);
+    metadata = result.model_metadata || metadata;
+  }
+
+  return { predictions: allPredictions, metadata };
 }
 
-export async function predictContentPlanLikesByFeatureVectors(featureVectors, options = {}) {
-  return predictByFeatureVectors('content_plan', featureVectors, options);
-}
-
-export async function trainLikesModel(modelKey) {
+/**
+ * Обучение модели для указанного ключа (post или content_plan)
+ */
+async function trainMetricsModel(modelKey) {
   const payload = getTrainingPayload(modelKey);
   if (!payload.features.length) {
     throw new Error(`No training samples available for model ${modelKey}`);
@@ -363,39 +303,45 @@ export async function trainLikesModel(modelKey) {
   return enqueueTraining(modelKey, () => runPythonModel('train', modelKey, payload));
 }
 
-export async function trainPostLikesModel() {
-  return trainLikesModel('post');
+async function trainPostMetricsModel() {
+  return trainMetricsModel('post');
 }
 
-export async function trainContentPlanLikesModel() {
-  return trainLikesModel('content_plan');
+async function trainPlanMetricsModel() {
+  return trainMetricsModel('content_plan');
 }
 
-export async function trainRelevanceModel() {
-  const [postModel, contentPlanModel] = await Promise.all([
-    trainPostLikesModel(),
-    trainContentPlanLikesModel()
+async function trainRelevanceModel() {
+  const [postModel, planModel] = await Promise.all([
+    trainPostMetricsModel(),
+    trainPlanMetricsModel()
   ]);
   return {
     success: true,
     models: {
       post: postModel,
-      content_plan: contentPlanModel
+      content_plan: planModel
     },
     metadata: {
       post: postModel?.metadata || null,
-      content_plan: contentPlanModel?.metadata || null
+      content_plan: planModel?.metadata || null
     }
   };
 }
 
-export async function predictPostLikesForPublications(publications, options = {}) {
+/**
+ * Предсказание метрик для списка публикаций
+ * @param {Array} publications - массив публикаций
+ * @param {Object} options - опции
+ * @returns {Promise<{ predictions: number[][], normalizedScores: object[], featureVectors: number[][], metadata: object, planFeatureMap: object }>}
+ */
+async function predictPostMetricsForPublications(publications, options = {}) {
   if (!Array.isArray(publications) || publications.length === 0) {
     return {
       predictions: [],
       normalizedScores: [],
       featureVectors: [],
-      metadata: getModelMetadata('post'),
+      metadata: null,
       planFeatureMap: buildPlanFeatureMap([])
     };
   }
@@ -403,14 +349,22 @@ export async function predictPostLikesForPublications(publications, options = {}
   const planFeatureMap = buildPlanFeatureMap(publications, {
     durationDays: options.durationDays
   });
+  
   const featureVectors = publications.map((publication) =>
     buildPostFeatureVector(publication, {
       tonesCount: planFeatureMap.unique_tones,
       creativityFromBestPlan: planFeatureMap.avg_creativity
     })
   );
-  const { predictions, metadata } = await predictByFeatureVectors('post', featureVectors, options);
-  const normalizedScores = predictions.map((prediction) => normalizeLikesToUnitInterval(prediction, metadata));
+  
+  const { predictions, metadata } = await predictPostMetricsByFeatureVectors(featureVectors, options);
+  
+  // Нормализуем каждую метрику отдельно для UI
+  const normalizedScores = predictions.map((pred) => ({
+    likes: normalizeMetricToUnitInterval(pred[0], metadata, 'likes'),
+    shares: normalizeMetricToUnitInterval(pred[1], metadata, 'shares'),
+    views: normalizeMetricToUnitInterval(pred[2], metadata, 'views')
+  }));
 
   return {
     predictions,
@@ -421,77 +375,102 @@ export async function predictPostLikesForPublications(publications, options = {}
   };
 }
 
-export async function predictContentPlanLikes(planOrPublications, options = {}) {
+/**
+ * Предсказание метрик для контент-плана
+ * @param {Object|Array} planOrPublications - план с publications или массив публикаций
+ * @param {Object} options - опции
+ * @returns {Promise<{ predictedLikes: number, predictedShares: number, predictedViews: number, normalizedLikes: number, normalizedShares: number, normalizedViews: number, featureVector: number[], featureMap: object, metadata: object }>}
+ */
+async function predictContentPlanMetrics(planOrPublications, options = {}) {
   const publications = Array.isArray(planOrPublications)
     ? planOrPublications
     : Array.isArray(planOrPublications?.publications)
     ? planOrPublications.publications
     : [];
-  const expectedPlatforms =
-    options.expectedPlatforms ||
+    
+  const expectedPlatforms = options.expectedPlatforms || 
     (Array.isArray(planOrPublications?.platforms) ? planOrPublications.platforms : []);
-  const targetAudience =
-    options.targetAudience ||
-    (Array.isArray(planOrPublications?.target_audience)
-      ? planOrPublications.target_audience
-      : Array.isArray(planOrPublications?.audience_segments)
-      ? planOrPublications.audience_segments
-      : []);
+  const targetAudience = options.targetAudience ||
+    (Array.isArray(planOrPublications?.target_audience) ? planOrPublications.target_audience : []);
+    
   const planFeatureMap = buildPlanFeatureMap(publications, {
     durationDays: options.durationDays || planOrPublications?.planning_horizon?.duration_days,
     expectedPlatforms,
     targetAudience
   });
+  
   const featureVector = buildPlanFeatureVector(publications, {
     durationDays: planFeatureMap.duration_days,
     expectedPlatforms,
     targetAudience
   });
-  const { predictions, metadata } = await predictByFeatureVectors('content_plan', [featureVector], options);
-  const predictedLikes = capContentPlanLikes(predictions[0], metadata);
-
+  
+  const { predictions, metadata } = await predictPlanMetricsByFeatureVectors([featureVector], options);
+  const rawPredicted = predictions[0] || [0, 0, 0];
+  const cappedPredicted = capContentPlanMetrics(rawPredicted, metadata);
+  
+  const [likes, shares, views] = cappedPredicted;
+  
   return {
-    predictedLikes,
-    normalizedScore: normalizeLikesToUnitInterval(predictedLikes, metadata),
+    predictedLikes: likes,
+    predictedShares: shares,
+    predictedViews: views,
+    normalizedLikes: normalizeMetricToUnitInterval(likes, metadata, 'total_likes'),
+    normalizedShares: normalizeMetricToUnitInterval(shares, metadata, 'total_shares'),
+    normalizedViews: normalizeMetricToUnitInterval(views, metadata, 'total_views'),
     featureVector,
     featureMap: planFeatureMap,
     metadata
   };
 }
 
-export function getMlModelMetadata() {
-  return {
-    post: getModelMetadata('post'),
-    content_plan: getModelMetadata('content_plan')
-  };
-}
-
-export async function predictEngagementRatesForGeneratedPublications(publications, options = {}) {
+/**
+ * Предсказание engagement rate для сгенерированных публикаций
+ * (обновляет expected_kpi каждой публикации)
+ * @param {Array} publications - массив публикаций
+ * @param {Object} options - опции
+ * @returns {Promise<{ updatedPublications: Array, avgEngagementRate: number, engagementRates: number[], predictions: number[][], totalPredictedLikes: number, totalPredictedShares: number, totalPredictedViews: number, modelMetadata: object }>}
+ */
+async function predictEngagementRatesForGeneratedPublications(publications, options = {}) {
   if (!Array.isArray(publications) || publications.length === 0) {
     return {
       updatedPublications: publications || [],
       avgEngagementRate: 0,
       engagementRates: [],
-      predictedLikes: [],
-      totalPredictedLikes: 0
+      predictions: [],
+      totalPredictedLikes: 0,
+      totalPredictedShares: 0,
+      totalPredictedViews: 0,
+      modelMetadata: null
     };
   }
 
-  const result = await predictPostLikesForPublications(publications, options);
+  const result = await predictPostMetricsForPublications(publications, options);
   const engagementRates = [];
+  let totalLikes = 0;
+  let totalShares = 0;
+  let totalViews = 0;
+  
   const updatedPublications = publications.map((publication, index) => {
-    const predictedLikes = clampPositive(result.predictions[index]);
-    const estimatedKpi = estimatePublicationKpiFromLikes(predictedLikes, publication, result.metadata);
-    const engagementRate = clamp01(estimatedKpi.engagement_rate);
+    const pred = result.predictions[index] || [0, 0, 0];
+    const [likes, shares, views] = pred;
+    totalLikes += likes;
+    totalShares += shares;
+    totalViews += views;
+    
+    const engagementRate = calculateEngagementRateFromMetrics({ likes, shares, views });
     engagementRates.push(engagementRate);
+    
     const next = { ...publication };
-    next.expected_kpi = { ...(next.expected_kpi || {}) };
-    next.expected_kpi.predicted_likes = predictedLikes;
-    next.expected_kpi.predicted_likes_source = 'ml_post_likes_prediction';
-    next.expected_kpi.engagement_rate = engagementRate;
-    next.expected_kpi.engagement_rate_source = 'ml_post_likes_calibrated';
-    next.expected_kpi.conversion_potential = estimatedKpi.conversion_potential;
-    next.expected_kpi.reach_potential = estimatedKpi.reach_potential;
+    next.expected_kpi = {
+      ...(next.expected_kpi || {}),
+      predicted_likes: likes,
+      predicted_shares: shares,
+      predicted_views: views,
+      predicted_likes_source: 'ml_post_metrics_prediction',
+      engagement_rate: engagementRate,
+      engagement_rate_source: 'ml_post_metrics_calculated'
+    };
     next.ontology_features = result.featureVectors[index];
     return next;
   });
@@ -500,10 +479,75 @@ export async function predictEngagementRatesForGeneratedPublications(publication
     updatedPublications,
     avgEngagementRate: clamp01(average(engagementRates)),
     engagementRates,
-    predictedLikes: result.predictions,
-    totalPredictedLikes: result.predictions.reduce((sum, value) => sum + clampPositive(value), 0),
-    modelMetadata: result.metadata,
+    predictions: result.predictions,
+    totalPredictedLikes: totalLikes,
+    totalPredictedShares: totalShares,
+    totalPredictedViews: totalViews,
+    modelMetadata: result.metadata
+  };
+}
+
+// ========== ЭКСПОРТЫ ДЛЯ ОБРАТНОЙ СОВМЕСТИМОСТИ (deprecated) ==========
+// Старые имена функций оставлены для плавного перехода
+
+async function predictPostLikesByFeatureVectors(featureVectors, options = {}) {
+  const { predictions, metadata } = await predictPostMetricsByFeatureVectors(featureVectors, options);
+  // Возвращаем только лайки для совместимости
+  return {
+    predictions: predictions.map(p => p[0]),
+    metadata
+  };
+}
+
+async function predictPostLikesForPublications(publications, options = {}) {
+  const result = await predictPostMetricsForPublications(publications, options);
+  return {
+    predictions: result.predictions.map(p => p[0]),
+    normalizedScores: result.normalizedScores.map(s => s.likes),
+    featureVectors: result.featureVectors,
+    metadata: result.metadata,
     planFeatureMap: result.planFeatureMap
   };
 }
 
+async function predictContentPlanLikes(planOrPublications, options = {}) {
+  const result = await predictContentPlanMetrics(planOrPublications, options);
+  return {
+    predictedLikes: result.predictedLikes,
+    normalizedScore: result.normalizedLikes,
+    featureVector: result.featureVector,
+    featureMap: result.featureMap,
+    metadata: result.metadata
+  };
+}
+
+async function trainPostLikesModel() {
+  return trainPostMetricsModel();
+}
+
+async function trainContentPlanLikesModel() {
+  return trainPlanMetricsModel();
+}
+
+// ========== ОСНОВНЫЕ ЭКСПОРТЫ ==========
+export {
+  // Новые основные функции
+  predictPostMetricsByFeatureVectors,
+  predictPlanMetricsByFeatureVectors,
+  predictPostMetricsForPublications,
+  predictContentPlanMetrics,
+  predictEngagementRatesForGeneratedPublications,
+  trainPostMetricsModel,
+  trainPlanMetricsModel,
+  trainRelevanceModel,
+  getMlModelMetadata,
+  normalizeMetricToUnitInterval,
+  normalizeLikesToUnitInterval,
+  calculateEngagementRateFromMetrics,
+  // Устаревшие, но оставленные для совместимости
+  predictPostLikesByFeatureVectors,
+  predictPostLikesForPublications,
+  predictContentPlanLikes,
+  trainPostLikesModel,
+  trainContentPlanLikesModel
+};

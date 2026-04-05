@@ -1,7 +1,7 @@
 import { optimizeContentPlanEvolution } from './planEvolution.js';
 import { fillPlanWithBestPublication, optimizePublicationsEvolution } from './postEvolution.js';
 import { buildPlanFeatureMap } from '../../../ml/services/ml/ontologyFeatureEngineering.js';
-import { predictContentPlanLikes } from '../../../ml/services/relevancePredictionService.js';
+import { predictContentPlanMetrics } from '../../../ml/services/relevancePredictionService.js';
 
 function asNumber(value, fallback = 0) {
   const numeric = Number(value);
@@ -109,25 +109,58 @@ export async function runHierarchicalOptimization(payload = {}) {
 
   const stage1Config = payload?.stage1 || {};
   const stage2Config = payload?.stage2 || {};
+  const lockedFields = payload?.locked_fields || {};
+  
   validateOptimizationInputs(draft, stage1Config);
-  const contentPlanResult = await optimizeContentPlanEvolution(draft, stage1Config);
+  
+  // Stage 1: эволюция структуры плана
+  const contentPlanResult = await optimizeContentPlanEvolution(draft, {
+    ...stage1Config,
+    lockedFields
+  });
+  
+  // Подготовка lockedFields для stage2 на основе результатов stage1
+  const planFeatureMap = contentPlanResult.planFeatureMap;
+  const stage2LockedFields = {
+    ...lockedFields,
+    // Если в lockedFields не указано иное, берём из результатов эволюции плана
+    has_cta: lockedFields.has_cta !== undefined ? lockedFields.has_cta : null,
+    targetToneIndex: lockedFields.targetToneIndex !== undefined ? lockedFields.targetToneIndex : null,
+    targetCtaShare: planFeatureMap.cta_share,
+    targetAvgCreativity: planFeatureMap.avg_creativity,
+    targetUniqueTones: planFeatureMap.unique_tones
+  };
+  
+  // Stage 2: эволюция признаков каждого поста
   const postResult = await optimizePublicationsEvolution(
     contentPlanResult.optimizedPlan.publications,
     contentPlanResult.planFeatureMap,
-    stage2Config
+    {
+      ...stage2Config,
+      lockedFields: stage2LockedFields
+    }
   );
+  
+  // Заполнение плана лучшими постами с распределением CTA по приоритету
   const filledPlanResult = await fillPlanWithBestPublication(
     contentPlanResult.optimizedPlan.publications,
     postResult.publicationResults,
     contentPlanResult.planFeatureMap,
-    stage2Config.ga || stage2Config
+    {
+      ...(stage2Config.ga || stage2Config),
+      targetCtaShare: planFeatureMap.cta_share
+    }
   );
+  
+  // Финальные метаданные плана
   const finalPlanFeatureMap = buildPlanFeatureMap(filledPlanResult.publications, {
     durationDays: contentPlanResult.optimizedPlan?.planning_horizon?.duration_days,
     expectedPlatforms: contentPlanResult.optimizedPlan?.platforms || draft?.platforms || [],
     targetAudience: contentPlanResult.optimizedPlan?.target_audience || draft?.target_audience || []
   });
-  const finalPlanPrediction = await predictContentPlanLikes(
+  
+  // Финальное предсказание метрик плана (используем новую multi-output функцию)
+  const finalPlanPrediction = await predictContentPlanMetrics(
     {
       ...contentPlanResult.optimizedPlan,
       publications: filledPlanResult.publications
@@ -140,16 +173,24 @@ export async function runHierarchicalOptimization(payload = {}) {
   );
 
   const rawFinalLikes = finalPlanPrediction?.predictedLikes;
+  const rawFinalShares = finalPlanPrediction?.predictedShares;
+  const rawFinalViews = finalPlanPrediction?.predictedViews;
   const numericFinalLikes = Number(rawFinalLikes);
-  const safeFinalPredicted = Number.isFinite(numericFinalLikes) ? numericFinalLikes : null;
+  const numericFinalShares = Number(rawFinalShares);
+  const numericFinalViews = Number(rawFinalViews);
+  const safeFinalPredictedLikes = Number.isFinite(numericFinalLikes) ? numericFinalLikes : null;
+  const safeFinalPredictedShares = Number.isFinite(numericFinalShares) ? numericFinalShares : null;
+  const safeFinalPredictedViews = Number.isFinite(numericFinalViews) ? numericFinalViews : null;
 
   const optimizedContentPlan = {
     ...contentPlanResult.optimizedPlan,
     publications: filledPlanResult.publications,
     expected_kpi: {
       ...(contentPlanResult.optimizedPlan.expected_kpi || {}),
-      predicted_total_likes: rawFinalLikes,
-      predicted_total_likes_source: 'ml_content_plan_likes_model_final'
+      predicted_total_likes: safeFinalPredictedLikes,
+      predicted_total_shares: safeFinalPredictedShares,
+      predicted_total_views: safeFinalPredictedViews,
+      predicted_total_likes_source: 'ml_content_plan_metrics_model_final'
     },
     plan_features: finalPlanFeatureMap
   };
@@ -158,6 +199,8 @@ export async function runHierarchicalOptimization(payload = {}) {
     stage1: {
       phase: 'content_plan_evolution',
       predicted_total_likes: contentPlanResult.predictedLikes,
+      predicted_total_shares: contentPlanResult.predictedShares,
+      predicted_total_views: contentPlanResult.predictedViews,
       target_posts_count: contentPlanResult.planFeatureMap.posts_count,
       plan_features: contentPlanResult.planFeatureMap,
       ga: {
@@ -170,10 +213,10 @@ export async function runHierarchicalOptimization(payload = {}) {
     },
     stage2: {
       phase: 'post_evolution',
-      /** Итоговый ML-прогноз суммарных лайков по плану (после заполнения постов). Дублирует optimized_content_plan.expected_kpi.predicted_total_likes. */
-      predicted_total_likes: safeFinalPredicted,
-      /** Устаревшее имя метрики в UI; то же значение, что predicted_total_likes. */
-      f_kp: safeFinalPredicted,
+      predicted_total_likes: safeFinalPredictedLikes,
+      predicted_total_shares: safeFinalPredictedShares,
+      predicted_total_views: safeFinalPredictedViews,
+      f_kp: safeFinalPredictedLikes,
       best_post: postResult.bestPublication,
       archetypes: postResult.archetypes,
       cta_distribution: {
@@ -184,6 +227,9 @@ export async function runHierarchicalOptimization(payload = {}) {
       publications: postResult.publicationResults.map((item) => ({
         publication_id: item.optimizedPublication?.publication_id || null,
         predicted_likes: item.predictedLikes,
+        predicted_shares: item.predictedShares,
+        predicted_views: item.predictedViews,
+        fitness: item.fitness,
         ga: {
           best_score: item.ga.best_score,
           best_meta: item.ga.best_meta || null,
@@ -199,4 +245,3 @@ export async function runHierarchicalOptimization(payload = {}) {
     optimized_content_plan: optimizedContentPlan
   };
 }
-

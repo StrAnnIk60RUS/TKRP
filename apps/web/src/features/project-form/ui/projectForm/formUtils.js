@@ -231,14 +231,18 @@ export function buildGaConfigFromForm(formData) {
   const seed = formData.evoRandomSeed && formData.evoRandomSeed.trim() ? formData.evoRandomSeed.trim() : null
   return {
     seed,
-    populationSize: parseNumberOrNull(formData.evoPopulationSize) ?? 64,
-    maxGenerations: parseNumberOrNull(formData.evoGenerations) ?? 80,
-    stagnationGenerations: parseNumberOrNull(formData.evoStagnationGenerations) ?? 20,
-    eliteSize: parseNumberOrNull(formData.evoEliteSize) ?? 4,
-    tournamentSize: parseNumberOrNull(formData.evoTournamentSize) ?? 5,
-    crossoverProbability: parseNumberOrNull(formData.evoCrossoverProbability) ?? 0.9,
-    mutationProbability: parseNumberOrNull(formData.evoMutationProbability) ?? 0.08,
-    crossoverMethod: 'one_point'
+    // Числовые параметры — с оптимальными значениями по умолчанию
+    populationSize: parseNumberOrNull(formData.evoPopulationSize) ?? 32,
+    maxGenerations: parseNumberOrNull(formData.evoGenerations) ?? 40,
+    stagnationGenerations: parseNumberOrNull(formData.evoStagnationGenerations) ?? 12,
+    eliteSize: parseNumberOrNull(formData.evoEliteSize) ?? 6,
+    tournamentSize: parseNumberOrNull(formData.evoTournamentSize) ?? 3,
+    crossoverProbability: parseNumberOrNull(formData.evoCrossoverProbability) ?? 0.75,
+    mutationProbability: parseNumberOrNull(formData.evoMutationProbability) ?? 0.12,
+    // НОВЫЕ поля — выбор методов
+    selectionMethod: formData.evoSelectionMethod || 'tournament',
+    crossoverMethod: formData.evoCrossoverMethod || 'one_point',
+    mutationMethod: formData.evoMutationMethod || 'random_replace',
   }
 }
 

@@ -1,0 +1,41 @@
+{
+  "target_names": [
+    "total_likes",
+    "total_shares",
+    "total_views"
+  ],
+  "n_targets": 3,
+  "model_type": "MultiOutputRegressor(MLPRegressor)",
+  "feature_names": [
+    "unique_topics",
+    "unique_tones",
+    "avg_creativity",
+    "cta_share",
+    "posts_count",
+    "duration_days",
+    "format_entropy",
+    "objective_entropy",
+    "audience_coverage",
+    "platform_coverage",
+    "topic_recurrence",
+    "timeline_density"
+  ],
+  "n_features": 12,
+  "target_summary": {
+    "total_likes": {
+      "min": 0.0,
+      "max": 2048.0,
+      "mean": 464.3076923076923
+    },
+    "total_shares": {
+      "min": 1.0,
+      "max": 334.0,
+      "mean": 65.3076923076923
+    },
+    "total_views": {
+      "min": 162.0,
+      "max": 257041.0,
+      "mean": 43173.53846153846
+    }
+  }
+}

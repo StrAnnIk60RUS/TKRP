@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect, useRef, useReducer, useCallback } from 'react'
+import React, { useState, useMemo, useEffect, useRef, useReducer, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ToastContainer } from '../../../shared/ui/Toast'
 import CompetitorsStep from './competitors/CompetitorsStep'
@@ -488,7 +488,6 @@ const ProjectForm = () => {
     }
 
     restoreDraft()
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- restore runs when server availability is known; setFormData stable
   }, [isEnrichmentServerAvailable])
 
   useEffect(() => {
@@ -508,7 +507,6 @@ const ProjectForm = () => {
 
   useEffect(() => {
     setCurrentStep((prev) => Math.min(prev, wizardSteps.length))
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- clamp when wizardSteps.length changes; setCurrentStep stable
   }, [wizardSteps.length])
 
   useEffect(() => {
@@ -701,7 +699,7 @@ const ProjectForm = () => {
     }
   }
 
-  const _handleReset = () => {
+  const handleReset = () => {
     if (window.confirm('Вы уверены, что хотите очистить все поля формы?')) {
       setFormData(initialFormData)
       setErrors({})
@@ -726,7 +724,7 @@ const ProjectForm = () => {
     await loadExample(exampleName)
   }
 
-  const _handleLoadExample = () => {
+  const handleLoadExample = () => {
     if (window.confirm('Загрузить пример данных? Текущие данные будут заменены.')) {
       // Пример данных из project_data_example.json
       setFormData(demoExampleFormData)
@@ -778,15 +776,11 @@ const ProjectForm = () => {
         // Если LLM вернул черновой контент-план, сохраняем его для страницы просмотра
         if (response?.draft?.draft_content_plan) {
           try {
-            const saved = await savePlanSnapshot(response.draft.draft_content_plan, {
+            await savePlanSnapshot(response.draft.draft_content_plan, {
               type: 'draft'
             })
-            if (!saved.ok) {
-              addToast(saved.message || 'Не удалось сохранить снимок плана на сервере', 'error')
-            }
           } catch (e) {
-            console.error('Не удалось сохранить контент-план:', e)
-            addToast(e?.message || 'Ошибка сохранения снимка плана', 'error')
+            console.error('Не удалось сохранить контент-план в localStorage:', e)
           }
         }
         if (response?.rag) {
@@ -853,8 +847,24 @@ const ProjectForm = () => {
       return
     }
 
+    const lockedFields = {
+    platforms: formData.platforms,           // выбранные платформы
+    formats: formData.contentFormats,        // выбранные форматы
+    minPublications: formData.minPublications,
+    publicationFrequency: formData.publicationFrequency,
+    publicationDayMode: formData.publicationDayMode,
+    // если пользователь захочет зафиксировать конкретные поля
+    topic: false,
+    format: false,
+    objective: false,
+    tone: false,
+    has_cta: null,
+    creativity: null
+};
+
     const payload = {
       draft_content_plan: draft,
+      locked_fields: lockedFields,
       stage1: {
         precedentPublications: precedentPubs,
         constraints: {
@@ -890,7 +900,7 @@ const ProjectForm = () => {
 
         if (response?.optimized_content_plan) {
           try {
-            const saved = await savePlanSnapshot(response.optimized_content_plan, {
+            await savePlanSnapshot(response.optimized_content_plan, {
               type: 'optimized',
               optimization: {
                 optimized_at: new Date().toISOString(),
@@ -898,12 +908,8 @@ const ProjectForm = () => {
                 stage2: response.stage2 || null
               }
             })
-            if (!saved.ok) {
-              addToast(saved.message || 'Не удалось сохранить оптимизированный план на сервере', 'error')
-            }
           } catch (e) {
-            console.error('Не удалось сохранить оптимизированный план:', e)
-            addToast(e?.message || 'Ошибка сохранения снимка плана', 'error')
+            console.error('Не удалось сохранить оптимизированный план в localStorage:', e)
           }
         }
       })
@@ -1547,7 +1553,81 @@ const ProjectForm = () => {
               />
             </div>
           </div>
+{/* НОВЫЙ БЛОК — ВЫБОР МЕТОДОВ */}
+  <h3 className="section-subtitle" style={{ marginTop: '24px', marginBottom: '16px', fontSize: '1rem' }}>
+    Расширенные настройки (опционально)
+  </h3>
+  
+  <div className="form-row">
+    <div className="form-group">
+      <label htmlFor="evoSelectionMethod" className="form-label">
+        Метод отбора
+      </label>
+      <select
+        id="evoSelectionMethod"
+        name="evoSelectionMethod"
+        value={formData.evoSelectionMethod || 'tournament'}
+        onChange={handleChange}
+        onBlur={handleBlur}
+        className="form-select"
+        disabled={!isEditMode}
+      >
+        <option value="tournament">Турнирный отбор</option>
+        <option value="roulette">Пропорциональный (рулетка)</option>
+        <option value="rank">Ранговый отбор</option>
+      </select>
+      <small className="form-hint">
+        Как выбираются родители для скрещивания. Tournament — лучший из случайной группы, Roulette — пропорционально fitness, Rank — по рангу.
+      </small>
+    </div>
 
+    <div className="form-group">
+      <label htmlFor="evoCrossoverMethod" className="form-label">
+        Метод скрещивания
+      </label>
+      <select
+        id="evoCrossoverMethod"
+        name="evoCrossoverMethod"
+        value={formData.evoCrossoverMethod || 'one_point'}
+        onChange={handleChange}
+        onBlur={handleBlur}
+        className="form-select"
+        disabled={!isEditMode}
+      >
+        <option value="one_point">Одноточечное</option>
+        <option value="two_point">Двухточечное</option>
+        <option value="uniform">Равномерное</option>
+      </select>
+      <small className="form-hint">
+        Как комбинируются гены родителей. One-point обменивает всё после одной точки, Two-point — участок между двумя точками, Uniform — каждый ген с вероятностью 50%.
+      </small>
+    </div>
+  </div>
+
+  <div className="form-row">
+    <div className="form-group">
+      <label htmlFor="evoMutationMethod" className="form-label">
+        Метод мутации
+      </label>
+      <select
+        id="evoMutationMethod"
+        name="evoMutationMethod"
+        value={formData.evoMutationMethod || 'random_replace'}
+        onChange={handleChange}
+        onBlur={handleBlur}
+        className="form-select"
+        disabled={!isEditMode}
+      >
+        <option value="random_replace">Битовая (замена значения)</option>
+        <option value="inversion">Инверсия (разворот участка)</option>
+      </select>
+      <small className="form-hint">
+        Как изменяются гены потомков. Random_replace заменяет случайный ген, Inversion разворачивает случайный участок.
+      </small>
+    </div>
+    </div>
+
+    <div className="form-group"></div>
           {/* Скрещивание и мутация */}
           <div className="form-row">
             <div className="form-group">

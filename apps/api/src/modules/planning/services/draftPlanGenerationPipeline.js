@@ -307,7 +307,7 @@ function averagePrecedentKpi(compactRagContext = {}) {
   };
 }
 
-function buildRequestedConstraints(_formInput = {}, targetPublicationCount) {
+function buildRequestedConstraints(formInput = {}, targetPublicationCount) {
   return {
     min_publications: targetPublicationCount
   };

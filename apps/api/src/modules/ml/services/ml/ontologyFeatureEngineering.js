@@ -16,6 +16,7 @@ import {
   estimateSentenceLengthBucket,
   getLeadParagraph,
   getTitleLine,
+  mapTernaryToUnit,
   normalizeByRange,
   pickFirstFinite,
   resolveToneFlags,
@@ -399,60 +400,63 @@ function estimatePlanTargetLikes(schedulePublications = [], contextPublications 
 
 export function buildMlTrainingDatasets(snapshot = {}) {
   const postFeatures = [];
-  const postTargets = [];
+  const postTargets = [];      // Будет массивом [likes, shares, views]
   const planFeatures = [];
-  const planTargets = [];
+  const planTargets = [];      // Будет массивом [total_likes, total_shares, total_views]
+
   const groups = groupSnapshotByContext(snapshot);
 
   groups.forEach(({ publications, contentPlans }) => {
     if (!publications.length) return;
+    
     const planFeatureMap = buildPlanFeatureMap(publications, {
       durationDays: null
     });
 
+    // ========== СБОР ДЛЯ МОДЕЛИ ПОСТОВ ==========
     publications.forEach((publication) => {
-      const likes = getPublicationLikes(publication);
-      if (!Number.isFinite(likes)) return;
+      // Получаем метрики
+      const rawMetrics = publication?.raw_metrics || {};
+      const likes = clampPositive(rawMetrics.likes ?? 0);
+      const shares = clampPositive(rawMetrics.shares ?? 0);
+      const views = clampPositive(rawMetrics.views ?? 0);
+      
+      // Пропускаем если нет ни одной значимой метрики
+      if (likes === 0 && shares === 0 && views === 0) return;
+      
       const featureVector = buildPostFeatureVector(publication, {
         tonesCount: planFeatureMap.unique_tones,
         creativityFromBestPlan: planFeatureMap.avg_creativity
       });
+      
       postFeatures.push(featureVector);
-      postTargets.push(clampPositive(likes, 0));
+      // Таргет — массив из 3 значений
+      postTargets.push([likes, shares, views]);
     });
 
-    const publicationById = new Map(
-      publications
-        .filter((publication) => publication?.publication_id)
-        .map((publication) => [publication.publication_id, publication])
-    );
-    const observedPlans = Array.isArray(contentPlans) ? contentPlans : [];
-    observedPlans.forEach((contentPlan) => {
-      const planModel = contentPlan?.content_plan_model || {};
-      const schedule = Array.isArray(planModel.publication_schedule) ? planModel.publication_schedule : [];
-      const schedulePublications =
-        schedule.length > 0
-          ? schedule.map((item) => createPlanPublicationStub(item, contentPlan, publicationById.get(item?.publication_id)))
-          : publications;
-      const sampleFeatureMap = buildPlanFeatureMap(schedulePublications, {
-        durationDays: planModel.planning_horizon_days,
-        expectedPlatforms: [contentPlan?.platform || planModel?.platform].filter(Boolean),
-        targetAudience:
-          planModel?.audience_segments ||
-          contentPlan?.content_strategy_snapshot?.core_audience_segments ||
-          []
-      });
-      planFeatures.push(PLAN_FEATURE_NAMES.map((name) => sampleFeatureMap[name] ?? 0));
-      planTargets.push(clampPositive(estimatePlanTargetLikes(schedulePublications, publications, contentPlan), 0));
-    });
+    // ========== СБОР ДЛЯ МОДЕЛИ ПЛАНОВ ==========
+    // Агрегируем метрики по всем публикациям конкурента
+    const totalLikes = publications.reduce((sum, p) => sum + clampPositive(p?.raw_metrics?.likes ?? 0), 0);
+    const totalShares = publications.reduce((sum, p) => sum + clampPositive(p?.raw_metrics?.shares ?? 0), 0);
+    const totalViews = publications.reduce((sum, p) => sum + clampPositive(p?.raw_metrics?.views ?? 0), 0);
+    
+    if (totalLikes > 0 || totalShares > 0 || totalViews > 0) {
+      const planFeatureVector = buildPlanFeatureVector(publications, {});
+      planFeatures.push(planFeatureVector);
+      planTargets.push([totalLikes, totalShares, totalViews]);
+    }
   });
 
+  // Если нет планов, создаём fallback
   if (planFeatures.length === 0) {
     groups.forEach(({ publications }) => {
-      const totalLikes = publications.reduce((sum, item) => sum + clampPositive(getPublicationLikes(item), 0), 0);
+      const totalLikes = publications.reduce((sum, p) => sum + clampPositive(p?.raw_metrics?.likes ?? 0), 0);
+      const totalShares = publications.reduce((sum, p) => sum + clampPositive(p?.raw_metrics?.shares ?? 0), 0);
+      const totalViews = publications.reduce((sum, p) => sum + clampPositive(p?.raw_metrics?.views ?? 0), 0);
+      
       const fallbackPlanFeatureMap = buildPlanFeatureMap(publications, {});
       planFeatures.push(PLAN_FEATURE_NAMES.map((name) => fallbackPlanFeatureMap[name] ?? 0));
-      planTargets.push(totalLikes);
+      planTargets.push([totalLikes, totalShares, totalViews]);
     });
   }
 
@@ -460,12 +464,14 @@ export function buildMlTrainingDatasets(snapshot = {}) {
     postDataset: {
       featureNames: POST_FEATURE_NAMES,
       features: postFeatures,
-      targets: postTargets
+      targets: postTargets,        // массив массивов [likes, shares, views]
+      targetNames: ['likes', 'shares', 'views']
     },
     contentPlanDataset: {
       featureNames: PLAN_FEATURE_NAMES,
       features: planFeatures,
-      targets: planTargets
+      targets: planTargets,        // массив массивов [total_likes, total_shares, total_views]
+      targetNames: ['total_likes', 'total_shares', 'total_views']
     }
   };
 }

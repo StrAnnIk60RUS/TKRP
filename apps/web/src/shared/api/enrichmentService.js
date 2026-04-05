@@ -189,7 +189,7 @@ export async function getAggregatedOntology(requestOptions = {}) {
 }
 
 /**
- * Скачивает Excel с агрегированной онтологией (листы по global: классы, сущности, отношения и т.д.)
+ * Скачивает Excel-файл с онтологией (классы, сущности, отношения) из базы прецедентов
  * @returns {Promise<void>}
  */
 export async function exportOntologyToExcel(requestOptions = {}) {
@@ -318,18 +318,6 @@ export async function savePlanSnapshotToServer(payload, requestOptions = {}) {
     })
   } catch (error) {
     console.error('Ошибка в savePlanSnapshotToServer:', error)
-    throw error
-  }
-}
-
-export async function listPlanSnapshotsFromServer(requestOptions = {}) {
-  try {
-    return await fetchJsonOrThrow(`${API_URL}/api/plan/snapshots`, {
-      method: 'GET',
-      signal: requestOptions.signal
-    })
-  } catch (error) {
-    console.error('Ошибка в listPlanSnapshotsFromServer:', error)
     throw error
   }
 }

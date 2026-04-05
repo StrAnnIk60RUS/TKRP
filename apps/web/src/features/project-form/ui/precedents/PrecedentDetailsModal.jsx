@@ -39,11 +39,11 @@ const PrecedentDetailsModal = ({ item, retrieval, onClose, showTechnicalDetails 
   const jsonString = useMemo(() => JSON.stringify(item, null, 2), [item])
   const closeButtonRef = useRef(null)
 
-  useEffect(() => {
-    if (item) closeButtonRef.current?.focus()
-  }, [item])
-
   if (!item) return null
+
+  useEffect(() => {
+    closeButtonRef.current?.focus()
+  }, [])
 
   const title =
     item.type === 'publication'
