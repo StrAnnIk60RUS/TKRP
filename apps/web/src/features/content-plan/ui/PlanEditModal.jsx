@@ -16,13 +16,32 @@ function clamp01(value) {
   return Math.max(0, Math.min(1, n))
 }
 
+function deriveAutoMinPublications(plan, draft) {
+  const nextStart = draft?.start_date || plan?.planning_horizon?.start_date
+  const nextEnd = draft?.end_date || plan?.planning_horizon?.end_date
+  if (!nextStart || !nextEnd) return 1
+  const nextDays = Math.max(1, Math.round((new Date(nextEnd) - new Date(nextStart)) / (24 * 60 * 60 * 1000)) + 1)
+
+  const baseStart = plan?.planning_horizon?.start_date
+  const baseEnd = plan?.planning_horizon?.end_date
+  const baseDays = baseStart && baseEnd
+    ? Math.max(1, Math.round((new Date(baseEnd) - new Date(baseStart)) / (24 * 60 * 60 * 1000)) + 1)
+    : nextDays
+  const baseMin =
+    coerceToNumberOrNull(plan?.schedule_preferences?.requested_publications) ??
+    coerceToNumberOrNull(plan?.constraints?.min_publications) ??
+    coerceToNumberOrNull(plan?.publications?.length) ??
+    1
+  const postsPerWeek = Math.max(1 / 7, (baseMin * 7) / Math.max(1, baseDays))
+  return Math.max(1, Math.round((postsPerWeek * nextDays) / 7))
+}
+
 function buildInitialDraft(plan) {
   return {
     start_date: plan?.planning_horizon?.start_date || '',
     end_date: plan?.planning_horizon?.end_date || '',
     avg_engagement_rate: plan?.kpi_targets?.avg_engagement_rate ?? 0,
     estimated_conversions: plan?.kpi_targets?.estimated_conversions ?? 0,
-    min_publications: plan?.constraints?.min_publications ?? '',
     notes: plan?.notes || ''
   }
 }
@@ -30,6 +49,7 @@ function buildInitialDraft(plan) {
 const PlanEditModal = ({ plan, onSave, onCancel }) => {
   const [draft, setDraft] = useState(() => buildInitialDraft(plan))
   const [error, setError] = useState('')
+  const autoMinPublications = useMemo(() => deriveAutoMinPublications(plan, draft), [plan, draft])
 
   const title = useMemo(() => {
     const hasOpt = Boolean(plan?.kpi_targets?.avg_engagement_rate)
@@ -48,10 +68,6 @@ const PlanEditModal = ({ plan, onSave, onCancel }) => {
 
   const validate = () => {
     if (!draft.start_date || !draft.end_date) return 'Укажите период планирования'
-    if (!draft.min_publications && draft.min_publications !== 0) return 'Укажите минимальное число публикаций'
-
-    const minPubs = coerceToNumberOrNull(draft.min_publications)
-    if (minPubs === null || minPubs < 0) return 'Некорректное значение min_publications'
 
     return null
   }
@@ -73,7 +89,7 @@ const PlanEditModal = ({ plan, onSave, onCancel }) => {
         estimated_conversions: Number(coerceToNumberOrNull(draft.estimated_conversions) ?? 0)
       },
       constraints: {
-        min_publications: Number(coerceToNumberOrNull(draft.min_publications) ?? 0)
+        min_publications: autoMinPublications
       },
       notes: draft.notes
     })
@@ -142,15 +158,8 @@ const PlanEditModal = ({ plan, onSave, onCancel }) => {
               </label>
 
               <label className="editor-field">
-                min_publications
-                <input
-                  className="editor-input"
-                  type="number"
-                  step="1"
-                  min="0"
-                  value={draft.min_publications}
-                  onChange={(e) => setField('min_publications', e.target.value)}
-                />
+                min_publications (auto)
+                <input className="editor-input" type="number" value={autoMinPublications} disabled />
               </label>
 
               <label className="editor-field editor-field-wide">

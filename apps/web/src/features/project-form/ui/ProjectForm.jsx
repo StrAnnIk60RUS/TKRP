@@ -49,6 +49,7 @@ import {
   hasLocalCompetitorsInForm,
   hasPersistedPrecedentsInDb,
   hasPrecedentsForWorkflow,
+  getRecommendedPublicationsByFrequency,
   mapExamplePayloadToFormData,
   parseNumberOrNull,
   validateFieldValue,
@@ -85,6 +86,11 @@ const buildAudienceSegmentsFromForm = (formData) =>
       ].filter(Boolean)
     )
   ).slice(0, 8)
+
+const hasEnrichedCompetitorsData = (competitorsData) => {
+  const firstPost = competitorsData?.competitors?.[0]?.posts?.[0]
+  return Boolean(firstPost?.publication_model)
+}
 
 const ProjectForm = () => {
   const navigate = useNavigate()
@@ -167,6 +173,10 @@ const ProjectForm = () => {
       return plan ? buildRiskSummary(plan, formData) : []
     },
     [draftPlanResult, optimizationResult, formData]
+  )
+  const recommendedPublications = useMemo(
+    () => getRecommendedPublicationsByFrequency(formData),
+    [formData]
   )
 
   const isValueFilled = (value) => {
@@ -371,8 +381,7 @@ const ProjectForm = () => {
       'consumerCategory',
       'contentPlanStartDate',
       'contentPlanEndDate',
-      'publicationFrequency',
-      'minPublications'
+      'publicationFrequency'
     ]
     const projectCompleted = projectFields.every((field) => isValueFilled(formData[field]))
     const projectStarted = projectFields.some((field) => isValueFilled(formData[field]))
@@ -574,9 +583,20 @@ const ProjectForm = () => {
       }))
     }
 
-    if (errors[name]) {
-      setErrors(prev => ({ ...prev, [name]: '' }))
-    }
+    const scheduleFields = new Set([
+      'contentPlanStartDate',
+      'contentPlanEndDate',
+      'publicationFrequency'
+    ])
+
+    setErrors((prev) => {
+      const next = { ...prev }
+      if (next[name]) next[name] = ''
+      if (scheduleFields.has(name)) {
+        next.publicationFrequency = ''
+      }
+      return next
+    })
   }
 
   const handleBlur = (e) => {
@@ -745,15 +765,36 @@ const ProjectForm = () => {
       return
     }
 
-    if (!isDeveloper) {
-      const hasPrecedents = hasPrecedentsForWorkflow(precedentSearchResults, precedentsSummary)
-      if (!hasPrecedents) {
-        addToast(
-          'Перед генерацией нужны прецеденты в базе: демо, поиск или данные с прошлых запусков. Парсинг и обогащение на шаге 1 не обязательны, если база уже заполнена.',
-          'error'
-        )
-        return
+    let effectivePrecedentsSummary = precedentsSummary
+    let hasWorkflowPrecedents = hasPrecedentsForWorkflow(precedentSearchResults, effectivePrecedentsSummary)
+
+    // Чтобы цепочка этапов не обрывалась на parse-only: при пустой базе и локальных
+    // сырых competitors_data пробуем авто-enrich + persist перед генерацией.
+    const hasLocalRawCompetitors = Boolean(competitorsData) && !hasEnrichedCompetitorsData(competitorsData)
+    if (!hasWorkflowPrecedents && hasLocalRawCompetitors && isEnrichmentServerAvailable === true) {
+      addToast('Нет прецедентов в базе. Запускаю обогащение локальных данных перед генерацией...', 'info')
+      const enrichmentOutcome = await handleEnrichCompetitorsData({ skipDownload: true })
+      if (enrichmentOutcome?.success) {
+        try {
+          const summaryResponse = await getPrecedentsSummary()
+          effectivePrecedentsSummary = summaryResponse.summary || null
+          setPrecedentsSummary(effectivePrecedentsSummary)
+          hasWorkflowPrecedents = hasPrecedentsForWorkflow(precedentSearchResults, effectivePrecedentsSummary)
+          if (hasPersistedPrecedentsInDb(effectivePrecedentsSummary)) {
+            addToast('Прецеденты обновлены. Продолжаю генерацию черновика.', 'success')
+          }
+        } catch (error) {
+          console.error('Ошибка обновления сводки прецедентов после auto-enrich:', error)
+        }
       }
+    }
+
+    if (!isDeveloper && !hasWorkflowPrecedents) {
+      addToast(
+        'Перед генерацией нужны прецеденты в базе: демо, поиск или данные с прошлых запусков. Парсинг и обогащение на шаге 1 не обязательны, если база уже заполнена.',
+        'error'
+      )
+      return
     }
 
     const safeFormInput = buildSafeFormInputForGeneration(formData)
@@ -816,11 +857,7 @@ const ProjectForm = () => {
           parseNumberOrNull(draft?.publications?.length) ??
           null
         : null
-    const minPubs =
-      sharedModeMinPubs ??
-      parseNumberOrNull(formData.minPublications) ??
-      parseNumberOrNull(draft?.constraints?.min_publications) ??
-      null
+    const minPubs = sharedModeMinPubs ?? recommendedPublications ?? parseNumberOrNull(draft?.constraints?.min_publications) ?? null
 
     const qualityMin =
       parseNumberOrNull(draft?.kpi_targets?.avg_engagement_rate) ??
@@ -843,14 +880,13 @@ const ProjectForm = () => {
     }
 
     if (!derivedPostsPerWeek || derivedPostsPerWeek <= 0) {
-      addToast('Выберите частоту публикаций или скорректируйте горизонт и число публикаций', 'error')
+      addToast('Выберите частоту публикаций или скорректируйте горизонт планирования', 'error')
       return
     }
 
     const lockedFields = {
     platforms: formData.platforms,           // выбранные платформы
     formats: formData.contentFormats,        // выбранные форматы
-    minPublications: formData.minPublications,
     publicationFrequency: formData.publicationFrequency,
     publicationDayMode: formData.publicationDayMode,
     // если пользователь захочет зафиксировать конкретные поля
@@ -952,15 +988,13 @@ const ProjectForm = () => {
     <>
       <ToastContainer toasts={toasts} removeToast={removeToast} />
       <ProcessIndicator active={!!currentProcessId} processId={currentProcessId} />
-      {isDeveloper && (
-        <OperationStatusPanel
-          operations={operations}
-          telemetry={operationTelemetry}
-          onCancel={cancelOperation}
-          onRetry={retryOperation}
-          isDeveloper={isDeveloper}
-        />
-      )}
+      <OperationStatusPanel
+        operations={operations}
+        telemetry={operationTelemetry}
+        onCancel={cancelOperation}
+        onRetry={retryOperation}
+        isDeveloper={isDeveloper}
+      />
 
       <form className="project-form">
         {/* Прогресс-бар */}
@@ -1325,27 +1359,6 @@ const ProjectForm = () => {
             <small className="form-hint">
               Если результат не подойдет, даты потом можно вручную поправить в календаре плана.
             </small>
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="minPublications" className="form-label">
-              Минимальное количество публикаций <span className="required">*</span>
-            </label>
-            <input
-              type="number"
-              id="minPublications"
-              name="minPublications"
-              value={formData.minPublications}
-              onChange={handleChange}
-              onBlur={handleBlur}
-              className={`form-input ${hasError('minPublications') ? 'error' : ''}`}
-              placeholder="30"
-              min="1"
-              max="1000"
-              disabled={!isEditMode}
-            />
-            {hasError('minPublications') && <span className="error-message">{errors.minPublications}</span>}
-            <small className="form-hint">Можно скорректировать позже</small>
           </div>
 
           <div className="form-group">
@@ -1733,26 +1746,7 @@ const ProjectForm = () => {
               isDeveloper={isDeveloper}
             />
 
-            {(draftPlanResult?.draft?.draft_content_plan || optimizationResult?.optimized_content_plan) && (
-              <section className="form-section precedent-workflow-section">
-                <div className="workflow-section-heading">
-                  <div>
-                    <h2 className="section-title">Планирование публикаций</h2>
-                    <p className="workflow-section-subtitle">
-                      Для удобного планирования откройте отдельный экран календаря: там есть режимы
-                      Карточки/Таблица/Календарь и drag-and-drop по датам и платформам.
-                    </p>
-                  </div>
-                </div>
-                <div className="workflow-action-row">
-                  <button type="button" className="submit-button secondary" onClick={() => navigate('/content-plan')}>
-                    <span>ОТКРЫТЬ КАЛЕНДАРЬ ПЛАНА</span>
-                  </button>
-                </div>
-              </section>
-            )}
-
-            {isExtendedMode && (
+            {isExtendedMode && isDeveloper && (
               <TechnicalDetailsPanel
                 precedentSearchQuery={precedentSearchQuery}
                 precedentSearchResults={precedentSearchResults}

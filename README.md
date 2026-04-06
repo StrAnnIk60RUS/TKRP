@@ -166,6 +166,8 @@ Key operational constraints from repository docs:
 From root:
 
 - `npm run dev` — run frontend + backend concurrently.
+- `npm run ml:retrain` — retrain ML models on current local precedent dataset.
+- `npm run ml:retrain:full` — re-embed precedents with wrong dimensions, then retrain models.
 - `npm run build` — frontend production build into `dist/web`.
 - `npm run preview` — preview frontend build.
 - `npm run lint` — repository lint/check scripts.
@@ -176,6 +178,20 @@ Backend-only (in `apps/api`):
 - `npm run dev` — watch mode backend.
 - `npm run start` — run backend server.
 - `npm run test` — backend tests.
+
+---
+
+## 10.1) ML Retraining Quickstart
+
+Use this when the feature engineering / scoring logic changes and existing model artifacts become stale.
+
+1. Start API server (`npm run dev` from repo root, or `npm run dev --prefix apps/api`).
+2. Ensure your admin/server API key is available in env if endpoint protection is enabled (`ADMIN_API_KEY` or `SERVER_API_KEY`).
+3. Run:
+   - `npm run ml:retrain` for regular retraining on current dataset.
+   - `npm run ml:retrain:full` if you also need `reembed-and-train`.
+
+The command prints JSON with endpoint response and elapsed time.
 
 ---
 

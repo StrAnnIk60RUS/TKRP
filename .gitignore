@@ -1,54 +1,69 @@
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
-
-node_modules
-dist
-dist-ssr
-*.local
-
-# Environment & secrets
-.env
-YANDEX_VERSION/.env
-
-# Editor directories and files
+# ------------------------------
+# OS / Editor
+# ------------------------------
+.DS_Store
+Thumbs.db
+.idea/
 .vscode/*
 !.vscode/extensions.json
-.idea
-.DS_Store
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
 
-# Documentation and text files (keep only locally)
-*.md
-*.MD
-*.markdown
-*.txt
-!requirements.txt
-!server/src/prompts/*.txt
-!README.md
-!.env.example
-!.github/workflows/*.yml
-server/data/*.json
-server/data/runtime/
-server/data/precedents-store/
-server/.data/
+# ------------------------------
+# Logs / diagnostics
+# ------------------------------
+logs/
+*.log
+debug.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
 
-# App API runtime (plan snapshots, wizard drafts, parser jobs)
+# ------------------------------
+# Environment / secrets
+# ------------------------------
+.env
+.env.*
+!.env.example
+*.local
+
+# ------------------------------
+# Node / frontend-backend artifacts
+# ------------------------------
+node_modules/
+dist/
+dist-ssr/
+coverage/
+.npm/
+.pnpm-store/
+
+# ------------------------------
+# Python artifacts
+# ------------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.python-version
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# ------------------------------
+# Project runtime data (generated)
+# ------------------------------
 data/runtime/
 apps/api/.data/
 
-# Python cache / bytecode
-__pycache__/
-*.py[cod]
-
-# Local binary docs (keep only locally)
-*.docx
+# ------------------------------
+# Temporary files
+# ------------------------------
+*.tmp
+*.temp

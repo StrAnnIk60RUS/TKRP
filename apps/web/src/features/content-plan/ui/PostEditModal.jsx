@@ -1,10 +1,16 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import '../../../shared/ui/PreviewModal.css'
 import './editorModals.css'
-
-const ALLOWED_OBJECTIVES = ['inform', 'educate', 'engage', 'convert', 'retain']
-const ALLOWED_PLATFORMS = ['vk', 'linkedin']
-const ALLOWED_FORMATS = ['text', 'image', 'video', 'combined']
+import {
+  getFormatLabel,
+  getObjectiveLabel,
+  getPlatformLabel,
+  normalizeFormat,
+  normalizeObjective,
+  normalizePlatform,
+  normalizePublicationForUi,
+  publicationFieldOptions
+} from '../lib/publicationPresentation'
 
 function coerceString(value) {
   if (value === null || value === undefined) return ''
@@ -13,15 +19,17 @@ function coerceString(value) {
 }
 
 function buildInitialDraft(publication) {
+  const normalized = normalizePublicationForUi(publication)
   return {
-    planned_date: coerceString(publication?.planned_date || ''),
-    topic: coerceString(publication?.topic || ''),
-    platform: coerceString(publication?.platform || ''),
-    format: coerceString(publication?.format || ''),
-    objective: coerceString(publication?.objective || ''),
-    tone: coerceString(publication?.tone || ''),
-    key_message: coerceString(publication?.key_message || ''),
-    cta: coerceString(publication?.cta || '')
+    planned_date: coerceString(normalized?.planned_date || ''),
+    topic: coerceString(normalized?.topic || ''),
+    platform: coerceString(normalized?.platform || ''),
+    format: coerceString(normalized?.format || ''),
+    objective: coerceString(normalized?.objective || ''),
+    tone: coerceString(normalized?.tone || ''),
+    summary: coerceString(normalized?.summary || ''),
+    key_message: coerceString(normalized?.key_message || ''),
+    cta: coerceString(normalized?.cta || '')
   }
 }
 
@@ -48,22 +56,25 @@ const PostEditModal = ({ publication, onSave, onCancel }) => {
     const cleaned = {
       planned_date: draft.planned_date || '',
       topic: draft.topic.trim(),
-      platform: draft.platform,
-      format: draft.format,
-      objective: draft.objective,
+      platform: normalizePlatform(draft.platform),
+      format: normalizeFormat(draft.format),
+      objective: normalizeObjective(draft.objective),
       tone: draft.tone.trim(),
+      summary: draft.summary.trim(),
       key_message: draft.key_message.trim(),
       cta: draft.cta.trim()
     }
 
     if (!cleaned.planned_date) return 'Укажите дату публикации'
     if (!cleaned.topic) return 'Укажите тему'
-    if (!ALLOWED_PLATFORMS.includes(cleaned.platform)) return 'Укажите платформу (vk или linkedin)'
-    if (!ALLOWED_FORMATS.includes(cleaned.format)) return 'Укажите формат публикации'
-    if (!ALLOWED_OBJECTIVES.includes(cleaned.objective)) return 'Укажите цель публикации'
+    if (!publicationFieldOptions.platforms.includes(cleaned.platform)) {
+      return 'Укажите платформу (vk или linkedin)'
+    }
+    if (!publicationFieldOptions.formats.includes(cleaned.format)) return 'Укажите формат публикации'
+    if (!publicationFieldOptions.objectives.includes(cleaned.objective)) return 'Укажите цель публикации'
     if (!cleaned.tone) return 'Укажите тон'
+    if (!cleaned.summary) return 'Укажите текст поста'
     if (!cleaned.key_message) return 'Укажите ключевое сообщение'
-    if (!cleaned.cta) return 'Укажите CTA'
 
     return null
   }
@@ -78,10 +89,11 @@ const PostEditModal = ({ publication, onSave, onCancel }) => {
     onSave({
       planned_date: draft.planned_date,
       topic: draft.topic.trim(),
-      platform: draft.platform,
-      format: draft.format,
-      objective: draft.objective,
+      platform: normalizePlatform(draft.platform),
+      format: normalizeFormat(draft.format),
+      objective: normalizeObjective(draft.objective),
       tone: draft.tone.trim(),
+      summary: draft.summary.trim(),
       key_message: draft.key_message.trim(),
       cta: draft.cta.trim()
     })
@@ -121,9 +133,9 @@ const PostEditModal = ({ publication, onSave, onCancel }) => {
                   value={draft.platform}
                   onChange={(e) => setField('platform', e.target.value)}
                 >
-                  {ALLOWED_PLATFORMS.map((p) => (
+                  {publicationFieldOptions.platforms.map((p) => (
                     <option key={p} value={p}>
-                      {p}
+                      {getPlatformLabel(p)}
                     </option>
                   ))}
                 </select>
@@ -136,9 +148,9 @@ const PostEditModal = ({ publication, onSave, onCancel }) => {
                   value={draft.format}
                   onChange={(e) => setField('format', e.target.value)}
                 >
-                  {ALLOWED_FORMATS.map((f) => (
+                  {publicationFieldOptions.formats.map((f) => (
                     <option key={f} value={f}>
-                      {f}
+                      {getFormatLabel(f)}
                     </option>
                   ))}
                 </select>
@@ -151,9 +163,9 @@ const PostEditModal = ({ publication, onSave, onCancel }) => {
                   value={draft.objective}
                   onChange={(e) => setField('objective', e.target.value)}
                 >
-                  {ALLOWED_OBJECTIVES.map((o) => (
+                  {publicationFieldOptions.objectives.map((o) => (
                     <option key={o} value={o}>
-                      {o}
+                      {getObjectiveLabel(o)}
                     </option>
                   ))}
                 </select>
@@ -178,6 +190,17 @@ const PostEditModal = ({ publication, onSave, onCancel }) => {
                   value={draft.tone}
                   onChange={(e) => setField('tone', e.target.value)}
                   placeholder="Например: экспертный"
+                />
+              </label>
+
+              <label className="editor-field editor-field-wide">
+                Текст поста
+                <textarea
+                  className="editor-textarea"
+                  rows="6"
+                  value={draft.summary}
+                  onChange={(e) => setField('summary', e.target.value)}
+                  placeholder="Полный текст публикации"
                 />
               </label>
 

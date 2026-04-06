@@ -2,11 +2,34 @@ import { initialFormData, requiredFields } from './formConfig.js'
 
 export const formatDateISO = (date) => date.toISOString().split('T')[0]
 
+const FREQUENCY_TO_WEEKLY_RECOMMENDED = {
+  daily: 7,
+  '3-4_per_week': 3.5,
+  '2-3_per_week': 2.5,
+  weekly: 1,
+  '2_per_week': 2
+}
+
 export const parseNumberOrNull = (value) => {
   if (value === null || value === undefined) return null
   if (typeof value === 'string' && value.trim() === '') return null
   const numeric = Number(value)
   return Number.isFinite(numeric) ? numeric : null
+}
+
+function getHorizonDays(startDate, endDate) {
+  if (!startDate || !endDate) return null
+  const start = new Date(startDate)
+  const end = new Date(endDate)
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) return null
+  return Math.max(1, Math.round((end - start) / (24 * 60 * 60 * 1000)) + 1)
+}
+
+export function getRecommendedPublicationsByFrequency(formData = {}) {
+  const postsPerWeek = FREQUENCY_TO_WEEKLY_RECOMMENDED[formData.publicationFrequency]
+  const horizonDays = getHorizonDays(formData.contentPlanStartDate, formData.contentPlanEndDate)
+  if (!postsPerWeek || !horizonDays) return null
+  return Math.max(1, Math.round((postsPerWeek * horizonDays) / 7))
 }
 
 export const mapExamplePayloadToFormData = (data = {}) => ({
@@ -26,7 +49,6 @@ export const mapExamplePayloadToFormData = (data = {}) => ({
   contentPlanEndDate: data.content_plan_info?.timeline?.end_date || '',
   publicationFrequency: data.content_plan_info?.publication_frequency || '',
   publicationDayMode: data.content_plan_info?.publication_day_mode === 'shared' ? 'shared' : 'spread',
-  minPublications: data.content_plan_info?.min_publications?.toString() || '',
   keyDates: data.content_plan_info?.key_dates || '',
   contentFormats: data.content_plan_info?.content_formats || [],
   videoDescription: data.content_plan_info?.video_requirements || '',
@@ -75,13 +97,6 @@ export function validateFieldValue(name, value, formData) {
       break
     case 'publicationFrequency':
       if (!value) error = 'Выберите частоту публикаций'
-      break
-    case 'minPublications':
-      if (!value) error = 'Укажите количество'
-      else {
-        const num = parseInt(value, 10)
-        if (Number.isNaN(num) || num < 1 || num > 1000) error = 'От 1 до 1000'
-      }
       break
     case 'videoDescription':
       if (formData.contentFormats.includes('video') && !value.trim()) {
@@ -187,7 +202,6 @@ export function buildSafeFormInputForGeneration(formData) {
     contentPlanEndDate: formData.contentPlanEndDate || formatDateISO(end),
     publicationFrequency: formData.publicationFrequency || 'weekly',
     publicationDayMode: formData.publicationDayMode === 'shared' ? 'shared' : 'spread',
-    minPublications: formData.minPublications || '8',
     contentFormats: formData.contentFormats.length ? formData.contentFormats : ['text'],
     platforms: formData.platforms.length ? formData.platforms : ['linkedin']
   }

@@ -14,7 +14,6 @@ export const initialFormData = {
   contentPlanEndDate: '',
   publicationFrequency: '',
   publicationDayMode: 'spread',
-  minPublications: '',
   keyDates: '',
   contentFormats: [],
   videoDescription: '',
@@ -68,8 +67,7 @@ export const requiredFields = [
   'consumerCategory',
   'contentPlanStartDate',
   'contentPlanEndDate',
-  'publicationFrequency',
-  'minPublications'
+  'publicationFrequency'
 ]
 
 export const consumerCategoryOptions = [
@@ -146,7 +144,6 @@ export const demoExampleFormData = {
   contentPlanEndDate: '2026-05-31',
   publicationFrequency: '3-4_per_week',
   publicationDayMode: 'spread',
-  minPublications: '46',
   keyDates:
     '15 марта - запуск бета-версии, 1 апреля - вебинар по внедрению, 15 апреля - кейс-стади с первым клиентом, 1 мая - обновление функционала, 20 мая - итоговая презентация результатов.',
   contentFormats: ['text', 'image', 'video'],

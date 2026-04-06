@@ -129,6 +129,7 @@ export async function runAsyncGeneticAlgorithm(options = {}) {
   const resolveCacheKey = typeof cacheKeyForIndividual === 'function' ? cacheKeyForIndividual : createDefaultCacheKey;
 
   for (let generation = 1; generation <= GA_UTILS.clampInt(maxGenerations, 1, 100000); generation += 1) {
+    const generationStartedAt = Date.now();
     const uniqueMisses = [];
     const uniqueMissesByKey = new Map();
     const scored = new Array(population.length);
@@ -168,6 +169,7 @@ export async function runAsyncGeneticAlgorithm(options = {}) {
       }
     }
 
+    const scorePopulationStartedAt = Date.now();
     if (uniqueMisses.length > 0) {
       const freshScores = await scorePopulation(
         uniqueMisses.map((entry) => entry.individual),
@@ -184,6 +186,7 @@ export async function runAsyncGeneticAlgorithm(options = {}) {
         }
       }
     }
+    const scorePopulationMs = Date.now() - scorePopulationStartedAt;
 
     const scoreValues = scored.map((item) => Number(item?.score));
     const ranked = population
@@ -230,7 +233,12 @@ export async function runAsyncGeneticAlgorithm(options = {}) {
       stagnation,
       best_meta: generationBest.meta,
       low_delta_streak: lowDeltaStreak,
-      improvement_delta: improvementDelta
+      improvement_delta: improvementDelta,
+      score_population_ms: scorePopulationMs,
+      generation_ms: Date.now() - generationStartedAt,
+      cache_hits: population.length - uniqueMisses.length,
+      cache_misses_unique: uniqueMisses.length,
+      cache_size: evaluationCache.size
     };
     history.push(generationEntry);
 

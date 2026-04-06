@@ -221,7 +221,9 @@ def predict_post_metrics(features):
         raise FileNotFoundError(f"Model not found: {model_path}")
 
     model = MultiMetricPredictor.load(model_path)
-    X = np.array(features)
+    X = np.array(features, dtype=np.float64)
+    # Defensive sanitization: JS side should already sanitize, but keep model robust.
+    X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
     predictions = model.predict(X)
     predictions = np.round(predictions).astype(int)
 
@@ -239,7 +241,8 @@ def predict_plan_metrics(features):
         raise FileNotFoundError(f"Model not found: {model_path}")
 
     model = MultiMetricPredictor.load(model_path)
-    X = np.array(features)
+    X = np.array(features, dtype=np.float64)
+    X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
     predictions = model.predict(X)
     predictions = np.round(predictions).astype(int)
 
@@ -251,7 +254,9 @@ def predict_plan_metrics(features):
 
 def main():
     """CLI entry point"""
-    if len(sys.argv) < 2:
+    run_persistent = len(sys.argv) < 2 or (len(sys.argv) == 2 and sys.argv[1] == 'serve')
+
+    if run_persistent:
         # Режим ожидания команд (persistent worker)
         print(json.dumps({"type": "ready"}))
         sys.stdout.flush()
@@ -337,6 +342,8 @@ def main():
                 result = {'error': f'Unknown model_key: {model_key}'}
 
             print(json.dumps(result))
+    else:
+        raise ValueError("Invalid CLI usage. Use: <no args|serve> for worker mode or <mode> <model_key> for one-shot mode.")
 
 
 if __name__ == '__main__':

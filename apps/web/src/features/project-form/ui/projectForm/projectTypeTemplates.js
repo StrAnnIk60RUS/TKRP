@@ -9,20 +9,12 @@ function addMonthsIso(months) {
   return d.toISOString().slice(0, 10)
 }
 
-function computeMinPublications(startIso, endIso, postsPerWeek) {
-  const start = new Date(startIso)
-  const end = new Date(endIso)
-  const days = Math.max(1, Math.round((end - start) / (24 * 60 * 60 * 1000)) + 1)
-  return String(Math.max(1, Math.round((postsPerWeek * days) / 7)))
-}
-
-function buildTimeline(months, postsPerWeek) {
+function buildTimeline(months) {
   const start = new Date().toISOString().slice(0, 10)
   const end = addMonthsIso(months)
   return {
     contentPlanStartDate: start,
-    contentPlanEndDate: end,
-    minPublications: computeMinPublications(start, end, postsPerWeek)
+    contentPlanEndDate: end
   }
 }
 
@@ -42,7 +34,7 @@ const templates = {
         'Привлечение B2B-клиентов через экспертный контент, демонстрацию кейсов внедрения и сравнение с аналогами.',
       consumerCategory: 'B2B',
       publicationFrequency: '3-4_per_week',
-      ...buildTimeline(3, 3.5),
+      ...buildTimeline(3),
       contentFormats: ['text', 'image', 'video'],
       platforms: ['linkedin', 'vk']
     }
@@ -62,7 +54,7 @@ const templates = {
         'Позиционирование как надёжного подрядчика, привлечение заказчиков через портфолио и экспертизу.',
       consumerCategory: 'B2B',
       publicationFrequency: '2-3_per_week',
-      ...buildTimeline(3, 2.5),
+      ...buildTimeline(3),
       contentFormats: ['text', 'image', 'video'],
       platforms: ['linkedin', 'vk']
     }
@@ -82,7 +74,7 @@ const templates = {
         'Привлечение учеников, демонстрация результатов обучения, экспертный контент и лид-магниты.',
       consumerCategory: 'B2C',
       publicationFrequency: '3-4_per_week',
-      ...buildTimeline(3, 3.5),
+      ...buildTimeline(3),
       contentFormats: ['text', 'video', 'image'],
       platforms: ['vk', 'linkedin']
     }
@@ -102,7 +94,7 @@ const templates = {
         'Позиционирование надёжного решения, доверие аудитории, кейсы и разбор регуляторики.',
       consumerCategory: 'B2B',
       publicationFrequency: 'weekly',
-      ...buildTimeline(3, 1),
+      ...buildTimeline(3),
       contentFormats: ['text', 'image'],
       platforms: ['linkedin', 'vk']
     }
@@ -122,7 +114,7 @@ const templates = {
         'Привлечение корпоративных клиентов через экспертный контент, кейсы и вебинары.',
       consumerCategory: 'B2B',
       publicationFrequency: '3-4_per_week',
-      ...buildTimeline(3, 3.5),
+      ...buildTimeline(3),
       contentFormats: ['text', 'image', 'video'],
       platforms: ['linkedin', 'vk']
     }
@@ -142,7 +134,7 @@ const templates = {
         'Рост GMV, привлечение и удержание и продавцов, и покупателей через контент.',
       consumerCategory: 'B2C',
       publicationFrequency: '3-4_per_week',
-      ...buildTimeline(3, 3.5),
+      ...buildTimeline(3),
       contentFormats: ['text', 'image', 'video'],
       platforms: ['vk', 'linkedin']
     }

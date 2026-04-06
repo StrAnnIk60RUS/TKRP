@@ -115,7 +115,7 @@ export function useCompetitorsPipeline(addToast, options = {}) {
     const { skipDownload = false } = opts
     if (!competitorsData) {
       addToast('Сначала загрузите данные конкурентов', 'error');
-      return;
+      return { success: false, reason: 'no_competitors_data' };
     }
 
     const firstPost = competitorsData.competitors?.[0]?.posts?.[0];
@@ -128,7 +128,7 @@ export function useCompetitorsPipeline(addToast, options = {}) {
       const confirmed = window.confirm(
         'Данные уже выглядят обогащёнными (есть publication_model или семантические поля). Запустить обогащение заново?'
       );
-      if (!confirmed) return;
+      if (!confirmed) return { success: false, reason: 'cancelled_by_user' };
     }
 
     setIsEnriching(true);
@@ -148,9 +148,11 @@ export function useCompetitorsPipeline(addToast, options = {}) {
         );
         const usageInfo = result.usage ? ` (использовано токенов: ${result.usage.total_tokens || 'N/A'})` : '';
         addToast(`Данные успешно обогащены!${usageInfo}`, 'success');
+        return { success: true, result };
       } else if (result.enriched_data === null && result.raw_response) {
         const usageInfo = result.usage ? ` (использовано токенов: ${result.usage.total_tokens || 'N/A'})` : '';
         addToast(`Обогащение завершено, но JSON невалидный. Файл скачан для проверки.${usageInfo}`, 'warning');
+        return { success: false, reason: 'invalid_llm_json', result };
       } else if (result.error) {
         throw new Error(result.error);
       } else {
@@ -165,6 +167,7 @@ export function useCompetitorsPipeline(addToast, options = {}) {
         timestamp: new Date().toISOString(),
         original_data: competitorsData
       };
+      return { success: false, reason: 'request_failed', error };
     } finally {
       setIsEnriching(false);
 

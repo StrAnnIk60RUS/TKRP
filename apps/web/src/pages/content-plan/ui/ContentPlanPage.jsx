@@ -10,6 +10,7 @@ import PlanCalendarBoard from '../../../features/content-plan/ui/PlanCalendarBoa
 import PostCard from '../../../features/content-plan/ui/PostCard'
 import PostEditModal from '../../../features/content-plan/ui/PostEditModal'
 import PlanEditModal from '../../../features/content-plan/ui/PlanEditModal'
+import { normalizePublicationForUi } from '../../../features/content-plan/lib/publicationPresentation'
 import {
   getCurrentHistoryEntry,
   getCurrentPlanState,
@@ -88,6 +89,7 @@ const matchesFilters = (publication, filters) => {
 
   if (filters.search.trim()) {
     const haystack = [
+      publication.title,
       publication.topic,
       publication.key_message,
       publication.cta,
@@ -119,11 +121,14 @@ const ContentPlanPage = () => {
   const [planNameDraft, setPlanNameDraft] = useState('')
 
   const safePlan = useMemo(() => ensureUniquePublicationIds(contentPlan), [contentPlan])
-  const publications = useMemo(
-    () => (Array.isArray(safePlan?.publications) ? sortPublicationsByDate(safePlan.publications) : []),
+  const publications = useMemo(() => {
+    if (!Array.isArray(safePlan?.publications)) return []
+    return sortPublicationsByDate(safePlan.publications).map((item) => normalizePublicationForUi(item))
+  }, [safePlan])
+  const platforms = useMemo(
+    () => (Array.isArray(safePlan?.platforms) ? safePlan.platforms : []),
     [safePlan]
   )
-  const platforms = Array.isArray(safePlan?.platforms) ? safePlan.platforms : []
   const formatOptions = useMemo(
     () => Array.from(new Set(publications.map((item) => item?.format).filter(Boolean))),
     [publications]

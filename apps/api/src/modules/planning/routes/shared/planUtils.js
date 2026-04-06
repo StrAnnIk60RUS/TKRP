@@ -1,3 +1,106 @@
+const PLAN_FORMAT_ALIASES = {
+  text_post: 'text',
+  image_post: 'image',
+  video_post: 'video',
+  reel: 'video',
+  short_video: 'video',
+  infographic: 'image',
+  carousel: 'image'
+};
+const PLAN_ALLOWED_FORMATS = new Set(['text', 'image', 'video', 'combined']);
+
+export const PLAN_ALLOWED_TONES = ['expert', 'friendly', 'official', 'inspiring', 'humorous', 'neutral'];
+const PLAN_ALLOWED_TONE_SET = new Set(PLAN_ALLOWED_TONES);
+
+export function normalizePublicationToneValue(value, fallback = 'expert') {
+  const source = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  if (!source) return fallback;
+
+  const normalized = source
+    .replace(/[|/,+;]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const aliases = {
+    expert: 'expert',
+    экспертный: 'expert',
+    эксперт: 'expert',
+    technical: 'expert',
+    tech: 'expert',
+    деловой: 'expert',
+    деловая: 'expert',
+    информативный: 'expert',
+    информативная: 'expert',
+    информационный: 'expert',
+    professional: 'expert',
+    businesslike: 'expert',
+    friendly: 'friendly',
+    friend: 'friendly',
+    дружелюбный: 'friendly',
+    дружеский: 'friendly',
+    warm: 'friendly',
+    casual: 'friendly',
+    лояльный: 'friendly',
+    лояльная: 'friendly',
+    supportive: 'friendly',
+    поддерживающий: 'friendly',
+    поддерживающая: 'friendly',
+    official: 'official',
+    formal: 'official',
+    официальный: 'official',
+    корпоративный: 'official',
+    уверенный: 'official',
+    уверенная: 'official',
+    inspiring: 'inspiring',
+    inspirational: 'inspiring',
+    motivational: 'inspiring',
+    вдохновляющий: 'inspiring',
+    юмористический: 'humorous',
+    humorous: 'humorous',
+    humor: 'humorous',
+    fun: 'humorous',
+    neutral: 'neutral',
+    нейтральный: 'neutral'
+  };
+
+  const tokens = normalized.split(' ').filter(Boolean);
+  for (const token of tokens) {
+    const mapped = aliases[token];
+    if (mapped && PLAN_ALLOWED_TONE_SET.has(mapped)) return mapped;
+  }
+
+  if (PLAN_ALLOWED_TONE_SET.has(normalized)) return normalized;
+  return fallback;
+}
+
+export function normalizePublicationFormatValue(value, fallback = 'text') {
+  const normalized = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  const resolved = PLAN_FORMAT_ALIASES[normalized] || normalized;
+  return PLAN_ALLOWED_FORMATS.has(resolved) ? resolved : fallback;
+}
+
+export function normalizePlanPublicationsFormats(publications) {
+  if (!Array.isArray(publications)) return publications;
+  return publications.map((pub) => {
+    if (!pub || typeof pub !== 'object') return pub;
+    return { ...pub, format: normalizePublicationFormatValue(pub.format, 'text') };
+  });
+}
+
+export function normalizePlanPublicationFields(pub) {
+  if (!pub || typeof pub !== 'object') return pub;
+  return {
+    ...pub,
+    format: normalizePublicationFormatValue(pub.format, 'text'),
+    tone: normalizePublicationToneValue(pub.tone, 'expert')
+  };
+}
+
+export function normalizePlanPublicationsFields(publications) {
+  if (!Array.isArray(publications)) return publications;
+  return publications.map(normalizePlanPublicationFields);
+}
+
 export function isIsoDateString(value) {
   return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
@@ -115,7 +218,7 @@ export function normalizeDraftPlanResponse(parsedDraft, formInput) {
     }
   }
 
-  normalizedPlan.publications = deduped;
+  normalizedPlan.publications = normalizePlanPublicationsFields(deduped);
   return normalized;
 }
 

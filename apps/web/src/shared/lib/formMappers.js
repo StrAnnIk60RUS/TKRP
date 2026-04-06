@@ -1,4 +1,19 @@
 export function buildExportPayload(formData, competitorsData, competitorsFileName) {
+  const frequencyToWeekly = {
+    daily: 7,
+    '3-4_per_week': 3.5,
+    '2-3_per_week': 2.5,
+    weekly: 1,
+    '2_per_week': 2
+  }
+  const startDate = new Date(formData.contentPlanStartDate)
+  const endDate = new Date(formData.contentPlanEndDate)
+  const horizonDays = Number.isFinite(startDate.getTime()) && Number.isFinite(endDate.getTime())
+    ? Math.max(1, Math.round((endDate - startDate) / (24 * 60 * 60 * 1000)) + 1)
+    : 30
+  const postsPerWeek = frequencyToWeekly[formData.publicationFrequency] ?? 1
+  const minPublications = Math.max(1, Math.round((postsPerWeek * horizonDays) / 7))
+
   const projectData = {
     producer_info: {
       name: formData.producerName.trim(),
@@ -23,7 +38,7 @@ export function buildExportPayload(formData, competitorsData, competitorsFileNam
         end_date: formData.contentPlanEndDate
       },
       publication_frequency: formData.publicationFrequency,
-      min_publications: parseInt(formData.minPublications),
+      min_publications: minPublications,
       key_dates: formData.keyDates.trim() || null,
       content_formats: formData.contentFormats,
       video_requirements: formData.contentFormats.includes('video') ? formData.videoDescription.trim() : null,

@@ -2,6 +2,7 @@ import { mkdir, readFile, unlink, writeFile } from 'fs/promises';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
+import { normalizePlanPublicationsFields } from '../routes/shared/planUtils.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SNAPSHOT_DIR = join(
@@ -63,6 +64,11 @@ export async function saveSnapshot(plan, optimization = null, token = null) {
     throw new Error('Некорректный план для сохранения snapshot');
   }
 
+  const planToStore = {
+    ...plan,
+    publications: normalizePlanPublicationsFields(Array.isArray(plan.publications) ? plan.publications : [])
+  };
+
   const nextToken = isValidToken(token)
     ? token
     : crypto.randomUUID().replace(/-/g, '');
@@ -71,10 +77,10 @@ export async function saveSnapshot(plan, optimization = null, token = null) {
     token: nextToken,
     saved_at: new Date().toISOString(),
     snapshot: {
-      plan,
+      plan: planToStore,
       optimization: optimization || null
     },
-    summary: buildSnapshotSummary(plan, optimization)
+    summary: buildSnapshotSummary(planToStore, optimization)
   };
 
   await ensureSnapshotDir();

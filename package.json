@@ -8,12 +8,14 @@
     "dev": "concurrently \"npm:dev:vite\" \"npm:dev:server\"",
     "dev:vite": "vite --config apps/web/vite.config.js",
     "dev:server": "npm run dev --prefix apps/api",
+    "ml:retrain": "node ./tools/scripts/retrain-ml.mjs",
+    "ml:retrain:full": "node ./tools/scripts/retrain-ml.mjs --full",
     "build": "vite build --config apps/web/vite.config.js",
     "preview": "vite preview --config apps/web/vite.config.js",
     "install:api": "npm install --prefix apps/api",
     "lint": "node ./tools/scripts/lint-project.mjs && eslint apps/web apps/api",
     "format": "prettier --write \"apps/web/**/*.{js,jsx}\" \"apps/api/**/*.js\" \"eslint.config.js\"",
-    "test": "node --test apps/web/tests/frontend-formUtils.test.js apps/api/tests/ontologyAggregation.test.js apps/api/tests/security.test.js apps/api/tests/planRoutes.integration.test.js apps/api/tests/routeUtils.test.js apps/api/tests/expressHttp.integration.test.js",
+    "test": "node --test apps/web/tests/frontend-formUtils.test.js apps/api/tests/ontologyAggregation.test.js apps/api/tests/security.test.js apps/api/tests/securityMore.test.js apps/api/tests/planRoutes.integration.test.js apps/api/tests/routeUtils.test.js apps/api/tests/expressHttp.integration.test.js apps/api/tests/expressHttp.test.js apps/api/tests/contentModels.test.js apps/api/tests/gaCore.test.js apps/api/tests/operators.test.js apps/api/tests/planUtils.test.js apps/api/tests/llmJsonParsing.test.js apps/api/tests/asyncGaCore.test.js",
     "check": "npm run lint && npm run test && npm run build"
   },
   "dependencies": {

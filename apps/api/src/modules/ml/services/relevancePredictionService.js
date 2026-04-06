@@ -22,6 +22,9 @@ const SCRIPT_PATH = path.join(REPO_ROOT, 'tools', 'ml', 'engagement_model.py');
 const MODEL_DIR = path.join(DATA_ROOT, 'ml');
 const ML_TIMEOUT_MS = Number(process.env.ML_SCRIPT_TIMEOUT_MS || 180000);
 const USE_PERSISTENT_ML_WORKER = String(process.env.ML_PERSISTENT_WORKER || '1') !== '0';
+const PYTHON_ML_ENV = {
+  ML_MODEL_DIR: MODEL_DIR
+};
 
 const MODEL_SPECS = {
   post: {
@@ -69,6 +72,31 @@ function chunkArray(arr, size) {
     result.push(arr.slice(index, index + size));
   }
   return result;
+}
+
+function sanitizeFeatureMatrix(featureVectors, contextLabel = 'unknown') {
+  if (!Array.isArray(featureVectors)) {
+    return { matrix: [], replacements: 0 };
+  }
+
+  let replacements = 0;
+  const matrix = featureVectors.map((row) => {
+    if (!Array.isArray(row)) return [];
+    return row.map((value) => {
+      const numeric = Number(value);
+      if (Number.isFinite(numeric)) return numeric;
+      replacements += 1;
+      return 0;
+    });
+  });
+
+  if (replacements > 0) {
+    console.warn(
+      `[relevancePredictionService] Sanitized non-finite feature values for ${contextLabel}: ${replacements}`
+    );
+  }
+
+  return { matrix, replacements };
 }
 
 function readJson(filePath, fallback) {
@@ -159,8 +187,10 @@ function runPythonModel(mode, modelKey, payload) {
     if (!mlWorker) {
       mlWorker = createPythonJsonWorker({
         scriptPath: SCRIPT_PATH,
-        args: ['serve'],
+        // engagement_model.py enters persistent mode when started without CLI args
+        args: [],
         cwd: APP_ROOT,
+        env: PYTHON_ML_ENV,
         description: 'engagement_model.py serve'
       });
     }
@@ -182,6 +212,7 @@ function runPythonModel(mode, modelKey, payload) {
           scriptPath: SCRIPT_PATH,
           args: [mode, modelKey],
           cwd: APP_ROOT,
+          env: PYTHON_ML_ENV,
           input: payload || {},
           timeoutMs: ML_TIMEOUT_MS,
           description: `engagement_model.py ${mode} ${modelKey}`
@@ -195,6 +226,7 @@ function runPythonModel(mode, modelKey, payload) {
     scriptPath: SCRIPT_PATH,
     args: [mode, modelKey],
     cwd: APP_ROOT,
+    env: PYTHON_ML_ENV,
     input: payload || {},
     timeoutMs: ML_TIMEOUT_MS,
     description: `engagement_model.py ${mode} ${modelKey}`
@@ -215,14 +247,16 @@ function getTrainingPayload(modelKey) {
   const datasets = buildMlTrainingDatasets(snapshot);
   
   if (modelKey === 'post') {
+    const sanitized = sanitizeFeatureMatrix(datasets.postDataset.features, 'train/post');
     return {
-      features: datasets.postDataset.features,
+      features: sanitized.matrix,
       targets: datasets.postDataset.targets,
       feature_names: datasets.postDataset.featureNames
     };
   }
+  const sanitized = sanitizeFeatureMatrix(datasets.contentPlanDataset.features, 'train/content_plan');
   return {
-    features: datasets.contentPlanDataset.features,
+    features: sanitized.matrix,
     targets: datasets.contentPlanDataset.targets,
     feature_names: datasets.contentPlanDataset.featureNames
   };
@@ -247,9 +281,10 @@ async function predictPostMetricsByFeatureVectors(featureVectors, options = {}) 
   if (!Array.isArray(featureVectors) || featureVectors.length === 0) {
     return { predictions: [], metadata: null };
   }
+  const sanitized = sanitizeFeatureMatrix(featureVectors, 'predict/post');
 
   await ensureModelTrained('post', options);
-  const batches = chunkArray(featureVectors, 128);
+  const batches = chunkArray(sanitized.matrix, 128);
   const allPredictions = [];
   let metadata = null;
 
@@ -260,6 +295,10 @@ async function predictPostMetricsByFeatureVectors(featureVectors, options = {}) 
     }
     allPredictions.push(...result.predictions);
     metadata = result.model_metadata || metadata;
+  }
+
+  if (!metadata) {
+    metadata = getModelMetadata('post');
   }
 
   return { predictions: allPredictions, metadata };
@@ -274,9 +313,10 @@ async function predictPlanMetricsByFeatureVectors(featureVectors, options = {}) 
   if (!Array.isArray(featureVectors) || featureVectors.length === 0) {
     return { predictions: [], metadata: null };
   }
+  const sanitized = sanitizeFeatureMatrix(featureVectors, 'predict/content_plan');
 
   await ensureModelTrained('content_plan', options);
-  const batches = chunkArray(featureVectors, 128);
+  const batches = chunkArray(sanitized.matrix, 128);
   const allPredictions = [];
   let metadata = null;
 
@@ -287,6 +327,10 @@ async function predictPlanMetricsByFeatureVectors(featureVectors, options = {}) 
     }
     allPredictions.push(...result.predictions);
     metadata = result.model_metadata || metadata;
+  }
+
+  if (!metadata) {
+    metadata = getModelMetadata('content_plan');
   }
 
   return { predictions: allPredictions, metadata };

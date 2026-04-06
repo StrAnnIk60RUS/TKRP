@@ -2,6 +2,7 @@ import { optimizeContentPlanEvolution } from './planEvolution.js';
 import { fillPlanWithBestPublication, optimizePublicationsEvolution } from './postEvolution.js';
 import { buildPlanFeatureMap } from '../../../ml/services/ml/ontologyFeatureEngineering.js';
 import { predictContentPlanMetrics } from '../../../ml/services/relevancePredictionService.js';
+import { normalizePlanPublicationsFields } from '../../routes/shared/planUtils.js';
 
 function asNumber(value, fallback = 0) {
   const numeric = Number(value);
@@ -151,9 +152,11 @@ export async function runHierarchicalOptimization(payload = {}) {
       targetCtaShare: planFeatureMap.cta_share
     }
   );
-  
+
+  const normalizedPublications = normalizePlanPublicationsFields(filledPlanResult.publications);
+
   // Финальные метаданные плана
-  const finalPlanFeatureMap = buildPlanFeatureMap(filledPlanResult.publications, {
+  const finalPlanFeatureMap = buildPlanFeatureMap(normalizedPublications, {
     durationDays: contentPlanResult.optimizedPlan?.planning_horizon?.duration_days,
     expectedPlatforms: contentPlanResult.optimizedPlan?.platforms || draft?.platforms || [],
     targetAudience: contentPlanResult.optimizedPlan?.target_audience || draft?.target_audience || []
@@ -163,7 +166,7 @@ export async function runHierarchicalOptimization(payload = {}) {
   const finalPlanPrediction = await predictContentPlanMetrics(
     {
       ...contentPlanResult.optimizedPlan,
-      publications: filledPlanResult.publications
+      publications: normalizedPublications
     },
     {
       forceTrain: false,
@@ -184,7 +187,7 @@ export async function runHierarchicalOptimization(payload = {}) {
 
   const optimizedContentPlan = {
     ...contentPlanResult.optimizedPlan,
-    publications: filledPlanResult.publications,
+    publications: normalizedPublications,
     expected_kpi: {
       ...(contentPlanResult.optimizedPlan.expected_kpi || {}),
       predicted_total_likes: safeFinalPredictedLikes,
@@ -240,7 +243,7 @@ export async function runHierarchicalOptimization(payload = {}) {
       })),
       constraints_check: validatePlanConstraints(optimizedContentPlan, stage1Config.constraints || {})
     },
-    optimized_publications: filledPlanResult.publications,
+    optimized_publications: normalizedPublications,
     best_publication: postResult.bestPublication,
     optimized_content_plan: optimizedContentPlan
   };

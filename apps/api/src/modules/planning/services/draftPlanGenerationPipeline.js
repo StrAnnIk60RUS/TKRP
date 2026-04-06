@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import { callDeepSeekAPI } from '../../../../openrouter.js';
 import { predictEngagementRatesForGeneratedPublications } from '../../ml/services/relevancePredictionService.js';
 import { parseJsonObjectFromLlmContent } from '../../../shared/utils/llmJsonParsing.js';
+import { normalizePublicationFormatValue, normalizePublicationToneValue } from '../routes/shared/planUtils.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SKELETON_PROMPT_PATH = path.join(
@@ -28,6 +29,29 @@ const BATCH_PROMPT_PATH = path.join(
 const ALLOWED_PLATFORMS = ['vk', 'linkedin'];
 const ALLOWED_OBJECTIVES = ['inform', 'educate', 'engage', 'convert', 'retain', 'brand_building'];
 const DEFAULT_FORMATS = ['text', 'image', 'video', 'combined'];
+const ALLOWED_TONES = ['expert', 'friendly', 'official', 'inspiring', 'humorous', 'neutral'];
+const CTA_MIN_SHARE = 0.7;
+const CTA_MAX_SHARE = 0.8;
+const CTA_TARGET_SHARE = 0.75;
+const CTA_VARIANTS = [
+  'Запросить демо',
+  'Записаться на консультацию',
+  'Заказать аудит участка',
+  'Запустить пилот на 2 недели'
+];
+const MIN_SUMMARY_LENGTH = {
+  text: 650,
+  combined: 650,
+  image: 400,
+  video: 400
+};
+const MAX_SUMMARY_LENGTH = 2200;
+const SEMANTIC_STOP_WORDS = new Set([
+  'и', 'или', 'но', 'а', 'в', 'во', 'на', 'по', 'к', 'ко', 'с', 'со', 'от', 'до', 'для', 'из', 'у',
+  'о', 'об', 'при', 'над', 'под', 'за', 'как', 'что', 'это', 'этот', 'эта', 'эти', 'который', 'которая',
+  'которые', 'мы', 'вы', 'они', 'он', 'она', 'оно', 'их', 'его', 'ее', 'так', 'же', 'ли', 'бы', 'не',
+  'да', 'нет', 'the', 'and', 'or', 'for', 'with', 'from', 'into', 'your', 'our', 'this', 'that', 'are', 'is'
+]);
 
 function normalizePublicationDayMode(value) {
   return value === 'shared' ? 'shared' : 'spread';
@@ -123,9 +147,69 @@ function normalizeFormat(value, fallback = 'text') {
   return DEFAULT_FORMATS.includes(resolved) ? resolved : fallback;
 }
 
-function normalizeTone(value, fallback = 'expert') {
-  const tone = typeof value === 'string' ? value.trim() : '';
-  return tone || fallback;
+const normalizeTone = normalizePublicationToneValue;
+
+function getMinSummaryLengthByFormat(format = 'text') {
+  const normalized = normalizeFormat(format, 'text');
+  return MIN_SUMMARY_LENGTH[normalized] || MIN_SUMMARY_LENGTH.text;
+}
+
+function ensureTextLength(value, minLength, maxLength = MAX_SUMMARY_LENGTH) {
+  const normalized = typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
+  if (!normalized) return '';
+  if (normalized.length >= minLength) return normalized.slice(0, maxLength);
+  const padSentence =
+    ' Добавь практические детали, конкретные шаги внедрения, ожидаемый результат и короткий призыв к действию.';
+  let extended = normalized;
+  while (extended.length < minLength) {
+    extended = `${extended}${padSentence}`;
+  }
+  return extended.slice(0, maxLength).trim();
+}
+
+function tokenizeSemanticText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-zа-я0-9\s_-]+/gi, ' ')
+    .split(/[\s_-]+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 3 && !SEMANTIC_STOP_WORDS.has(token));
+}
+
+function hasSemanticOverlap(source, target, options = {}) {
+  const {
+    minSharedTokens = 1,
+    minOverlapRatio = 0.1
+  } = options;
+  const sourceTokens = tokenizeSemanticText(source);
+  const targetTokens = tokenizeSemanticText(target);
+  if (!sourceTokens.length || !targetTokens.length) return false;
+  const sourceSet = new Set(sourceTokens);
+  const targetUnique = new Set(targetTokens);
+  const sharedCount = Array.from(targetUnique).filter((token) => sourceSet.has(token)).length;
+  const overlapBase = Math.max(1, Math.min(sourceSet.size, targetUnique.size));
+  return sharedCount >= minSharedTokens && sharedCount / overlapBase >= minOverlapRatio;
+}
+
+const COHERENCE_TOPIC_KEY_OVERLAP = { minSharedTokens: 2, minOverlapRatio: 0.14 };
+const COHERENCE_TOPIC_BODY_OVERLAP = { minSharedTokens: 2, minOverlapRatio: 0.1 };
+
+function topicAnchorsInKeyMessage(topic, keyMessage) {
+  const anchors = tokenizeSemanticText(topic).filter((token) => token.length >= 4);
+  if (!anchors.length) return true;
+  const keySet = new Set(tokenizeSemanticText(keyMessage));
+  return anchors.some((token) => keySet.has(token));
+}
+
+function buildSummaryRepairFromTopic(topic, format, formInput) {
+  const minLength = getMinSummaryLengthByFormat(format);
+  const projectDescription =
+    typeof formInput.projectDescription === 'string' && formInput.projectDescription.trim()
+      ? formInput.projectDescription.trim()
+      : 'Экспертная публикация об IT-проекте и его прикладной ценности для целевой аудитории.';
+  const safeTopic = typeof topic === 'string' && topic.trim() ? topic.trim() : 'тема публикации';
+  const core = `Материал посвящён теме: ${safeTopic}. ${projectDescription} Раскрываем практический контекст, шаги внедрения и ожидаемый эффект для команды. Добавляем конкретику и мягкий призыв к диалогу.`;
+  return ensureTextLength(core, minLength, MAX_SUMMARY_LENGTH);
 }
 
 function slugify(value, fallback = 'draft_plan') {
@@ -153,34 +237,46 @@ function mergeUsageStats(usageItems = []) {
 }
 
 function estimatePublicationCountFromFrequency(formInput = {}) {
+  const range = getPublicationCountRangeByFrequency(formInput);
+  return range.recommended;
+}
+
+function getPublicationCountRangeByFrequency(formInput = {}) {
   const start = toIsoDateOnly(formInput.contentPlanStartDate);
   const end = toIsoDateOnly(formInput.contentPlanEndDate);
-  if (!start || !end) return 8;
+  if (!start || !end) {
+    return { min: 8, max: 8, recommended: 8, hasFrequency: false };
+  }
 
   const horizonDays = daysBetweenInclusive(start, end);
-  if (horizonDays <= 0) return 8;
+  if (horizonDays <= 0) {
+    return { min: 8, max: 8, recommended: 8, hasFrequency: false };
+  }
 
   const weeks = horizonDays / 7;
   const frequency = typeof formInput.publicationFrequency === 'string'
-    ? formInput.publicationFrequency.trim()
+    ? formInput.publicationFrequency.trim().toLowerCase()
     : '';
-  const perWeekMap = {
-    daily: 7,
-    '3-4_per_week': 3.5,
-    '2-3_per_week': 2.5,
-    weekly: 1,
-    '2_per_week': 2
+  const perWeekRangeMap = {
+    daily: { min: 7, max: 7, recommended: 7 },
+    '3-4_per_week': { min: 3, max: 4, recommended: 3.5 },
+    '2-3_per_week': { min: 2, max: 3, recommended: 2.5 },
+    weekly: { min: 1, max: 1, recommended: 1 },
+    '2_per_week': { min: 2, max: 2, recommended: 2 }
   };
-  const perWeek = perWeekMap[frequency] || 1;
-  return Math.max(1, Math.round(weeks * perWeek));
+  const perWeek = perWeekRangeMap[frequency];
+  if (!perWeek) {
+    const fallback = Math.max(1, Math.round(weeks));
+    return { min: fallback, max: fallback, recommended: fallback, hasFrequency: false };
+  }
+
+  const recommended = Math.max(1, Math.round(weeks * perWeek.recommended));
+  return { min: recommended, max: recommended, recommended, hasFrequency: true };
 }
 
 function getRequestedPublicationCount(formInput = {}) {
-  const explicitMin = asNumber(formInput.minPublications ?? formInput.min_publications, null);
-  if (explicitMin !== null && explicitMin > 0) {
-    return Math.round(explicitMin);
-  }
-  return estimatePublicationCountFromFrequency(formInput);
+  const range = getPublicationCountRangeByFrequency(formInput);
+  return range.recommended;
 }
 
 function getTargetPublicationCount(formInput = {}) {
@@ -498,14 +594,61 @@ function repairSkeleton(rawSkeleton = {}, formInput = {}, targetPublicationCount
 }
 
 function buildCallToAction(objective, projectName) {
-  const actions = {
-    inform: `Узнать больше о ${projectName}`,
-    educate: `Изучить материалы по ${projectName}`,
-    engage: `Обсудить кейс ${projectName}`,
-    convert: `Запросить демо ${projectName}`,
-    retain: `Посмотреть roadmap ${projectName}`
+  const normalizedProject = typeof projectName === 'string' && projectName.trim() ? projectName.trim() : 'проекта';
+  const actionByObjective = {
+    inform: 0,
+    educate: 1,
+    engage: 2,
+    convert: 0,
+    retain: 3,
+    brand_building: 1
   };
-  return actions[objective] || `Узнать больше о ${projectName}`;
+  const variantIndex = actionByObjective[objective] ?? 0;
+  return `${CTA_VARIANTS[variantIndex]} по ${normalizedProject}`;
+}
+
+function calculateCtaBounds(totalPublications) {
+  const minCount = Math.max(1, Math.ceil(totalPublications * CTA_MIN_SHARE));
+  const maxCount = Math.max(minCount, Math.floor(totalPublications * CTA_MAX_SHARE));
+  const targetCount = Math.min(
+    maxCount,
+    Math.max(minCount, Math.round(totalPublications * CTA_TARGET_SHARE))
+  );
+  return { minCount, maxCount, targetCount };
+}
+
+function enforceCtaCoverage(publications = [], projectName = '') {
+  if (!Array.isArray(publications) || publications.length === 0) return publications;
+  const { targetCount } = calculateCtaBounds(publications.length);
+  const next = publications.map((item) => ({ ...item }));
+
+  const activeIndices = [];
+  const inactiveIndices = [];
+  next.forEach((publication, index) => {
+    const cta = typeof publication?.cta === 'string' ? publication.cta.trim() : '';
+    if (cta) activeIndices.push(index);
+    else inactiveIndices.push(index);
+  });
+
+  while (activeIndices.length < targetCount && inactiveIndices.length) {
+    activeIndices.push(inactiveIndices.shift());
+  }
+  while (activeIndices.length > targetCount) {
+    inactiveIndices.unshift(activeIndices.pop());
+  }
+
+  const activeSet = new Set(activeIndices);
+  next.forEach((publication, index) => {
+    const hasCta = activeSet.has(index);
+    if (!hasCta) {
+      publication.cta = '';
+      return;
+    }
+    const objective = normalizeObjective(publication?.objective, 'inform');
+    publication.cta = buildCallToAction(objective, projectName);
+  });
+
+  return next;
 }
 
 function buildFallbackTopic(slot, formInput, index) {
@@ -526,10 +669,30 @@ function buildFallbackSummary(slot, formInput) {
   const projectDescription = typeof formInput.projectDescription === 'string' && formInput.projectDescription.trim()
     ? formInput.projectDescription.trim()
     : 'Экспертная публикация об IT-проекте и его прикладной ценности для целевой аудитории.';
-  return `${projectDescription.slice(0, 220)}${projectDescription.length > 220 ? '...' : ''}`;
+  const projectBenefits = typeof formInput.projectBenefits === 'string' && formInput.projectBenefits.trim()
+    ? formInput.projectBenefits.trim()
+    : 'Сфокусируйся на практической пользе решения, прозрачных шагах внедрения и измеримом эффекте для бизнеса.';
+  const projectGoals = typeof formInput.projectGoals === 'string' && formInput.projectGoals.trim()
+    ? formInput.projectGoals.trim()
+    : 'Покажи, как проект повышает эффективность команды, снижает риски и ускоряет принятие решений.';
+  const objectiveHint = `Цель публикации: ${slot?.objective || 'inform'}.`;
+  const base = `${projectDescription} ${projectBenefits} ${projectGoals} ${objectiveHint}`;
+  const minLength = getMinSummaryLengthByFormat(slot?.format);
+  return ensureTextLength(base, minLength, MAX_SUMMARY_LENGTH);
 }
 
-function buildFallbackKeyMessage(formInput) {
+function buildFallbackKeyMessage(formInput, slot = {}) {
+  const slotTopic = typeof slot?.topic === 'string' && slot.topic.trim() ? slot.topic.trim() : '';
+  const objective = typeof slot?.objective === 'string' && slot.objective.trim() ? slot.objective.trim() : 'inform';
+  const projectName = typeof formInput.projectName === 'string' && formInput.projectName.trim()
+    ? formInput.projectName.trim()
+    : '';
+  if (slotTopic) {
+    const line = projectName
+      ? `${projectName} — ${slotTopic} (цель: ${objective}).`
+      : `${slotTopic} (цель: ${objective}).`;
+    return line.length <= 200 ? line : `${line.slice(0, 197)}...`;
+  }
   const source = typeof formInput.projectBenefits === 'string' && formInput.projectBenefits.trim()
     ? formInput.projectBenefits.trim()
     : typeof formInput.projectGoals === 'string' && formInput.projectGoals.trim()
@@ -550,7 +713,7 @@ function buildFallbackPublication(slot, formInput, compactRagContext, skeleton, 
     objective: slot.objective,
     tone: slot.tone,
     summary: buildFallbackSummary(slot, formInput),
-    key_message: buildFallbackKeyMessage(formInput),
+    key_message: buildFallbackKeyMessage(formInput, slot),
     cta: buildCallToAction(slot.objective, projectName),
     expected_kpi: {
       engagement_rate: clamp01(avgKpi.engagement_rate),
@@ -561,10 +724,76 @@ function buildFallbackPublication(slot, formInput, compactRagContext, skeleton, 
   };
 }
 
-function normalizeBatchPublication(rawItem = {}, slot, formInput, compactRagContext, skeleton, index) {
-  const fallback = buildFallbackPublication(slot, formInput, compactRagContext, skeleton, index);
+function publicationSemanticCoherenceOk(pub) {
+  const topicToSummaryOk = hasSemanticOverlap(pub?.topic, pub?.summary, COHERENCE_TOPIC_BODY_OVERLAP);
+  const keyToSummaryOk = hasSemanticOverlap(pub?.key_message, pub?.summary, COHERENCE_TOPIC_BODY_OVERLAP);
+  const topicToKeyOk =
+    hasSemanticOverlap(pub?.topic, pub?.key_message, COHERENCE_TOPIC_KEY_OVERLAP) &&
+    topicAnchorsInKeyMessage(pub?.topic, pub?.key_message);
+  return topicToSummaryOk && keyToSummaryOk && topicToKeyOk;
+}
 
-  return {
+function repairPublicationSemanticCoherence(publication, fallback, formInput = {}) {
+  if (publicationSemanticCoherenceOk(publication)) {
+    return { publication, repaired: false };
+  }
+
+  let next = { ...publication };
+  let repaired = false;
+  const fi = formInput && typeof formInput === 'object' ? formInput : {};
+
+  const topicKeyOk =
+    hasSemanticOverlap(next.topic, next.key_message, COHERENCE_TOPIC_KEY_OVERLAP) &&
+    topicAnchorsInKeyMessage(next.topic, next.key_message);
+  if (!topicKeyOk) {
+    next = {
+      ...next,
+      key_message: buildFallbackKeyMessage(fi, { topic: next.topic, objective: next.objective })
+    };
+    repaired = true;
+  }
+
+  if (!publicationSemanticCoherenceOk(next)) {
+    next = {
+      ...next,
+      summary: buildSummaryRepairFromTopic(next.topic, next.format, fi)
+    };
+    repaired = true;
+  }
+
+  if (!publicationSemanticCoherenceOk(next)) {
+    next = {
+      ...next,
+      summary: fallback.summary,
+      key_message: buildFallbackKeyMessage(fi, { topic: next.topic || fallback.topic, objective: next.objective })
+    };
+    repaired = true;
+  }
+
+  return { publication: next, repaired };
+}
+
+function normalizeBatchPublication(
+  rawItem = {},
+  slot,
+  formInput,
+  compactRagContext,
+  skeleton,
+  index,
+  allowedPrecedentIds = new Set()
+) {
+  const fallback = buildFallbackPublication(slot, formInput, compactRagContext, skeleton, index);
+  const minSummaryLength = getMinSummaryLengthByFormat(slot?.format);
+  const generatedSummary = typeof rawItem.summary === 'string' ? rawItem.summary : '';
+  const normalizedSummary = ensureTextLength(generatedSummary, minSummaryLength, MAX_SUMMARY_LENGTH);
+  const fallbackSummary = ensureTextLength(fallback.summary, minSummaryLength, MAX_SUMMARY_LENGTH);
+
+  const rawUsedPrecedentIds = uniqueStrings(
+    toArray(rawItem.used_precedent_ids).filter((value) => typeof value === 'string')
+  ).slice(0, 5);
+  const normalizedUsedPrecedentIds = rawUsedPrecedentIds.filter((id) => allowedPrecedentIds.has(id));
+
+  const normalizedPublication = {
     publication_id: `plan_pub_${String(index + 1).padStart(3, '0')}`,
     planned_date: slot.planned_date,
     platform: slot.platform,
@@ -572,10 +801,16 @@ function normalizeBatchPublication(rawItem = {}, slot, formInput, compactRagCont
     format: normalizeFormat(rawItem.format, slot.format),
     objective: normalizeObjective(rawItem.objective, slot.objective),
     tone: normalizeTone(rawItem.tone, slot.tone),
-    summary: typeof rawItem.summary === 'string' && rawItem.summary.trim() ? rawItem.summary.trim() : fallback.summary,
+    summary: normalizedSummary || fallbackSummary,
     key_message: typeof rawItem.key_message === 'string' && rawItem.key_message.trim()
       ? rawItem.key_message.trim()
-      : fallback.key_message,
+      : buildFallbackKeyMessage(formInput, {
+          topic:
+            typeof rawItem.topic === 'string' && rawItem.topic.trim()
+              ? rawItem.topic.trim()
+              : fallback.topic,
+          objective: normalizeObjective(rawItem.objective, slot.objective)
+        }),
     cta: typeof rawItem.cta === 'string' && rawItem.cta.trim() ? rawItem.cta.trim() : fallback.cta,
     expected_kpi: {
       engagement_rate: clamp01(rawItem?.expected_kpi?.engagement_rate ?? fallback.expected_kpi.engagement_rate),
@@ -584,10 +819,66 @@ function normalizeBatchPublication(rawItem = {}, slot, formInput, compactRagCont
       ),
       reach_potential: clamp01(rawItem?.expected_kpi?.reach_potential ?? fallback.expected_kpi.reach_potential)
     },
-    used_precedent_ids: uniqueStrings(
-      toArray(rawItem.used_precedent_ids).filter((value) => typeof value === 'string')
-    ).slice(0, 5)
+    used_precedent_ids: normalizedUsedPrecedentIds
   };
+
+  return repairPublicationSemanticCoherence(
+    normalizedPublication,
+    {
+      ...fallback,
+      summary: fallbackSummary
+    },
+    formInput
+  );
+}
+
+function normalizeTopicDedupKey(topic) {
+  return String(topic || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+const TOPIC_DEDUP_FOCUS = [
+  'узкие места и риски',
+  'метрики и KPI',
+  'внедрение на практике',
+  'сравнение сценариев',
+  'типовые ошибки',
+  'чек-лист для команды',
+  'экономика решения',
+  'интеграция в процесс'
+];
+
+const OBJECTIVE_TOPIC_TAG = {
+  inform: 'обзор',
+  educate: 'разбор',
+  engage: 'дискуссия',
+  convert: 'ценность',
+  retain: 'сопровождение',
+  brand_building: 'бренд'
+};
+
+function ensureDistinctTopicTitles(publications) {
+  if (!Array.isArray(publications)) return publications;
+  const seen = new Map();
+  return publications.map((pub, index) => {
+    if (!pub || typeof pub !== 'object') return pub;
+    const topic = typeof pub.topic === 'string' ? pub.topic.trim() : '';
+    if (!topic) return pub;
+    const key = normalizeTopicDedupKey(topic);
+    const occurrence = (seen.get(key) || 0) + 1;
+    seen.set(key, occurrence);
+    if (occurrence === 1) return pub;
+    const tag = OBJECTIVE_TOPIC_TAG[pub.objective] || 'фокус';
+    const focus = TOPIC_DEDUP_FOCUS[(occurrence + index) % TOPIC_DEDUP_FOCUS.length];
+    const suffix = ` (${tag}: ${focus})`;
+    const maxLen = 220;
+    if (topic.length + suffix.length <= maxLen) {
+      return { ...pub, topic: `${topic}${suffix}` };
+    }
+    return { ...pub, topic: `${topic.slice(0, Math.max(0, maxLen - suffix.length - 3))}...${suffix}` };
+  });
 }
 
 function validateDraftPlan(plan = {}, formInput = {}) {
@@ -596,7 +887,19 @@ function validateDraftPlan(plan = {}, formInput = {}) {
   const requestedStart = toIsoDateOnly(formInput.contentPlanStartDate) || toIsoDateOnly(plan?.planning_horizon?.start_date);
   const requestedEnd = toIsoDateOnly(formInput.contentPlanEndDate) || toIsoDateOnly(plan?.planning_horizon?.end_date);
   const requestedPlatforms = uniqueStrings(toArray(formInput.platforms).map((value) => normalizePlatform(value)));
-  const minPublications = asNumber(formInput.minPublications ?? plan?.constraints?.min_publications, null);
+  const normalizedRequestedCount = asNumber(getRequestedPublicationCount(formInput), null);
+  const constrainedMinPublications = asNumber(plan?.constraints?.min_publications, null);
+  const generatedPublicationsTarget = asNumber(plan?.schedule_preferences?.generated_publications, null);
+  const minPublications = [constrainedMinPublications, generatedPublicationsTarget, normalizedRequestedCount]
+    .filter((value) => Number.isFinite(value) && value > 0)
+    .map((value) => Math.round(value))
+    .sort((left, right) => left - right)[0] ?? null;
+  const totalPublications = publications.length;
+  const ctaCount = publications.reduce((acc, pub) => {
+    const cta = typeof pub?.cta === 'string' ? pub.cta.trim() : '';
+    return acc + (cta ? 1 : 0);
+  }, 0);
+  const { minCount: minCtaCount, maxCount: maxCtaCount } = calculateCtaBounds(Math.max(1, totalPublications));
 
   if (!plan || typeof plan !== 'object') {
     errors.push('draft_content_plan отсутствует');
@@ -617,6 +920,10 @@ function validateDraftPlan(plan = {}, formInput = {}) {
   const ids = new Set();
   publications.forEach((pub, idx) => {
     const prefix = `publication[${idx}]`;
+    if (pub && typeof pub === 'object') {
+      pub.tone = normalizePublicationToneValue(pub.tone, 'expert');
+      pub.format = normalizePublicationFormatValue(pub.format, 'text');
+    }
     if (!pub?.publication_id || typeof pub.publication_id !== 'string') {
       errors.push(`${prefix}: publication_id отсутствует`);
     } else if (ids.has(pub.publication_id)) {
@@ -646,7 +953,7 @@ function validateDraftPlan(plan = {}, formInput = {}) {
     if (!pub?.topic || typeof pub.topic !== 'string') errors.push(`${prefix}: topic отсутствует`);
     if (!pub?.summary || typeof pub.summary !== 'string') errors.push(`${prefix}: summary отсутствует`);
     if (!pub?.key_message || typeof pub.key_message !== 'string') errors.push(`${prefix}: key_message отсутствует`);
-    if (!pub?.cta || typeof pub.cta !== 'string') errors.push(`${prefix}: cta отсутствует`);
+    if (pub?.cta !== undefined && typeof pub.cta !== 'string') errors.push(`${prefix}: cta невалиден`);
 
     if (!ALLOWED_OBJECTIVES.includes(pub?.objective)) {
       errors.push(`${prefix}: objective невалиден`);
@@ -654,6 +961,9 @@ function validateDraftPlan(plan = {}, formInput = {}) {
 
     if (!DEFAULT_FORMATS.includes(pub?.format)) {
       errors.push(`${prefix}: format невалиден`);
+    }
+    if (!ALLOWED_TONES.includes(pub?.tone)) {
+      errors.push(`${prefix}: tone невалиден`);
     }
 
     const engagement = asNumber(pub?.expected_kpi?.engagement_rate, null);
@@ -669,6 +979,10 @@ function validateDraftPlan(plan = {}, formInput = {}) {
       errors.push(`${prefix}: expected_kpi.reach_potential невалиден`);
     }
   });
+
+  if (totalPublications > 0 && (ctaCount < minCtaCount || ctaCount > maxCtaCount)) {
+    errors.push(`cta coverage violated: have=${ctaCount}, expected=${minCtaCount}-${maxCtaCount}`);
+  }
 
   return {
     valid: errors.length === 0,
@@ -790,8 +1104,10 @@ export async function generateDraftPlanBatched({
   );
 
   const monthlyGroups = groupSlotsByMonth(skeleton.publication_slots);
+  const allowedPrecedentIds = new Set(toArray(compactRagContext?.summary?.precedent_ids));
   const publicationMap = new Map();
   const generatedPublications = [];
+  let coherenceRepairs = 0;
 
   for (let monthIndex = 0; monthIndex < monthlyGroups.length; monthIndex += 1) {
     const { monthKey, slots } = monthlyGroups[monthIndex];
@@ -834,19 +1150,24 @@ export async function generateDraftPlanBatched({
     target_audience: skeleton.target_audience,
     constraints: skeleton.constraints,
     schedule_preferences: skeleton.schedule_preferences,
-    publications: skeleton.publication_slots.map((slot, index) =>
-      normalizeBatchPublication(
+    publications: skeleton.publication_slots.map((slot, index) => {
+      const normalizedResult = normalizeBatchPublication(
         publicationMap.get(slot.slot_id) || {},
         slot,
         formInput,
         compactRagContext,
         skeleton,
-        index
-      )
-    ),
+        index,
+        allowedPrecedentIds
+      );
+      if (normalizedResult.repaired) coherenceRepairs += 1;
+      return normalizedResult.publication;
+    }),
     kpi_targets: skeleton.kpi_targets,
     notes: skeleton.notes
   };
+
+  mergedPlan.publications = ensureDistinctTopicTitles(mergedPlan.publications);
 
   const repairedPlan = mergedPlan;
 
@@ -867,6 +1188,11 @@ export async function generateDraftPlanBatched({
     console.warn('[relevancePrediction] Failed to predict engagement_rate:', error?.message || error);
   }
 
+  repairedPlan.publications = enforceCtaCoverage(
+    repairedPlan.publications,
+    typeof formInput?.projectName === 'string' ? formInput.projectName : ''
+  );
+
   const validation = validateDraftPlan(repairedPlan, formInput);
   if (!validation.valid) {
     const error = new Error(`Итоговый draft_content_plan не прошел валидацию: ${validation.errors.join('; ')}`);
@@ -885,7 +1211,13 @@ export async function generateDraftPlanBatched({
       requested_publications: requestedPublicationCount,
       target_publications: targetPublicationCount,
       total_months: monthlyGroups.length,
+      coherence_repairs: coherenceRepairs,
       compact_rag_context: compactRagContext.summary
     }
   };
 }
+
+export const DRAFT_PLAN_PIPELINE_TEST_UTILS = {
+  tokenizeSemanticText,
+  hasSemanticOverlap
+};

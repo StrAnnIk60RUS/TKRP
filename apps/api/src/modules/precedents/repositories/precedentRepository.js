@@ -48,6 +48,22 @@ const DEDUP_SIMILARITY_THRESHOLD_EXISTING = Math.min(
   )
 );
 const DEDUP_SEMANTIC_ENABLED = process.env.DEDUP_SEMANTIC_ENABLED !== 'false';
+const RETRIEVAL_MIN_SCORE = Math.min(
+  1,
+  Math.max(0, Number(process.env.RAG_MIN_RETRIEVAL_SCORE) || 0.58)
+);
+const RETRIEVAL_DYNAMIC_DELTA = Math.min(
+  0.5,
+  Math.max(0, Number(process.env.RAG_DYNAMIC_SCORE_DELTA) || 0.14)
+);
+const RETRIEVAL_EMBEDDING_WEIGHT = Math.min(
+  1,
+  Math.max(0, Number(process.env.RAG_EMBEDDING_WEIGHT) || 0.8)
+);
+const RETRIEVAL_TOKEN_WEIGHT = Math.min(
+  1,
+  Math.max(0, Number(process.env.RAG_TOKEN_WEIGHT) || 0.2)
+);
 
 let storageMutationQueue = Promise.resolve();
 
@@ -350,6 +366,77 @@ function filterByAudience(items, audienceSegments = [], getter) {
     const values = getter(item).map((segment) => normalizeText(segment)).filter(Boolean);
     return normalizedSegments.some((segment) => values.includes(segment));
   });
+}
+
+function resolveFilteredCollections(storage, options = {}) {
+  const platformFilteredPublications = filterByPlatform(
+    storage.publications,
+    options.platforms || options.platform
+  );
+  const platformFilteredContentPlans = filterByPlatform(
+    storage.content_plans,
+    options.platforms || options.platform
+  );
+  const audienceFilteredPublications = filterByAudience(
+    platformFilteredPublications,
+    options.audience_segments,
+    (item) => item?.publication_model?.audience_segments || []
+  );
+  const audienceFilteredContentPlans = filterByAudience(
+    platformFilteredContentPlans,
+    options.audience_segments,
+    (item) => item?.content_plan_model?.audience_segments || []
+  );
+
+  if (audienceFilteredPublications.length > 0 || audienceFilteredContentPlans.length > 0) {
+    return {
+      publications: audienceFilteredPublications,
+      content_plans: audienceFilteredContentPlans,
+      fallback_scope: 'none'
+    };
+  }
+
+  // Safe fallback: first keep platform-only scope.
+  if (platformFilteredPublications.length > 0 || platformFilteredContentPlans.length > 0) {
+    return {
+      publications: platformFilteredPublications,
+      content_plans: platformFilteredContentPlans,
+      fallback_scope: 'platform_only'
+    };
+  }
+
+  // Next fallback: audience-only across whole base.
+  const audienceOnlyPublications = filterByAudience(
+    storage.publications,
+    options.audience_segments,
+    (item) => item?.publication_model?.audience_segments || []
+  );
+  const audienceOnlyContentPlans = filterByAudience(
+    storage.content_plans,
+    options.audience_segments,
+    (item) => item?.content_plan_model?.audience_segments || []
+  );
+  if (audienceOnlyPublications.length > 0 || audienceOnlyContentPlans.length > 0) {
+    return {
+      publications: audienceOnlyPublications,
+      content_plans: audienceOnlyContentPlans,
+      fallback_scope: 'audience_only'
+    };
+  }
+
+  // Last resort.
+  return {
+    publications: storage.publications,
+    content_plans: storage.content_plans,
+    fallback_scope: 'global'
+  };
+}
+
+function applyRetrievalQualityGate(items, limit) {
+  if (!Array.isArray(items) || items.length === 0) return [];
+  const topScore = Number(items[0]?.score) || 0;
+  const dynamicThreshold = Math.max(RETRIEVAL_MIN_SCORE, topScore - RETRIEVAL_DYNAMIC_DELTA);
+  return items.filter((item) => (Number(item?.score) || 0) >= dynamicThreshold).slice(0, limit);
 }
 
 function writeStorage(storage) {
@@ -786,23 +873,10 @@ export async function searchPrecedents(query, options = {}) {
   const storage = readStorage();
   const limit = Math.max(1, Math.min(Number(options.limit) || 5, 20));
 
-  let filteredPublications = filterByAudience(
-    filterByPlatform(storage.publications, options.platforms || options.platform),
-    options.audience_segments,
-    (item) => item?.publication_model?.audience_segments || []
-  );
-  let filteredContentPlans = filterByAudience(
-    filterByPlatform(storage.content_plans, options.platforms || options.platform),
-    options.audience_segments,
-    (item) => item?.content_plan_model?.audience_segments || []
-  );
-
-  // Если после фильтрации по платформе/аудитории ничего не осталось,
-  // ослабляем фильтры и ищем по всей базе (fallback-режим).
-  if (filteredPublications.length === 0 && filteredContentPlans.length === 0) {
-    filteredPublications = storage.publications;
-    filteredContentPlans = storage.content_plans;
-  }
+  const scoped = resolveFilteredCollections(storage, options);
+  const filteredPublications = scoped.publications;
+  const filteredContentPlans = scoped.content_plans;
+  const queryTokens = uniqueTokens(tokenize(normalizedQuery));
 
   // --- Embedding-based RAG (memo): query -> embedding, docs -> embeddings, cosine similarity, top-N.
   // Если embeddings недоступны (нет ключа/ошибка API), делаем fallback на прежний token-overlap.
@@ -831,50 +905,72 @@ export async function searchPrecedents(query, options = {}) {
       .map((publication) => {
         const emb = getEmbeddingForItem(publication);
         const cosine = emb ? cosineSimilarity(queryEmbedding, emb) : 0;
-        const score = normalizeCosineToUnitInterval(cosine);
+        const embeddingScore = normalizeCosineToUnitInterval(cosine);
+        const tokenScore = calculateTokenScore(queryTokens, collectPublicationSearchText(publication), {
+          boostExactPhrase: normalizedQuery
+        });
+        const score = Math.min(
+          1,
+          embeddingScore * RETRIEVAL_EMBEDDING_WEIGHT + tokenScore.score * RETRIEVAL_TOKEN_WEIGHT
+        );
 
         return {
           type: 'publication',
           score: Number(score.toFixed(4)),
-          matched_tokens: [],
+          matched_tokens: tokenScore.matched_tokens,
           data: publication
         };
       })
       .filter((item) => item.score > 0)
       .sort((a, b) => b.score - a.score)
-      .slice(0, limit);
+      .slice(0, Math.max(limit, 20));
 
     const rankedContentPlans = filteredContentPlans
       .map((contentPlan) => {
         const emb = getEmbeddingForItem(contentPlan);
         const cosine = emb ? cosineSimilarity(queryEmbedding, emb) : 0;
-        const score = normalizeCosineToUnitInterval(cosine);
+        const embeddingScore = normalizeCosineToUnitInterval(cosine);
+        const tokenScore = calculateTokenScore(queryTokens, collectContentPlanSearchText(contentPlan), {
+          boostExactPhrase: normalizedQuery
+        });
+        const score = Math.min(
+          1,
+          embeddingScore * RETRIEVAL_EMBEDDING_WEIGHT + tokenScore.score * RETRIEVAL_TOKEN_WEIGHT
+        );
 
         return {
           type: 'content_plan',
           score: Number(score.toFixed(4)),
-          matched_tokens: [],
+          matched_tokens: tokenScore.matched_tokens,
           data: contentPlan
         };
       })
       .filter((item) => item.score > 0)
       .sort((a, b) => b.score - a.score)
-      .slice(0, limit);
+      .slice(0, Math.max(limit, 20));
 
     const rawResult = {
       query: normalizedQuery,
-      publications: rankedPublications,
-      content_plans: rankedContentPlans,
+      publications: applyRetrievalQualityGate(rankedPublications, limit),
+      content_plans: applyRetrievalQualityGate(rankedContentPlans, limit),
       total_publications_searched: filteredPublications.length,
       total_content_plans_searched: filteredContentPlans.length,
       retrieval: {
         type: 'embedding_cosine',
-        embedding_model: queryEmbeddingResult.model
+        embedding_model: queryEmbeddingResult.model,
+        fallback_scope: scoped.fallback_scope,
+        quality_gate: {
+          min_score: RETRIEVAL_MIN_SCORE,
+          dynamic_delta: RETRIEVAL_DYNAMIC_DELTA
+        },
+        hybrid_weights: {
+          embedding: RETRIEVAL_EMBEDDING_WEIGHT,
+          token: RETRIEVAL_TOKEN_WEIGHT
+        }
       }
     };
     return enrichSearchResultsWithReliability(rawResult);
   } catch (error) {
-    const queryTokens = uniqueTokens(tokenize(normalizedQuery));
     console.warn('[precedentRepository] Embedding search failed, fallback to token overlap:', error.message);
 
     const rankedPublications = filteredPublications
@@ -915,13 +1011,18 @@ export async function searchPrecedents(query, options = {}) {
 
     const rawResult = {
       query: normalizedQuery,
-      publications: rankedPublications,
-      content_plans: rankedContentPlans,
+      publications: applyRetrievalQualityGate(rankedPublications, limit),
+      content_plans: applyRetrievalQualityGate(rankedContentPlans, limit),
       total_publications_searched: filteredPublications.length,
       total_content_plans_searched: filteredContentPlans.length,
       retrieval: {
         type: 'token_overlap_fallback',
-        error: error.message || 'embedding_failed'
+        error: error.message || 'embedding_failed',
+        fallback_scope: scoped.fallback_scope,
+        quality_gate: {
+          min_score: RETRIEVAL_MIN_SCORE,
+          dynamic_delta: RETRIEVAL_DYNAMIC_DELTA
+        }
       }
     };
     return enrichSearchResultsWithReliability(rawResult);

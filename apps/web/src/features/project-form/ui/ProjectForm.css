@@ -625,6 +625,23 @@
     margin-top: 8px;
   }
 
+.operation-status-panel {
+  position: sticky;
+  top: 12px;
+  z-index: 30;
+  border-width: 3px;
+  box-shadow: 0 10px 28px rgba(26, 26, 46, 0.2);
+}
+
+.operation-status-panel-running {
+  border-color: #f59e0b;
+  box-shadow: 0 12px 32px rgba(245, 158, 11, 0.28);
+}
+
+.operation-status-panel-running .section-title {
+  border-left-color: #f59e0b;
+}
+
   .precedent-summary-panel {
     display: flex;
     flex-direction: column;
@@ -2079,6 +2096,11 @@ body.theme-light .ui-badge-neutral {
     .calendar-toolbar-group {
       flex-direction: column;
       align-items: stretch;
+    }
+
+    .operation-status-panel {
+      top: 8px;
+      z-index: 20;
     }
 
     .calendar-board {

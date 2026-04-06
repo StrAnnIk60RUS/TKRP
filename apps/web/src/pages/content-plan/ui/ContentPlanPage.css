@@ -407,6 +407,22 @@
   flex-wrap: wrap;
 }
 
+.post-metrics-note {
+  flex: 1 1 100%;
+  margin: 0 0 4px 0;
+  font-weight: 400;
+  font-size: 0.82rem;
+  color: #718096;
+  line-height: 1.45;
+}
+
+.post-metrics-ml-counts {
+  flex: 1 1 100%;
+  font-weight: 500;
+  font-size: 0.85rem;
+  color: #4a5568;
+}
+
 .post-edit-actions {
   margin-top: 14px;
   display: flex;

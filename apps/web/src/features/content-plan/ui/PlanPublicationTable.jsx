@@ -1,4 +1,11 @@
 import React from 'react'
+import {
+  getFormatLabel,
+  getObjectiveLabel,
+  getPlatformLabel,
+  isMeaningfulCta,
+  normalizePublicationForUi
+} from '../lib/publicationPresentation'
 
 const formatPercent = (value) => `${((Number(value) || 0) * 100).toFixed(1)}%`
 
@@ -10,31 +17,36 @@ const PlanPublicationTable = ({ publications, onEdit }) => {
           <tr>
             <th>Дата</th>
             <th>Платформа</th>
-            <th>Тема</th>
+            <th>Заголовок</th>
             <th>Формат</th>
             <th>Цель</th>
-            <th>Engagement</th>
+            <th title="Внутренняя оценка модели, 0–100%, не метрика площадки">Вовлечённость (оценка)</th>
             <th>CTA</th>
             <th></th>
           </tr>
         </thead>
         <tbody>
-          {publications.map((post, idx) => (
-            <tr key={`${post.publication_id || 'pub'}_${post.planned_date || 'na'}_${idx}`}>
-              <td data-label="Дата">{post.planned_date || '—'}</td>
-              <td data-label="Платформа">{post.platform || '—'}</td>
-              <td data-label="Тема">{post.topic || 'Без темы'}</td>
-              <td data-label="Формат">{post.format || '—'}</td>
-              <td data-label="Цель">{post.objective || '—'}</td>
-              <td data-label="Engagement">{formatPercent(post.expected_kpi?.engagement_rate)}</td>
-              <td data-label="CTA">{post.cta || '—'}</td>
+          {publications.map((post, idx) => {
+            const normalizedPost = normalizePublicationForUi(post)
+            return (
+            <tr key={`${normalizedPost.publication_id || 'pub'}_${normalizedPost.planned_date || 'na'}_${idx}`}>
+              <td data-label="Дата">{normalizedPost.planned_date || '—'}</td>
+              <td data-label="Платформа">{getPlatformLabel(normalizedPost.platform)}</td>
+              <td data-label="Заголовок">{normalizedPost.title || normalizedPost.topic || 'Без темы'}</td>
+              <td data-label="Формат">{getFormatLabel(normalizedPost.format)}</td>
+              <td data-label="Цель">{getObjectiveLabel(normalizedPost.objective)}</td>
+              <td data-label="Вовлечённость (оценка)">
+                {formatPercent(normalizedPost.expected_kpi?.engagement_rate)}
+              </td>
+              <td data-label="CTA">{isMeaningfulCta(normalizedPost.cta) ? normalizedPost.cta : '—'}</td>
               <td data-label="Действие">
-                <button type="button" className="secondary-btn plan-table-edit-btn" onClick={() => onEdit(post)}>
+                <button type="button" className="secondary-btn plan-table-edit-btn" onClick={() => onEdit(normalizedPost)}>
                   Редактировать
                 </button>
               </td>
             </tr>
-          ))}
+            )
+          })}
         </tbody>
       </table>
     </div>

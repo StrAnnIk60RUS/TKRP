@@ -40,11 +40,17 @@ const formatDuration = (ms) => {
 const OperationStatusPanel = ({ operations, telemetry, onCancel, onRetry, isDeveloper = false }) => {
   const entries = Object.entries(operations).filter(([id]) => OPERATION_TITLES[id])
   const hasVisible = entries.some(([, op]) => op.status !== 'idle')
+  const hasRunning = entries.some(([, op]) => op.status === 'running')
 
   if (!hasVisible) return null
 
   return (
-    <section className="form-section precedent-workflow-section" aria-live="polite">
+    <section
+      className={`form-section precedent-workflow-section operation-status-panel ${
+        hasRunning ? 'operation-status-panel-running' : ''
+      }`}
+      aria-live="polite"
+    >
       <div className="workflow-section-heading">
         <div>
           <h2 className="section-title">{isDeveloper ? 'Статус pipeline' : 'Статус операций'}</h2>

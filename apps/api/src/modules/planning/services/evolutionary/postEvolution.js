@@ -415,25 +415,58 @@ function rankCtaPriority(publication = {}) {
   return 1;
 }
 
+const DEFAULT_PLAN_CTA = 'Свяжитесь с нами, чтобы получить детали.';
+
+function resolveEffectiveCta(basePublication, sourcePublication, featureMap) {
+  const base = basePublication || {};
+  const source = sourcePublication || {};
+  const pref = resolveCtaPreference(base);
+  const existing = String(base?.cta || source?.cta || '').trim();
+  const hasFeatureCta = asNumber(featureMap?.has_cta, 0) > 0;
+  if (pref === 'required') {
+    return existing || DEFAULT_PLAN_CTA;
+  }
+  if (pref === 'preferred' && (hasFeatureCta || existing)) {
+    return existing || DEFAULT_PLAN_CTA;
+  }
+  if (hasFeatureCta) {
+    return existing || DEFAULT_PLAN_CTA;
+  }
+  return '';
+}
+
 function buildFinalPublication(basePublication, bestPublication, featureMap, predictedLikes, predictedShares, predictedViews, index) {
   const source = cloneJson(bestPublication || {});
+  const base = cloneJson(basePublication || {});
+  const baseKpi = base?.expected_kpi && typeof base.expected_kpi === 'object' ? base.expected_kpi : {};
+  const sourceKpi = source?.expected_kpi && typeof source.expected_kpi === 'object' ? source.expected_kpi : {};
   return {
     ...source,
-    ...cloneJson(basePublication || {}),
-    publication_id: basePublication?.publication_id || source?.publication_id || `final_publication_${String(index + 1).padStart(3, '0')}`,
-    planned_date: basePublication?.planned_date || source?.planned_date || null,
-    planned_at: basePublication?.planned_at || source?.planned_at || null,
-    platform: basePublication?.platform || source?.platform || null,
-    topic: basePublication?.topic || source?.topic || null,
-    format: basePublication?.format || source?.format || null,
-    objective: basePublication?.objective || source?.objective || null,
-    tone: basePublication?.tone || source?.tone || null,
-    cta: featureMap.has_cta ? source?.cta || 'Свяжитесь с нами, чтобы получить детали.' : '',
+    ...base,
+    publication_id: base?.publication_id || source?.publication_id || `final_publication_${String(index + 1).padStart(3, '0')}`,
+    planned_date: base?.planned_date || source?.planned_date || null,
+    planned_at: base?.planned_at || source?.planned_at || null,
+    platform: base?.platform || source?.platform || null,
+    // Keep semantic fields from the slot itself to avoid cross-slot text mixing.
+    topic: base?.topic || source?.topic || null,
+    format: base?.format || source?.format || null,
+    objective: base?.objective || source?.objective || null,
+    tone: base?.tone || source?.tone || null,
+    summary: base?.summary || source?.summary || null,
+    key_message: base?.key_message || source?.key_message || null,
+    cta: resolveEffectiveCta(base, source, featureMap),
     expected_kpi: {
-      ...(source?.expected_kpi || {}),
+      engagement_rate:
+        baseKpi.engagement_rate ?? sourceKpi.engagement_rate,
+      conversion_potential:
+        baseKpi.conversion_potential ?? sourceKpi.conversion_potential,
+      reach_potential: baseKpi.reach_potential ?? sourceKpi.reach_potential,
       predicted_likes: predictedLikes,
       predicted_shares: predictedShares,
       predicted_views: predictedViews,
+      ml_predicted_likes: predictedLikes,
+      ml_predicted_shares: predictedShares,
+      ml_predicted_views: predictedViews,
       predicted_likes_source: 'final_best_post_template'
     },
     ontology_features: featureMap
@@ -490,23 +523,35 @@ export async function fillPlanWithBestPublication(publications = [], publication
 
   const totalCount = publications.length;
   const requiredCtaCount = publications.filter((publication) => resolveCtaPreference(publication) === 'required').length;
+  const preferredCtaCount = publications.filter((publication) => resolveCtaPreference(publication) === 'preferred').length;
   const targetCtaShare = options.targetCtaShare ?? asNumber(planFeatureMap.cta_share, 0);
-  const ctaTargetCount = Math.max(
-    requiredCtaCount,
-    Math.max(0, Math.min(totalCount, Math.round(targetCtaShare * totalCount)))
+  const shareBased = Math.max(0, Math.min(totalCount, Math.round(targetCtaShare * totalCount)));
+  const softPreferredBudget = Math.min(3, preferredCtaCount);
+  const ctaTargetCount = Math.min(
+    totalCount,
+    Math.max(requiredCtaCount, shareBased, requiredCtaCount + softPreferredBudget)
   );
   
-  const ctaIndices = new Set(
-    publications
-      .map((publication, index) => ({
-        index,
-        priority: rankCtaPriority(publication),
-        hasExistingCta: publication?.cta ? 1 : 0
-      }))
-      .sort((left, right) => right.priority - left.priority || right.hasExistingCta - left.hasExistingCta || left.index - right.index)
-      .slice(0, ctaTargetCount)
-      .map((item) => item.index)
-  );
+  const requiredCtaIndices = publications
+    .map((publication, index) => (resolveCtaPreference(publication) === 'required' ? index : null))
+    .filter((index) => index !== null);
+  const ctaIndices = new Set(requiredCtaIndices);
+  const fillSorted = publications
+    .map((publication, index) => ({
+      index,
+      priority: rankCtaPriority(publication),
+      hasExistingCta: publication?.cta ? 1 : 0
+    }))
+    .sort(
+      (left, right) =>
+        right.priority - left.priority ||
+        right.hasExistingCta - left.hasExistingCta ||
+        left.index - right.index
+    );
+  for (const { index } of fillSorted) {
+    if (ctaIndices.size >= ctaTargetCount) break;
+    if (!ctaIndices.has(index)) ctaIndices.add(index);
+  }
   
   const usageByKey = new Map();
   const selectedSources = publications.map((publication, index) =>
