@@ -26,6 +26,8 @@ dotenv.config({ path: path.resolve(__dirname, '..', '..', '.env') });
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const AI_MODEL = process.env.AI_MODEL;
+/** Верхняя граница completion, если вызов не передал свой maxTokens (планирование и т.п.). */
+const DEFAULT_OPENROUTER_MAX_OUTPUT_TOKENS = 32768;
 const SEMANTIC_ENRICHMENT_PROMPT_PATH = path.join(
   __dirname,
   'src',
@@ -131,7 +133,7 @@ function buildLimitsErrorMessage(summary) {
 
 async function enrichSemanticBatch(batch, systemPrompt, options = {}) {
   const compact = options.compact === true;
-  const llmResponse = await callDeepSeekAPI(
+  const llmResponse = await callOpenRouterChat(
     systemPrompt,
     buildSemanticUserPrompt(batch.payload, { compact }),
     {
@@ -160,22 +162,22 @@ async function enrichSemanticBatch(batch, systemPrompt, options = {}) {
 }
 
 /**
- * Отправляет запрос к LLM API
+ * Отправляет запрос к OpenRouter Chat Completions API (модель из AI_MODEL).
  * @param {string} systemPrompt - системный промпт
  * @param {string} userPrompt - пользовательский промпт
- * @param {Object} options - дополнительные опции
+ * @param {Object} options - дополнительные опции (maxTokens — опционально; без него используется DEFAULT_OPENROUTER_MAX_OUTPUT_TOKENS)
  * @returns {Promise<Object>} - ответ от API
  */
-export async function callDeepSeekAPI(systemPrompt, userPrompt, options = {}) {
+export async function callOpenRouterChat(systemPrompt, userPrompt, options = {}) {
   if (!OPENROUTER_API_KEY) {
     throw new Error('API ключ для LLM не установлен в переменных окружения');
   }
 
-  const {
-    temperature = 0.4,
-    maxTokens = 100000,
-    responseFormat = null
-  } = options;
+  const { temperature = 0.4, responseFormat = null } = options;
+  const maxTokens =
+    options.maxTokens != null && Number.isFinite(Number(options.maxTokens))
+      ? Number(options.maxTokens)
+      : DEFAULT_OPENROUTER_MAX_OUTPUT_TOKENS;
 
   const requestBody = {
     model: AI_MODEL,
@@ -251,6 +253,9 @@ export async function callDeepSeekAPI(systemPrompt, userPrompt, options = {}) {
     throw err;
   }
 }
+
+/** @deprecated Используйте callOpenRouterChat */
+export const callDeepSeekAPI = callOpenRouterChat;
 
 /**
  * Обогащает данные конкурентов через LLM
