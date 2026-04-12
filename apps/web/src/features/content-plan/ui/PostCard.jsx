@@ -1,5 +1,6 @@
 import React from 'react'
 import {
+  getCompactTopicHeading,
   getFormatLabel,
   getKpiPresentation,
   getObjectiveLabel,
@@ -15,7 +16,9 @@ const PostCard = ({ post, showPlatformField, onEdit }) => {
   const plannedDateLabel = normalizedPost.planned_date
     ? new Date(normalizedPost.planned_date).toLocaleDateString('ru-RU')
     : 'Дата не указана'
-  const postHeading = normalizedPost.title || normalizedPost.topic || 'Без темы'
+  const fullHeading = normalizedPost.title || normalizedPost.topic || 'Без темы'
+  const postHeading = getCompactTopicHeading(fullHeading) || fullHeading
+  const showFullHeadingTooltip = fullHeading !== postHeading
   const summaryPreview = truncateText(normalizedPost.summary, 320)
   const hasMeaningfulCta = isMeaningfulCta(normalizedPost.cta)
   const kpi = getKpiPresentation(normalizedPost.expected_kpi)
@@ -24,7 +27,9 @@ const PostCard = ({ post, showPlatformField, onEdit }) => {
     <div className="post-card">
       <div className="post-header">
         <span className="post-date">{plannedDateLabel}</span>
-        <span className="post-category">{postHeading}</span>
+        <span className="post-category" title={showFullHeadingTooltip ? fullHeading : undefined}>
+          {postHeading}
+        </span>
       </div>
 
       <div className="post-content">

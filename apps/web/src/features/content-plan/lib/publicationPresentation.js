@@ -181,6 +181,27 @@ export function truncateText(value, limit = 280) {
   return `${text.slice(0, limit).trimEnd()}...`
 }
 
+/**
+ * Согласовано с API `getCompactTopicForMessage`: для длинного стержня «продукт: угол»
+ * в списках и карточках показываем только угол, чтобы строка над карточкой не дублировала имя продукта.
+ */
+export function getCompactTopicHeading(raw = '') {
+  const t = stripServiceTopicTailForUi(raw)
+    .replace(/\s+([:;,.!?])/g, '$1')
+    .trim()
+  if (!t) return ''
+  const idx = t.indexOf(': ')
+  if (idx === -1) return t.length > 110 ? t.slice(0, 110) : t
+  const stem = t.slice(0, idx).trim()
+  const angle = t.slice(idx + 2).trim()
+  const minStem = 28
+  const minAngle = 6
+  if (stem.length >= minStem && angle.length >= minAngle) {
+    return angle.length > 110 ? angle.slice(0, 110) : angle
+  }
+  return t.length > 110 ? t.slice(0, 110) : t
+}
+
 export function getScoreBandLabel(value) {
   return SCORE_BAND_LABELS[toStringSafe(value).trim().toLowerCase()] || 'не указан'
 }

@@ -5,10 +5,12 @@ import {
   getFormatLabel,
   getObjectiveLabel,
   getPlatformLabel,
+  getToneLabel,
   normalizeFormat,
   normalizeObjective,
   normalizePlatform,
   normalizePublicationForUi,
+  normalizeTone,
   publicationFieldOptions
 } from '../lib/publicationPresentation'
 
@@ -26,7 +28,7 @@ function buildInitialDraft(publication) {
     platform: coerceString(normalized?.platform || ''),
     format: coerceString(normalized?.format || ''),
     objective: coerceString(normalized?.objective || ''),
-    tone: coerceString(normalized?.tone || ''),
+    tone: normalizeTone(coerceString(normalized?.tone || ''), 'expert'),
     summary: coerceString(normalized?.summary || ''),
     key_message: coerceString(normalized?.key_message || ''),
     cta: coerceString(normalized?.cta || '')
@@ -59,7 +61,7 @@ const PostEditModal = ({ publication, onSave, onCancel }) => {
       platform: normalizePlatform(draft.platform),
       format: normalizeFormat(draft.format),
       objective: normalizeObjective(draft.objective),
-      tone: draft.tone.trim(),
+      tone: normalizeTone(draft.tone.trim(), 'expert'),
       summary: draft.summary.trim(),
       key_message: draft.key_message.trim(),
       cta: draft.cta.trim()
@@ -72,7 +74,7 @@ const PostEditModal = ({ publication, onSave, onCancel }) => {
     }
     if (!publicationFieldOptions.formats.includes(cleaned.format)) return 'Укажите формат публикации'
     if (!publicationFieldOptions.objectives.includes(cleaned.objective)) return 'Укажите цель публикации'
-    if (!cleaned.tone) return 'Укажите тон'
+    if (!publicationFieldOptions.tones.includes(cleaned.tone)) return 'Укажите тон'
     if (!cleaned.summary) return 'Укажите текст поста'
     if (!cleaned.key_message) return 'Укажите ключевое сообщение'
 
@@ -92,7 +94,7 @@ const PostEditModal = ({ publication, onSave, onCancel }) => {
       platform: normalizePlatform(draft.platform),
       format: normalizeFormat(draft.format),
       objective: normalizeObjective(draft.objective),
-      tone: draft.tone.trim(),
+      tone: normalizeTone(draft.tone.trim(), 'expert'),
       summary: draft.summary.trim(),
       key_message: draft.key_message.trim(),
       cta: draft.cta.trim()
@@ -184,13 +186,17 @@ const PostEditModal = ({ publication, onSave, onCancel }) => {
 
               <label className="editor-field editor-field-wide">
                 Тон
-                <input
+                <select
                   className="editor-input"
-                  type="text"
                   value={draft.tone}
                   onChange={(e) => setField('tone', e.target.value)}
-                  placeholder="Например: экспертный"
-                />
+                >
+                  {publicationFieldOptions.tones.map((t) => (
+                    <option key={t} value={t}>
+                      {getToneLabel(t)}
+                    </option>
+                  ))}
+                </select>
               </label>
 
               <label className="editor-field editor-field-wide">

@@ -1,5 +1,6 @@
 import React from 'react'
 import {
+  getCompactTopicHeading,
   getFormatLabel,
   getKpiPresentation,
   getObjectiveLabel,
@@ -28,11 +29,15 @@ const PlanPublicationTable = ({ publications, onEdit }) => {
           {publications.map((post, idx) => {
             const normalizedPost = normalizePublicationForUi(post)
             const kpi = getKpiPresentation(normalizedPost.expected_kpi)
+            const fullHeading = normalizedPost.title || normalizedPost.topic || 'Без темы'
+            const heading = getCompactTopicHeading(fullHeading) || fullHeading
             return (
             <tr key={`${normalizedPost.publication_id || 'pub'}_${normalizedPost.planned_date || 'na'}_${idx}`}>
               <td data-label="Дата">{normalizedPost.planned_date || '—'}</td>
               <td data-label="Платформа">{getPlatformLabel(normalizedPost.platform)}</td>
-              <td data-label="Заголовок">{normalizedPost.title || normalizedPost.topic || 'Без темы'}</td>
+              <td data-label="Заголовок" title={fullHeading !== heading ? fullHeading : undefined}>
+                {heading}
+              </td>
               <td data-label="Формат">{getFormatLabel(normalizedPost.format)}</td>
               <td data-label="Цель">{getObjectiveLabel(normalizedPost.objective)}</td>
               <td data-label="Вовлечённость (оценка)">

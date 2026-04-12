@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
+import { getCompactTopicHeading } from '../lib/publicationPresentation'
 
 const MOBILE_LAYOUT_BREAKPOINT = 768
 
@@ -41,8 +42,11 @@ const buildDateRange = (start, end) => {
   return result
 }
 
-const getPublicationLabel = (publication) =>
-  publication.topic || publication.key_message || publication.objective || publication.publication_id
+const getPublicationLabel = (publication) => {
+  const raw = publication.title || publication.topic || ''
+  const fromTopic = raw ? getCompactTopicHeading(raw) || raw : ''
+  return fromTopic || publication.key_message || publication.objective || publication.publication_id
+}
 
 const getHolidayLabel = (isoDate) => HOLIDAYS.find(([key]) => key === isoDate.slice(5))?.[1] || null
 
