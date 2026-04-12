@@ -12,13 +12,11 @@
       "consumerDemographics": "Предприятия и организации, выполняющие сварку ответственных конструкций. Центры подготовки и аттестации сварщиков. Руководители сварочного производства, специалисты по контролю качества, мастера сварочных участков.",
       "consumerPurchaseGoal": "Повышение качества сварки, снижение брака, обеспечение документального подтверждения качества сварочных работ, оптимизация управления сварочным производством, соответствие требованиям по контролю технологических процессов.",
       "consumerLifestyle": "Ориентация на современные технологии контроля качества. Заинтересованность в автоматизации производственных процессов. Потребность в оперативной и точной информации о работе оборудования и персонала.",
-      "contentPlanStartDate": "2026-04-06",
-      "contentPlanEndDate": "2026-05-06",
+      "contentPlanStartDate": "2026-05-06",
+      "contentPlanEndDate": "2026-07-06",
       "publicationFrequency": "2-3_per_week",
-      "postsPerWeek": "3.5",
       "publicationDayMode": "spread",
-      "minPublications": "11",
-      "keyDates": "ПАСХА",
+      "keyDates": "",
       "contentFormats": [
         "text",
         "image",
@@ -36,9 +34,24 @@
       "evoEliteSize": "4",
       "evoCrossoverProbability": "0.9",
       "evoMutationProbability": "0.08",
-      "evoRandomSeed": ""
+      "evoRandomSeed": "",
+      "evoSelectionMethod": "tournament",
+      "evoCrossoverMethod": "one_point",
+      "evoMutationMethod": "random_replace",
+      "evoPostPopulationSize": "48",
+      "evoPostGenerations": "50",
+      "evoPostStagnationGenerations": "12",
+      "evoPostTournamentSize": "4",
+      "evoPostEliteSize": "3",
+      "evoPostCrossoverProbability": "0.9",
+      "evoPostMutationProbability": "0.12",
+      "evoPostSelectionMethod": "tournament",
+      "evoPostCrossoverMethod": "one_point",
+      "evoPostMutationMethod": "random_replace",
+      "postsPerWeek": "3.5",
+      "minPublications": "11"
     },
-    "updated_at": "2026-04-06T20:45:31.179Z"
+    "updated_at": "2026-04-12T14:33:10.393Z"
   },
-  "updated_at": "2026-04-06T20:45:31.180Z"
+  "updated_at": "2026-04-12T14:33:10.394Z"
 }

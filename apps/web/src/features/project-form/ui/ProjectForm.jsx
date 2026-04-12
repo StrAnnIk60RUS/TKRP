@@ -41,7 +41,8 @@ import {
   requiredFields
 } from './projectForm/formConfig'
 import {
-  buildGaConfigFromForm,
+  buildPlanGaConfigFromForm,
+  buildPostGaConfigFromForm,
   buildReviewChecklist,
   buildSafeFormInputForGeneration,
   buildSuggestedPrecedentQuery,
@@ -464,7 +465,7 @@ const ProjectForm = () => {
 
       try {
         const draft = JSON.parse(savedDraft)
-        setFormData(draft)
+        setFormData({ ...initialFormData, ...draft })
       } catch (e) {
         console.error('Ошибка загрузки локального черновика:', e)
       }
@@ -486,7 +487,7 @@ const ProjectForm = () => {
         const serverDraft = serverDraftResponse?.draft?.formData
         if (serverDraft && typeof serverDraft === 'object') {
           hasRestoredDraftRef.current = true
-          setFormData(serverDraft)
+          setFormData({ ...initialFormData, ...serverDraft })
           return
         }
       } catch (error) {
@@ -848,7 +849,8 @@ const ProjectForm = () => {
       ? precedentSearchResults.publications.filter(Boolean)
       : []
 
-    const gaConfig = buildGaConfigFromForm(formData)
+    const planGaConfig = buildPlanGaConfigFromForm(formData)
+    const postGaConfig = buildPostGaConfigFromForm(formData)
 
     const publicationDayMode = draft?.schedule_preferences?.publication_day_mode || formData.publicationDayMode
     const sharedModeMinPubs =
@@ -913,17 +915,14 @@ const ProjectForm = () => {
           quality_min: qualityMin,
           quality_max: null
         },
-        ga: gaConfig
+        ga: planGaConfig
       },
       stage2: {
         constraints: {
           tones_count: null,
           creativity_from_best_plan: null
         },
-        ga: {
-          ...gaConfig,
-          crossoverMethod: gaConfig.crossoverMethod
-        }
+        ga: postGaConfig
       }
     }
 
@@ -988,13 +987,15 @@ const ProjectForm = () => {
     <>
       <ToastContainer toasts={toasts} removeToast={removeToast} />
       <ProcessIndicator active={!!currentProcessId} processId={currentProcessId} />
-      <OperationStatusPanel
-        operations={operations}
-        telemetry={operationTelemetry}
-        onCancel={cancelOperation}
-        onRetry={retryOperation}
-        isDeveloper={isDeveloper}
-      />
+      {isDeveloper && (
+        <OperationStatusPanel
+          operations={operations}
+          telemetry={operationTelemetry}
+          onCancel={cancelOperation}
+          onRetry={retryOperation}
+          isDeveloper
+        />
+      )}
 
       <form className="project-form">
         {/* Прогресс-бар */}
@@ -1448,238 +1449,449 @@ const ProjectForm = () => {
         {/* Параметры эволюционного моделирования (опционально) — для разработчика и аналитика */}
         {currentStep === 4 && isExtendedMode && <section className="form-section evolution-settings-section">
           <h2 className="section-title">Параметры эволюционного моделирования (опционально)</h2>
-          
-          {/* Основные параметры */}
-          <div className="form-row">
-            <div className="form-group">
-              <label htmlFor="evoPopulationSize" className="form-label">
-                Размер популяции <FieldHint fieldName="evoPopulationSize" />
-              </label>
-              <input
-                type="number"
-                id="evoPopulationSize"
-                name="evoPopulationSize"
-                value={formData.evoPopulationSize}
-                onChange={handleChange}
-                onBlur={handleBlur}
-                className="form-input"
-                placeholder="100"
-                min="10"
-                max="2000"
-                disabled={!isEditMode}
-              />
-              <small className="form-hint">Сколько контент-планов одновременно рассматривает алгоритм</small>
+          <p className="evolution-settings-lead">
+            Сначала эволюционирует структура контент-плана, затем — набор признаков каждой публикации. Ниже параметры разделены по этим этапам.
+          </p>
+
+          <div className="evolution-settings-subblock">
+            <h3 className="section-subtitle evolution-settings-subtitle">Контент-план (этап 1)</h3>
+            <div className="form-row">
+              <div className="form-group">
+                <label htmlFor="evoPopulationSize" className="form-label">
+                  Размер популяции <FieldHint fieldName="evoPopulationSize" />
+                </label>
+                <input
+                  type="number"
+                  id="evoPopulationSize"
+                  name="evoPopulationSize"
+                  value={formData.evoPopulationSize}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  className="form-input"
+                  placeholder="32"
+                  min="10"
+                  max="2000"
+                  disabled={!isEditMode}
+                />
+                <small className="form-hint">Сколько вариантов плана одновременно держит алгоритм</small>
+              </div>
+              <div className="form-group">
+                <label htmlFor="evoGenerations" className="form-label">
+                  Количество поколений <FieldHint fieldName="evoGenerations" />
+                </label>
+                <input
+                  type="number"
+                  id="evoGenerations"
+                  name="evoGenerations"
+                  value={formData.evoGenerations}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  className="form-input"
+                  placeholder="40"
+                  min="10"
+                  max="2000"
+                  disabled={!isEditMode}
+                />
+                <small className="form-hint">Число итераций на уровне плана</small>
+              </div>
             </div>
-            <div className="form-group">
-              <label htmlFor="evoGenerations" className="form-label">
-                Количество поколений <FieldHint fieldName="evoGenerations" />
-              </label>
-              <input
-                type="number"
-                id="evoGenerations"
-                name="evoGenerations"
-                value={formData.evoGenerations}
-                onChange={handleChange}
-                onBlur={handleBlur}
-                className="form-input"
-                placeholder="100"
-                min="10"
-                max="2000"
-                disabled={!isEditMode}
-              />
-              <small className="form-hint">Сколько итераций эволюции выполнить</small>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label htmlFor="evoStagnationGenerations" className="form-label">
+                  Порог стагнации (поколений) <FieldHint fieldName="evoStagnationGenerations" />
+                </label>
+                <input
+                  type="number"
+                  id="evoStagnationGenerations"
+                  name="evoStagnationGenerations"
+                  value={formData.evoStagnationGenerations}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  className="form-input"
+                  placeholder="12"
+                  min="1"
+                  max="500"
+                  disabled={!isEditMode}
+                />
+              </div>
+              <div className="form-group">
+                <label htmlFor="evoTournamentSize" className="form-label">
+                  Размер турнира <FieldHint fieldName="evoTournamentSize" />
+                </label>
+                <input
+                  type="number"
+                  id="evoTournamentSize"
+                  name="evoTournamentSize"
+                  value={formData.evoTournamentSize}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  className="form-input"
+                  placeholder="3"
+                  min="2"
+                  max="20"
+                  disabled={!isEditMode}
+                />
+              </div>
+            </div>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label htmlFor="evoEliteSize" className="form-label">
+                  Размер элиты <FieldHint fieldName="evoEliteSize" />
+                </label>
+                <input
+                  type="number"
+                  id="evoEliteSize"
+                  name="evoEliteSize"
+                  value={formData.evoEliteSize}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  className="form-input"
+                  placeholder="6"
+                  min="0"
+                  max="20"
+                  disabled={!isEditMode}
+                />
+              </div>
+              <div className="form-group">
+                <label htmlFor="evoRandomSeed" className="form-label">
+                  Семя случайности <FieldHint fieldName="evoRandomSeed" />
+                </label>
+                <input
+                  type="number"
+                  id="evoRandomSeed"
+                  name="evoRandomSeed"
+                  value={formData.evoRandomSeed}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  className="form-input"
+                  placeholder="Оставьте пустым для случайного результата"
+                  disabled={!isEditMode}
+                />
+                <small className="form-hint">Одно и то же семя передаётся на этап постов для воспроизводимого прогона</small>
+              </div>
+            </div>
+
+            <h4 className="evolution-settings-methods-title">Методы отбора и вариации (план)</h4>
+            <div className="form-row">
+              <div className="form-group">
+                <label htmlFor="evoSelectionMethod" className="form-label">
+                  Метод отбора
+                </label>
+                <select
+                  id="evoSelectionMethod"
+                  name="evoSelectionMethod"
+                  value={formData.evoSelectionMethod || 'tournament'}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  className="form-select"
+                  disabled={!isEditMode}
+                >
+                  <option value="tournament">Турнирный отбор</option>
+                  <option value="roulette">Пропорциональный (рулетка)</option>
+                  <option value="rank">Ранговый отбор</option>
+                </select>
+                <small className="form-hint">
+                  Как выбираются родители для скрещивания на уровне плана.
+                </small>
+              </div>
+              <div className="form-group">
+                <label htmlFor="evoCrossoverMethod" className="form-label">
+                  Метод скрещивания
+                </label>
+                <select
+                  id="evoCrossoverMethod"
+                  name="evoCrossoverMethod"
+                  value={formData.evoCrossoverMethod || 'one_point'}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  className="form-select"
+                  disabled={!isEditMode}
+                >
+                  <option value="one_point">Одноточечное</option>
+                  <option value="two_point">Двухточечное</option>
+                  <option value="uniform">Равномерное</option>
+                </select>
+                <small className="form-hint">
+                  Как комбинируются «гены» двух планов при скрещивании.
+                </small>
+              </div>
+            </div>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label htmlFor="evoMutationMethod" className="form-label">
+                  Метод мутации
+                </label>
+                <select
+                  id="evoMutationMethod"
+                  name="evoMutationMethod"
+                  value={formData.evoMutationMethod || 'random_replace'}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  className="form-select"
+                  disabled={!isEditMode}
+                >
+                  <option value="random_replace">Битовая (замена значения)</option>
+                  <option value="inversion">Инверсия (разворот участка)</option>
+                </select>
+                <small className="form-hint">
+                  Как мутирует представление плана.
+                </small>
+              </div>
+              <div className="form-group" />
+            </div>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label htmlFor="evoCrossoverProbability" className="form-label">
+                  Вероятность скрещивания <FieldHint fieldName="evoCrossoverProbability" />
+                </label>
+                <input
+                  type="number"
+                  id="evoCrossoverProbability"
+                  name="evoCrossoverProbability"
+                  value={formData.evoCrossoverProbability}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  className="form-input"
+                  placeholder="0.75"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  disabled={!isEditMode}
+                />
+              </div>
+              <div className="form-group">
+                <label htmlFor="evoMutationProbability" className="form-label">
+                  Вероятность мутации <FieldHint fieldName="evoMutationProbability" />
+                </label>
+                <input
+                  type="number"
+                  id="evoMutationProbability"
+                  name="evoMutationProbability"
+                  value={formData.evoMutationProbability}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  className="form-input"
+                  placeholder="0.12"
+                  min="0"
+                  max="0.5"
+                  step="0.001"
+                  disabled={!isEditMode}
+                />
+              </div>
             </div>
           </div>
 
-          <div className="form-row">
-            <div className="form-group">
-              <label htmlFor="evoStagnationGenerations" className="form-label">
-                Порог стагнации (поколений) <FieldHint fieldName="evoStagnationGenerations" />
-              </label>
-              <input
-                type="number"
-                id="evoStagnationGenerations"
-                name="evoStagnationGenerations"
-                value={formData.evoStagnationGenerations}
-                onChange={handleChange}
-                onBlur={handleBlur}
-                className="form-input"
-                placeholder="20"
-                min="1"
-                max="500"
-                disabled={!isEditMode}
-              />
-            </div>
-            <div className="form-group">
-              <label htmlFor="evoTournamentSize" className="form-label">
-                Размер турнира <FieldHint fieldName="evoTournamentSize" />
-              </label>
-              <input
-                type="number"
-                id="evoTournamentSize"
-                name="evoTournamentSize"
-                value={formData.evoTournamentSize}
-                onChange={handleChange}
-                onBlur={handleBlur}
-                className="form-input"
-                placeholder="3"
-                min="2"
-                max="20"
-                disabled={!isEditMode}
-              />
-            </div>
-          </div>
+          <div className="evolution-settings-subblock">
+            <h3 className="section-subtitle evolution-settings-subtitle">Посты (этап 2)</h3>
+            <p className="evolution-settings-lead evolution-settings-lead_compact">
+              Настройки генетического поиска по признакам каждой публикации после фиксации структуры плана.
+            </p>
 
-          <div className="form-row">
-            <div className="form-group">
-              <label htmlFor="evoEliteSize" className="form-label">
-                Размер элиты <FieldHint fieldName="evoEliteSize" />
-              </label>
-              <input
-                type="number"
-                id="evoEliteSize"
-                name="evoEliteSize"
-                value={formData.evoEliteSize}
-                onChange={handleChange}
-                onBlur={handleBlur}
-                className="form-input"
-                placeholder="2"
-                min="0"
-                max="20"
-                disabled={!isEditMode}
-              />
+            <div className="form-row">
+              <div className="form-group">
+                <label htmlFor="evoPostPopulationSize" className="form-label">
+                  Размер популяции <FieldHint fieldName="evoPostPopulationSize" />
+                </label>
+                <input
+                  type="number"
+                  id="evoPostPopulationSize"
+                  name="evoPostPopulationSize"
+                  value={formData.evoPostPopulationSize}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  className="form-input"
+                  placeholder="48"
+                  min="10"
+                  max="2000"
+                  disabled={!isEditMode}
+                />
+                <small className="form-hint">Вариантов на одну публикацию (параллельно по постам)</small>
+              </div>
+              <div className="form-group">
+                <label htmlFor="evoPostGenerations" className="form-label">
+                  Количество поколений <FieldHint fieldName="evoPostGenerations" />
+                </label>
+                <input
+                  type="number"
+                  id="evoPostGenerations"
+                  name="evoPostGenerations"
+                  value={formData.evoPostGenerations}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  className="form-input"
+                  placeholder="50"
+                  min="10"
+                  max="2000"
+                  disabled={!isEditMode}
+                />
+              </div>
             </div>
-            <div className="form-group">
-              <label htmlFor="evoRandomSeed" className="form-label">
-                Семя случайности <FieldHint fieldName="evoRandomSeed" />
-              </label>
-              <input
-                type="number"
-                id="evoRandomSeed"
-                name="evoRandomSeed"
-                value={formData.evoRandomSeed}
-                onChange={handleChange}
-                onBlur={handleBlur}
-                className="form-input"
-                placeholder="Оставьте пустым для случайного результата"
-                disabled={!isEditMode}
-              />
+
+            <div className="form-row">
+              <div className="form-group">
+                <label htmlFor="evoPostStagnationGenerations" className="form-label">
+                  Порог стагнации (поколений) <FieldHint fieldName="evoPostStagnationGenerations" />
+                </label>
+                <input
+                  type="number"
+                  id="evoPostStagnationGenerations"
+                  name="evoPostStagnationGenerations"
+                  value={formData.evoPostStagnationGenerations}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  className="form-input"
+                  placeholder="12"
+                  min="1"
+                  max="500"
+                  disabled={!isEditMode}
+                />
+              </div>
+              <div className="form-group">
+                <label htmlFor="evoPostTournamentSize" className="form-label">
+                  Размер турнира <FieldHint fieldName="evoPostTournamentSize" />
+                </label>
+                <input
+                  type="number"
+                  id="evoPostTournamentSize"
+                  name="evoPostTournamentSize"
+                  value={formData.evoPostTournamentSize}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  className="form-input"
+                  placeholder="4"
+                  min="2"
+                  max="20"
+                  disabled={!isEditMode}
+                />
+              </div>
             </div>
-          </div>
-{/* НОВЫЙ БЛОК — ВЫБОР МЕТОДОВ */}
-  <h3 className="section-subtitle" style={{ marginTop: '24px', marginBottom: '16px', fontSize: '1rem' }}>
-    Расширенные настройки (опционально)
-  </h3>
-  
-  <div className="form-row">
-    <div className="form-group">
-      <label htmlFor="evoSelectionMethod" className="form-label">
-        Метод отбора
-      </label>
-      <select
-        id="evoSelectionMethod"
-        name="evoSelectionMethod"
-        value={formData.evoSelectionMethod || 'tournament'}
-        onChange={handleChange}
-        onBlur={handleBlur}
-        className="form-select"
-        disabled={!isEditMode}
-      >
-        <option value="tournament">Турнирный отбор</option>
-        <option value="roulette">Пропорциональный (рулетка)</option>
-        <option value="rank">Ранговый отбор</option>
-      </select>
-      <small className="form-hint">
-        Как выбираются родители для скрещивания. Tournament — лучший из случайной группы, Roulette — пропорционально fitness, Rank — по рангу.
-      </small>
-    </div>
 
-    <div className="form-group">
-      <label htmlFor="evoCrossoverMethod" className="form-label">
-        Метод скрещивания
-      </label>
-      <select
-        id="evoCrossoverMethod"
-        name="evoCrossoverMethod"
-        value={formData.evoCrossoverMethod || 'one_point'}
-        onChange={handleChange}
-        onBlur={handleBlur}
-        className="form-select"
-        disabled={!isEditMode}
-      >
-        <option value="one_point">Одноточечное</option>
-        <option value="two_point">Двухточечное</option>
-        <option value="uniform">Равномерное</option>
-      </select>
-      <small className="form-hint">
-        Как комбинируются гены родителей. One-point обменивает всё после одной точки, Two-point — участок между двумя точками, Uniform — каждый ген с вероятностью 50%.
-      </small>
-    </div>
-  </div>
-
-  <div className="form-row">
-    <div className="form-group">
-      <label htmlFor="evoMutationMethod" className="form-label">
-        Метод мутации
-      </label>
-      <select
-        id="evoMutationMethod"
-        name="evoMutationMethod"
-        value={formData.evoMutationMethod || 'random_replace'}
-        onChange={handleChange}
-        onBlur={handleBlur}
-        className="form-select"
-        disabled={!isEditMode}
-      >
-        <option value="random_replace">Битовая (замена значения)</option>
-        <option value="inversion">Инверсия (разворот участка)</option>
-      </select>
-      <small className="form-hint">
-        Как изменяются гены потомков. Random_replace заменяет случайный ген, Inversion разворачивает случайный участок.
-      </small>
-    </div>
-    </div>
-
-    <div className="form-group"></div>
-          {/* Скрещивание и мутация */}
-          <div className="form-row">
-            <div className="form-group">
-              <label htmlFor="evoCrossoverProbability" className="form-label">
-                Вероятность скрещивания <FieldHint fieldName="evoCrossoverProbability" />
-              </label>
-              <input
-                type="number"
-                id="evoCrossoverProbability"
-                name="evoCrossoverProbability"
-                value={formData.evoCrossoverProbability}
-                onChange={handleChange}
-                onBlur={handleBlur}
-                className="form-input"
-                placeholder="0.8"
-                min="0"
-                max="1"
-                step="0.01"
-                disabled={!isEditMode}
-              />
+            <div className="form-row">
+              <div className="form-group">
+                <label htmlFor="evoPostEliteSize" className="form-label">
+                  Размер элиты <FieldHint fieldName="evoPostEliteSize" />
+                </label>
+                <input
+                  type="number"
+                  id="evoPostEliteSize"
+                  name="evoPostEliteSize"
+                  value={formData.evoPostEliteSize}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  className="form-input"
+                  placeholder="3"
+                  min="0"
+                  max="20"
+                  disabled={!isEditMode}
+                />
+              </div>
+              <div className="form-group" />
             </div>
-            <div className="form-group">
-              <label htmlFor="evoMutationProbability" className="form-label">
-                Вероятность мутации <FieldHint fieldName="evoMutationProbability" />
-              </label>
-              <input
-                type="number"
-                id="evoMutationProbability"
-                name="evoMutationProbability"
-                value={formData.evoMutationProbability}
-                onChange={handleChange}
-                onBlur={handleBlur}
-                className="form-input"
-                placeholder="0.01"
-                min="0"
-                max="0.5"
-                step="0.001"
-                disabled={!isEditMode}
-              />
+
+            <h4 className="evolution-settings-methods-title">Методы отбора и вариации (посты)</h4>
+            <div className="form-row">
+              <div className="form-group">
+                <label htmlFor="evoPostSelectionMethod" className="form-label">
+                  Метод отбора
+                </label>
+                <select
+                  id="evoPostSelectionMethod"
+                  name="evoPostSelectionMethod"
+                  value={formData.evoPostSelectionMethod || 'tournament'}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  className="form-select"
+                  disabled={!isEditMode}
+                >
+                  <option value="tournament">Турнирный отбор</option>
+                  <option value="roulette">Пропорциональный (рулетка)</option>
+                  <option value="rank">Ранговый отбор</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label htmlFor="evoPostCrossoverMethod" className="form-label">
+                  Метод скрещивания
+                </label>
+                <select
+                  id="evoPostCrossoverMethod"
+                  name="evoPostCrossoverMethod"
+                  value={formData.evoPostCrossoverMethod || 'one_point'}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  className="form-select"
+                  disabled={!isEditMode}
+                >
+                  <option value="one_point">Одноточечное</option>
+                  <option value="two_point">Двухточечное</option>
+                  <option value="uniform">Равномерное</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label htmlFor="evoPostMutationMethod" className="form-label">
+                  Метод мутации
+                </label>
+                <select
+                  id="evoPostMutationMethod"
+                  name="evoPostMutationMethod"
+                  value={formData.evoPostMutationMethod || 'random_replace'}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  className="form-select"
+                  disabled={!isEditMode}
+                >
+                  <option value="random_replace">Битовая (замена значения)</option>
+                  <option value="inversion">Инверсия (разворот участка)</option>
+                </select>
+              </div>
+              <div className="form-group" />
+            </div>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label htmlFor="evoPostCrossoverProbability" className="form-label">
+                  Вероятность скрещивания <FieldHint fieldName="evoPostCrossoverProbability" />
+                </label>
+                <input
+                  type="number"
+                  id="evoPostCrossoverProbability"
+                  name="evoPostCrossoverProbability"
+                  value={formData.evoPostCrossoverProbability}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  className="form-input"
+                  placeholder="0.9"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  disabled={!isEditMode}
+                />
+              </div>
+              <div className="form-group">
+                <label htmlFor="evoPostMutationProbability" className="form-label">
+                  Вероятность мутации <FieldHint fieldName="evoPostMutationProbability" />
+                </label>
+                <input
+                  type="number"
+                  id="evoPostMutationProbability"
+                  name="evoPostMutationProbability"
+                  value={formData.evoPostMutationProbability}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  className="form-input"
+                  placeholder="0.12"
+                  min="0"
+                  max="0.5"
+                  step="0.001"
+                  disabled={!isEditMode}
+                />
+              </div>
             </div>
           </div>
 

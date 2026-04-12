@@ -49,7 +49,9 @@ export function useCompetitorsPipeline(addToast, options = {}) {
           model: 'llm',
           usage: resultData.usage,
           success: true,
-          parse_successful: true
+          parse_successful: true,
+          partial_enrichment: Boolean(resultData.metadata?.partial_enrichment),
+          parse_error: resultData.parse_error || null
         }
       };
       filename =
@@ -148,6 +150,12 @@ export function useCompetitorsPipeline(addToast, options = {}) {
         );
         const usageInfo = result.usage ? ` (использовано токенов: ${result.usage.total_tokens || 'N/A'})` : '';
         addToast(`Данные успешно обогащены!${usageInfo}`, 'success');
+        if (result.parse_error?.partial) {
+          addToast(
+            'Часть батчей LLM не обработана; данные сохранены с дефолтной семантикой для пропущенных постов.',
+            'warning'
+          );
+        }
         return { success: true, result };
       } else if (result.enriched_data === null && result.raw_response) {
         const usageInfo = result.usage ? ` (использовано токенов: ${result.usage.total_tokens || 'N/A'})` : '';
@@ -291,6 +299,9 @@ export function useCompetitorsPipeline(addToast, options = {}) {
           setCompetitorsFileName('competitors_from_urls_enriched.json');
           const usageInfo = result.usage ? ` (токенов: ${result.usage.total_tokens || 'N/A'})` : '';
           addToast(`Данные обогащены автоматически${usageInfo}`, 'success');
+          if (result.parse_error?.partial) {
+            addToast('Обогащение частичное: один или несколько батчей LLM пропущены.', 'warning');
+          }
         } else if (result.error) {
           addToast(`Обогащение не удалось: ${result.error}`, 'error');
         }

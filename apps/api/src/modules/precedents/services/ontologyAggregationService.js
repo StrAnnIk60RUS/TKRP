@@ -1,5 +1,24 @@
 import { extractMetaEntitiesForContext, normalizeOntologyText } from './metaEntityExtractionService.js';
 
+export const ONTOLOGY_SCHEMA_VERSION = 2;
+export const ONTOLOGY_ALLOWED_CLASSES = [
+  'audience_segment',
+  'publication_topic',
+  'publication_format',
+  'publication_objective',
+  'publication_type',
+  'it_project',
+  'evidence_marker'
+];
+export const ONTOLOGY_ALLOWED_PREDICATES = [
+  'targets_audience',
+  'supports_objective',
+  'requires_evidence',
+  'supports_publication_type',
+  'mentioned_in_topic',
+  'narrower_than'
+];
+
 function isNonEmptyString(value) {
   return typeof value === 'string' && value.trim().length > 0;
 }
@@ -223,10 +242,7 @@ function aggregateMetaEntities(globalEntities = []) {
   }));
 }
 
-export function buildOntologyFromSnapshot(snapshot = {}) {
-  const groupedContexts = groupSnapshotByContext(snapshot);
-  const contexts = groupedContexts.map((group) => extractMetaEntitiesForContext(group));
-
+function buildOntologyEnvelope(snapshot = {}, contexts = [], extra = {}) {
   const globalClasses = aggregateGlobalClasses(contexts);
   const globalEntities = aggregateGlobalEntities(contexts);
   const globalEntityClassLinks = aggregateGlobalEntityClassLinks(globalEntities);
@@ -237,7 +253,12 @@ export function buildOntologyFromSnapshot(snapshot = {}) {
   const metaEntities = aggregateMetaEntities(globalEntities);
 
   return {
+    schema_version: ONTOLOGY_SCHEMA_VERSION,
     generated_at: new Date().toISOString(),
+    contract: {
+      allowed_classes: ONTOLOGY_ALLOWED_CLASSES,
+      allowed_predicates: ONTOLOGY_ALLOWED_PREDICATES
+    },
     source_summary: {
       contexts_count: contexts.length,
       publications_count: Array.isArray(snapshot?.publications) ? snapshot.publications.length : 0,
@@ -253,8 +274,115 @@ export function buildOntologyFromSnapshot(snapshot = {}) {
       hierarchy: globalHierarchy,
       synonyms: globalSynonyms,
       meta_entities: metaEntities
+    },
+    trusted_llm_additions: extra.trusted_llm_additions || {
+      enabled: false,
+      contexts: {},
+      metrics: {}
+    },
+    llm_enrichment: extra.llm_enrichment || {
+      mode: 'off',
+      usage: null,
+      metrics: {
+        candidates_total: 0,
+        validated_total: 0,
+        rejected_total: 0,
+        latency_ms: 0
+      },
+      errors: []
     }
   };
+}
+
+export function buildOntologyFromSnapshot(snapshot = {}) {
+  const groupedContexts = groupSnapshotByContext(snapshot);
+  const contexts = groupedContexts.map((group) => extractMetaEntitiesForContext(group));
+  return buildOntologyEnvelope(snapshot, contexts);
+}
+
+function mergeContextTrustedAdditions(context = {}, additions = {}, threshold = 0.85) {
+  const next = {
+    ...context,
+    synonyms: Array.isArray(context?.synonyms) ? [...context.synonyms] : [],
+    relation_templates: Array.isArray(context?.relation_templates) ? [...context.relation_templates] : []
+  };
+  const synonyms = Array.isArray(additions?.synonyms) ? additions.synonyms : [];
+  const relationTemplates = Array.isArray(additions?.relation_templates) ? additions.relation_templates : [];
+
+  synonyms
+    .filter((item) => Number(item?.confidence) >= threshold)
+    .forEach((item) => {
+      const id = `llm_syn_${slugify(item.canonical_label)}_${slugify(item.synonym)}`;
+      if (next.synonyms.some((existing) => existing.id === id)) return;
+      next.synonyms.push({
+        id,
+        canonical_label: item.canonical_label,
+        synonym: item.synonym,
+        source: 'llm',
+        confidence: item.confidence
+      });
+    });
+
+  relationTemplates
+    .filter((item) => Number(item?.confidence) >= threshold)
+    .forEach((item) => {
+      const id = `llm_rt_${slugify(item.subject_class)}_${slugify(item.predicate)}_${slugify(item.object_class)}`;
+      if (next.relation_templates.some((existing) => existing.id === id)) return;
+      next.relation_templates.push({
+        id,
+        subject_class: item.subject_class,
+        predicate: item.predicate,
+        object_class: item.object_class,
+        source_label: item.source_label || 'llm'
+      });
+    });
+  return next;
+}
+
+export function mergeOntologyWithTrustedLlmAdditions(
+  snapshot = {},
+  baseOntology = {},
+  llmEnrichment = {},
+  options = {}
+) {
+  const threshold = Number(options?.highConfidenceThreshold) || 0.85;
+  const byContext = llmEnrichment?.by_context || {};
+  const enrichedContexts = (baseOntology?.contexts || []).map((context) =>
+    mergeContextTrustedAdditions(context, byContext[context.context_id], threshold)
+  );
+  const trustedCounts = Object.entries(byContext).reduce(
+    (acc, [contextId, value]) => {
+      const synonyms = (value?.synonyms || []).filter((item) => Number(item?.confidence) >= threshold);
+      const templates = (value?.relation_templates || []).filter((item) => Number(item?.confidence) >= threshold);
+      if (synonyms.length || templates.length) {
+        acc.contexts[contextId] = {
+          synonyms_count: synonyms.length,
+          relation_templates_count: templates.length
+        };
+      }
+      acc.synonyms_count += synonyms.length;
+      acc.relation_templates_count += templates.length;
+      return acc;
+    },
+    {
+      contexts: {},
+      synonyms_count: 0,
+      relation_templates_count: 0
+    }
+  );
+  return buildOntologyEnvelope(snapshot, enrichedContexts, {
+    trusted_llm_additions: {
+      enabled: trustedCounts.synonyms_count + trustedCounts.relation_templates_count > 0,
+      high_confidence_threshold: threshold,
+      ...trustedCounts
+    },
+    llm_enrichment: {
+      mode: llmEnrichment?.mode || 'off',
+      usage: llmEnrichment?.usage || null,
+      metrics: llmEnrichment?.metrics || {},
+      errors: Array.isArray(llmEnrichment?.errors) ? llmEnrichment.errors : []
+    }
+  });
 }
 
 export function buildOntologyExportSheets(ontology = {}) {

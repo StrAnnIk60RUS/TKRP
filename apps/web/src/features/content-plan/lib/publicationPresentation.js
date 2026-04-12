@@ -85,10 +85,32 @@ const TONE_LABELS = {
   neutral: 'Нейтральный'
 }
 
+const SCORE_BAND_LABELS = {
+  low: 'низкий',
+  baseline: 'базовый',
+  medium: 'средний',
+  high: 'высокий'
+}
+
 function toStringSafe(value) {
   if (value === null || value === undefined) return ''
   if (typeof value === 'string') return value
   return String(value)
+}
+
+/** Согласовано с API: убрать служебные хвосты цели (convert / inform …) из заголовка темы. */
+function stripServiceTopicTailForUi(raw) {
+  let t = toStringSafe(raw).replace(/\s+/g, ' ').trim()
+  if (!t) return ''
+  t = t.replace(/^(?:inform|educate|engage|convert|retain|brand_building)\s*:\s*/iu, '').trim()
+  let prev
+  const tailRe =
+    /\s*(?:[—\-·]\s*|\s+[—\-]\s*|:?\s*)(?:inform|educate|engage|convert|retain|brand_building)\s*$/iu
+  do {
+    prev = t
+    t = t.replace(tailRe, '').trim()
+  } while (prev !== t)
+  return t
 }
 
 export function normalizeFormat(value, fallback = 'text') {
@@ -159,12 +181,32 @@ export function truncateText(value, limit = 280) {
   return `${text.slice(0, limit).trimEnd()}...`
 }
 
+export function getScoreBandLabel(value) {
+  return SCORE_BAND_LABELS[toStringSafe(value).trim().toLowerCase()] || 'не указан'
+}
+
+export function getKpiPresentation(expectedKpi = {}) {
+  return {
+    engagementPercent: `${((Number(expectedKpi.engagement_rate) || 0) * 100).toFixed(1)}%`,
+    conversionPercent: `${((Number(expectedKpi.conversion_potential) || 0) * 100).toFixed(1)}%`,
+    reachPercent: `${((Number(expectedKpi.reach_potential) || 0) * 100).toFixed(1)}%`,
+    engagementBand: getScoreBandLabel(expectedKpi.engagement_band),
+    conversionBand: getScoreBandLabel(expectedKpi.conversion_band),
+    reachBand: getScoreBandLabel(expectedKpi.reach_band),
+    isRelativeScore: expectedKpi?.scoring_mode === 'relative_model_score'
+  }
+}
+
 export function normalizePublicationForUi(publication) {
   if (!publication || typeof publication !== 'object') return publication
+  const topicClean = stripServiceTopicTailForUi(publication.topic)
+  const rawTitle = toStringSafe(publication.title).trim()
+  const titleClean = rawTitle ? stripServiceTopicTailForUi(publication.title) : ''
   return {
     ...publication,
     planned_date: toStringSafe(publication.planned_date),
-    topic: toStringSafe(publication.topic),
+    topic: topicClean,
+    ...(rawTitle ? { title: titleClean || topicClean } : {}),
     tone: normalizeTone(publication.tone),
     summary: toStringSafe(publication.summary),
     key_message: toStringSafe(publication.key_message),

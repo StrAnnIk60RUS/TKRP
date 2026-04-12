@@ -1,6 +1,7 @@
 import React from 'react'
 import {
   getFormatLabel,
+  getKpiPresentation,
   getObjectiveLabel,
   getPlatformLabel,
   getToneLabel,
@@ -17,6 +18,7 @@ const PostCard = ({ post, showPlatformField, onEdit }) => {
   const postHeading = normalizedPost.title || normalizedPost.topic || 'Без темы'
   const summaryPreview = truncateText(normalizedPost.summary, 320)
   const hasMeaningfulCta = isMeaningfulCta(normalizedPost.cta)
+  const kpi = getKpiPresentation(normalizedPost.expected_kpi)
 
   return (
     <div className="post-card">
@@ -56,20 +58,17 @@ const PostCard = ({ post, showPlatformField, onEdit }) => {
       {normalizedPost.expected_kpi && (
         <div className="post-metrics">
           <p className="post-metrics-note">
-            Ниже — внутренние оценки модели (шкала 0–100%), не фактические показатели из соцсети.
+            Ниже — внутренние ориентиры модели. Это относительный потенциал публикации, а не обещание фактических метрик площадки.
           </p>
           <span>
-            Вовлечённость (оценка):{' '}
-            {((normalizedPost.expected_kpi.engagement_rate || 0) * 100).toFixed(1)}%
+            Вовлечённость: {kpi.engagementPercent} · потенциал {kpi.engagementBand}
             {normalizedPost.expected_kpi.engagement_rate_source === 'ml_relevance_prediction' ? ' (ML)' : ''}
           </span>
           <span>
-            Конверсия (оценка):{' '}
-            {((normalizedPost.expected_kpi.conversion_potential || 0) * 100).toFixed(1)}%
+            Конверсия: {kpi.conversionPercent} · потенциал {kpi.conversionBand}
           </span>
           <span>
-            Охват (оценка):{' '}
-            {((normalizedPost.expected_kpi.reach_potential || 0) * 100).toFixed(1)}%
+            Охват: {kpi.reachPercent} · потенциал {kpi.reachBand}
           </span>
           {normalizedPost.expected_kpi.ml_predicted_likes != null && (
             <span className="post-metrics-ml-counts">

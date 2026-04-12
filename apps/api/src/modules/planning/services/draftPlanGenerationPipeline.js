@@ -5,6 +5,24 @@ import { callDeepSeekAPI } from '../../../../openrouter.js';
 import { predictEngagementRatesForGeneratedPublications } from '../../ml/services/relevancePredictionService.js';
 import { parseJsonObjectFromLlmContent } from '../../../shared/utils/llmJsonParsing.js';
 import { normalizePublicationFormatValue, normalizePublicationToneValue } from '../routes/shared/planUtils.js';
+import {
+  alignToneToObjective,
+  buildDraftSemanticCore,
+  buildNaturalKeyMessage,
+  buildNaturalTopicVariation,
+  buildObjectiveCta,
+  calibrateExpectedKpi,
+  choosePreferredKeyMessage,
+  choosePreferredSummary,
+  choosePreferredTopic,
+  dedupeKeyMessagesAcrossPublications,
+  normalizePublicationTopicForUi,
+  reconcilePublicationKeyMessageWithTopic,
+  sanitizeTopicTitle,
+  shouldRewriteMachineKeyMessage,
+  stripMisalignedSummaryLead,
+  stripObjectiveMeta
+} from './contentOutputUtils.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SKELETON_PROMPT_PATH = path.join(
@@ -33,12 +51,6 @@ const ALLOWED_TONES = ['expert', 'friendly', 'official', 'inspiring', 'humorous'
 const CTA_MIN_SHARE = 0.7;
 const CTA_MAX_SHARE = 0.8;
 const CTA_TARGET_SHARE = 0.75;
-const CTA_VARIANTS = [
-  'Запросить демо',
-  'Записаться на консультацию',
-  'Заказать аудит участка',
-  'Запустить пилот на 2 недели'
-];
 const MIN_SUMMARY_LENGTH = {
   text: 650,
   combined: 650,
@@ -120,6 +132,53 @@ function uniqueStrings(values = []) {
       seen.add(key);
       return true;
     });
+}
+
+function buildVerticalContext(formInput = {}) {
+  const vertical = typeof formInput.content_vertical === 'string' && formInput.content_vertical.trim()
+    ? formInput.content_vertical.trim()
+    : typeof formInput.industry === 'string' && formInput.industry.trim()
+      ? formInput.industry.trim()
+      : typeof formInput.consumerCategory === 'string' && formInput.consumerCategory.trim()
+        ? formInput.consumerCategory.trim()
+        : '';
+  const subVertical = typeof formInput.subIndustry === 'string' && formInput.subIndustry.trim()
+    ? formInput.subIndustry.trim()
+    : typeof formInput.niche === 'string' && formInput.niche.trim()
+      ? formInput.niche.trim()
+      : '';
+  const audience = uniqueStrings([
+    formInput.consumerCategory,
+    ...String(formInput.consumerDemographics || '')
+      .split(/[,\n;]/)
+      .map((item) => item.trim()),
+    ...String(formInput.consumerPurchaseGoal || '')
+      .split(/[,\n;]/)
+      .map((item) => item.trim())
+  ]).slice(0, 8);
+  const brandVoice = typeof formInput.brandVoice === 'string' && formInput.brandVoice.trim()
+    ? formInput.brandVoice.trim()
+    : typeof formInput.tonePreference === 'string' && formInput.tonePreference.trim()
+      ? formInput.tonePreference.trim()
+      : '';
+
+  return {
+    vertical,
+    sub_vertical: subVertical,
+    audience,
+    brand_voice: brandVoice
+  };
+}
+
+function buildVerticalStylePack(formInput = {}) {
+  const ctx = buildVerticalContext(formInput);
+  const fragments = [];
+  if (ctx.vertical) fragments.push(`Вертикаль: ${ctx.vertical}.`);
+  if (ctx.sub_vertical) fragments.push(`Подниша: ${ctx.sub_vertical}.`);
+  if (ctx.audience.length) fragments.push(`Аудитория: ${ctx.audience.join(', ')}.`);
+  if (ctx.brand_voice) fragments.push(`Желаемый голос бренда: ${ctx.brand_voice}.`);
+  fragments.push('Пиши в терминах и примерах, естественных для этой ниши, без подмены отрасли на IT или производство, если это не указано во входных данных.');
+  return fragments.join(' ');
 }
 
 function normalizePlatform(value, fallback = 'linkedin') {
@@ -206,10 +265,165 @@ function buildSummaryRepairFromTopic(topic, format, formInput) {
   const projectDescription =
     typeof formInput.projectDescription === 'string' && formInput.projectDescription.trim()
       ? formInput.projectDescription.trim()
-      : 'Экспертная публикация об IT-проекте и его прикладной ценности для целевой аудитории.';
-  const safeTopic = typeof topic === 'string' && topic.trim() ? topic.trim() : 'тема публикации';
-  const core = `Материал посвящён теме: ${safeTopic}. ${projectDescription} Раскрываем практический контекст, шаги внедрения и ожидаемый эффект для команды. Добавляем конкретику и мягкий призыв к диалогу.`;
+      : 'Экспертная публикация о продукте, сервисе или бренде и его прикладной ценности для целевой аудитории.';
+  const projectBenefits =
+    typeof formInput.projectBenefits === 'string' && formInput.projectBenefits.trim()
+      ? formInput.projectBenefits.trim()
+      : 'Сфокусируйся на практической пользе решения, прозрачных шагах внедрения и измеримом эффекте для бизнеса.';
+  const audienceHint =
+    typeof formInput.consumerCategory === 'string' && formInput.consumerCategory.trim()
+      ? `Материал адресован аудитории ${formInput.consumerCategory.trim()}.`
+      : 'Материал ориентирован на команду, которая отвечает за качество, сроки и управляемость процесса.';
+  const safeTopic = sanitizeTopicTitle(topic) || 'тема публикации';
+  const core = `${safeTopic}: показываем реальный рабочий сценарий, где тема влияет на скорость, качество или стоимость процесса. ${projectDescription} ${projectBenefits} ${audienceHint} Даём понятные шаги, на что смотреть в первую очередь, какой эффект можно измерить и какой следующий шаг логично сделать после публикации.`;
   return ensureTextLength(core, minLength, MAX_SUMMARY_LENGTH);
+}
+
+function summaryOpeningNormalizer(text) {
+  return stripObjectiveMeta(String(text || ''))
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+    .slice(0, 120);
+}
+
+function isGenericComplexSystemOpening(text) {
+  const t = stripObjectiveMeta(String(text || '')).trim().toLowerCase();
+  if (t.length < 24) return false;
+  const head = t.slice(0, 220);
+  return (
+    /^комплексн[а-я]*\s+систем[а-я]*\s+(контроля|учёта|учета|управления)/i.test(t) ||
+    /комплексн[а-я]*\s+систем[а-я]*,?\s*включающ/i.test(head)
+  );
+}
+
+function buildSummaryOpeningsToAvoidList(publications = [], limit = 14) {
+  const keys = new Set();
+  const out = [];
+  for (const p of [...toArray(publications)].reverse()) {
+    const k = summaryOpeningNormalizer(p?.summary || '');
+    if (k.length < 48) continue;
+    if (keys.has(k)) continue;
+    keys.add(k);
+    out.push(k.slice(0, 100));
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+function buildMonthlySlotSummaryHints(slots = [], monthIndex = 0) {
+  const hints = [
+    'норма/требование и разрыв с практикой',
+    'сцена на смене и роли людей',
+    'короткая метрика или диапазон',
+    'вопрос читателю',
+    'развилка двух рабочих подходов',
+    'типовой риск или замечание аудита',
+    'миф и проверка фактами',
+    'мини-история внедрения'
+  ];
+  return toArray(slots).map((slot, i) => ({
+    slot_id: slot.slot_id,
+    suggested_summary_entry_type: hints[(i + monthIndex * 3) % hints.length]
+  }));
+}
+
+function sanitizeUserFacingSummary(summary, topic, format, formInput) {
+  const minLength = getMinSummaryLengthByFormat(format);
+  let normalized = stripObjectiveMeta(summary)
+    .replace(/\b(?:в\s+фокусе|коротко\s+о\s+главном|для\s+команды\s+на\s+местах)\s*:\s*/giu, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  normalized = stripMisalignedSummaryLead(topic, normalized);
+  if (!normalized) {
+    return buildSummaryRepairFromTopic(topic, format, formInput);
+  }
+  const hasMetaNarration =
+    /\b(?:цель\s+публикации|задача\s+материала|читатель\s+получит|структура\s+материала)\b/iu.test(normalized);
+  if (hasMetaNarration) {
+    return buildSummaryRepairFromTopic(topic, format, formInput);
+  }
+  return ensureTextLength(normalized, minLength, MAX_SUMMARY_LENGTH);
+}
+
+function buildDiversifiedSummaryForSlot(slot, formInput, variantSeed = 0) {
+  const idx = Math.abs(Number(variantSeed)) || 0;
+  const topic =
+    sanitizeTopicTitle(slot?.topic) || buildFallbackTopic(slot, formInput, (idx % 17) + 1);
+  const format = slot?.format || 'text';
+  const objective = normalizeObjective(slot?.objective, 'inform');
+  const minLength = getMinSummaryLengthByFormat(format);
+  const pd =
+    typeof formInput.projectDescription === 'string' && formInput.projectDescription.trim()
+      ? formInput.projectDescription.trim()
+      : 'Экспертная публикация о продукте и его прикладной ценности.';
+  const pb =
+    typeof formInput.projectBenefits === 'string' && formInput.projectBenefits.trim()
+      ? formInput.projectBenefits.trim()
+      : 'Практическая польза, прозрачные шаги внедрения и измеримый эффект.';
+  const aud =
+    typeof formInput.consumerCategory === 'string' && formInput.consumerCategory.trim()
+      ? `Аудитория: ${String(formInput.consumerCategory).trim()}.`
+      : 'Аудитория: команды, отвечающие за качество и управляемость процесса.';
+  const objectiveLine =
+    objective === 'convert'
+      ? 'Фокус на точке входа в проект и том, как эффект увидеть в цифрах за короткий горизонт.'
+      : objective === 'retain'
+        ? 'Фокус на дисциплине эксплуатации и том, как не потерять качество после запуска.'
+        : objective === 'engage'
+          ? 'Фокус на спорном рабочем выборе, который командам есть что обсудить.'
+          : objective === 'brand_building'
+            ? 'Фокус на экспертизе и зрелости подхода, без пустых обещаний.'
+            : 'Фокус на прикладном сценарии и типовых ошибках, которые дорого обходятся.';
+  const v = idx % 8;
+  const bodies = [
+    `Инженер на участке формулирует «${topic}» как вопрос приоритета: что фиксировать в первую очередь, чтобы не расползался контроль. ${objectiveLine} ${pd} ${pb} ${aud} Дальше — последовательность шагов, критерии «готово/не готово» и как не смешать ответственность ролей.`,
+    `Если смотреть глазами проверки качества: где в «${topic}» чаще всего пустые места в документации и чем это грозит при аудите. ${objectiveLine} ${pd} ${pb} ${aud} Разбираем, какие данные собрать заранее, как проверить целостность и как связать факт на местах с отчётностью.`,
+    `Короткая развилка для руководителя: два подхода к «${topic}» — быстрый пилот и поэтапная стандартизация. ${objectiveLine} ${pd} ${pb} ${aud} Сопоставляем риски, сроки, стоимость владения и критерии, когда выбирать каждый путь.`,
+    `Стартуем с боли смены: лишние простои и спорные записи, когда «${topic}» не доведено до регламента. ${objectiveLine} ${pd} ${pb} ${aud} Показываем рабочий порядок действий, кому какие проверки делать и как измерить эффект до и после.`,
+    `Миф и проверка фактами: «${topic}» не сводится к покупке «коробки». ${objectiveLine} ${pd} ${pb} ${aud} Что должно быть настроено в процессе, кто владелец данных, и какие метрики честно покажут прогресс.`,
+    `Вопрос недели для команды: что изменится на участке через месяц, если закрыть «${topic}» системно. ${objectiveLine} ${pd} ${pb} ${aud} Даём признаки зрелого решения, красные флаги при внедрении и чек-лист для самопроверки перед масштабированием.`,
+    `Цифры как якорь: какая доля переделок связана с пробелами в «${topic}», и как это увидеть в отчёте без ручного «домысла». ${objectiveLine} ${pd} ${pb} ${aud} Объясняем, какие источники данных нужны, как часто сверять и кто подписывает результат.`,
+    `Смена, где «${topic}» уже работает: что делают иначе, и что ломается, если система есть, а дисциплины нет. ${objectiveLine} ${pd} ${pb} ${aud} Практические шаги, чтобы процесс не рушился на передаче смен и смене персонала.`
+  ];
+  const body = bodies[v];
+  return sanitizeUserFacingSummary(body, topic, format, formInput);
+}
+
+function applyDraftBatchSummaryDeduplication(publications = [], slots = [], formInput = {}, monthIndex = 0) {
+  const slotList = toArray(slots);
+  if (!slotList.length) return toArray(publications);
+  const byId = new Map(toArray(publications).map((p) => [p.slot_id, { ...p }]));
+  const seenOpeningKeys = new Set();
+  let complexSystemUsed = false;
+  let rewriteSalt = monthIndex * 13;
+
+  for (let idx = 0; idx < slotList.length; idx += 1) {
+    const slot = slotList[idx];
+    const pub = byId.get(slot.slot_id);
+    if (!pub) continue;
+    const merged = {
+      ...slot,
+      topic: pub.topic || slot.topic,
+      format: pub.format || slot.format,
+      objective: pub.objective || slot.objective
+    };
+    const rawSummary = String(pub.summary || '');
+    const openingKey = summaryOpeningNormalizer(rawSummary);
+    const complex = isGenericComplexSystemOpening(rawSummary);
+    const dupOpening = openingKey.length >= 48 && seenOpeningKeys.has(openingKey);
+    const dupComplex = complex && complexSystemUsed;
+
+    if (dupOpening || dupComplex) {
+      rewriteSalt += 1;
+      pub.summary = buildDiversifiedSummaryForSlot(merged, formInput, idx * 17 + rewriteSalt);
+    }
+    const finalKey = summaryOpeningNormalizer(pub.summary);
+    if (finalKey.length >= 48) seenOpeningKeys.add(finalKey);
+    if (isGenericComplexSystemOpening(pub.summary)) complexSystemUsed = true;
+  }
+
+  return toArray(publications).map((orig) => byId.get(orig.slot_id) || orig);
 }
 
 function slugify(value, fallback = 'draft_plan') {
@@ -497,8 +711,70 @@ function buildSlotFallback(idx, config) {
   };
 }
 
+function rebalanceSlotsByObjective(slots = []) {
+  if (!Array.isArray(slots) || slots.length < 4) return slots;
+  const next = slots.map((slot) => ({ ...slot }));
+  const requiredObjectives = next.length >= 9
+    ? ['inform', 'educate', 'engage', 'convert', 'retain', 'brand_building']
+    : ['inform', 'educate', 'engage', 'convert', 'retain'];
+  const getCounts = () =>
+    next.reduce((acc, slot) => {
+      acc[slot.objective] = (acc[slot.objective] || 0) + 1;
+      return acc;
+    }, {});
+
+  const counts = getCounts();
+  requiredObjectives.forEach((objective) => {
+    if (counts[objective]) return;
+    const donorObjective = Object.entries(counts)
+      .filter(([key, count]) => key !== objective && count > 1)
+      .sort((left, right) => right[1] - left[1])[0]?.[0];
+    if (!donorObjective) return;
+    const donorIndex = next.findIndex((slot) => slot.objective === donorObjective);
+    if (donorIndex >= 0) {
+      next[donorIndex].objective = objective;
+      counts[donorObjective] -= 1;
+      counts[objective] = (counts[objective] || 0) + 1;
+    }
+  });
+
+  const maxShare = Math.max(2, Math.ceil(next.length * 0.35));
+  for (let index = 2; index < next.length; index += 1) {
+    const current = next[index].objective;
+    const countsNow = getCounts();
+    const repeatedRun =
+      next[index - 1].objective === current && next[index - 2].objective === current;
+    const overloaded = (countsNow[current] || 0) > maxShare;
+    if (!repeatedRun && !overloaded) continue;
+    const replacement = requiredObjectives
+      .filter((candidate) => candidate !== current)
+      .sort((left, right) => (countsNow[left] || 0) - (countsNow[right] || 0))[0];
+    if (!replacement) continue;
+    next[index].objective = replacement;
+  }
+
+  return next;
+}
+
+function rebalanceSlotsByFormat(slots = [], allowedFormats = DEFAULT_FORMATS) {
+  if (!Array.isArray(slots) || slots.length < 4 || allowedFormats.length < 2) return slots;
+  const next = slots.map((slot) => ({ ...slot }));
+  for (let index = 2; index < next.length; index += 1) {
+    const current = next[index].format;
+    const repeatedRun = next[index - 1].format === current && next[index - 2].format === current;
+    if (!repeatedRun) continue;
+    const replacement = allowedFormats.find((format) => format !== current) || current;
+    next[index].format = replacement;
+  }
+  return next;
+}
+
 function repairSkeleton(rawSkeleton = {}, formInput = {}, targetPublicationCount, compactRagContext = {}) {
-  const projectName = typeof formInput.projectName === 'string' ? formInput.projectName.trim() : 'IT Project';
+  const projectName = typeof formInput.projectName === 'string' && formInput.projectName.trim()
+    ? formInput.projectName.trim()
+    : typeof formInput.brandName === 'string' && formInput.brandName.trim()
+      ? formInput.brandName.trim()
+      : 'Project';
   const requestedStart = toIsoDateOnly(formInput.contentPlanStartDate) || toIsoDateOnly(rawSkeleton?.planning_horizon?.start_date) || new Date().toISOString().slice(0, 10);
   const requestedEnd = toIsoDateOnly(formInput.contentPlanEndDate) || toIsoDateOnly(rawSkeleton?.planning_horizon?.end_date) || requestedStart;
   const publicationDayMode = normalizePublicationDayMode(
@@ -531,7 +807,7 @@ function repairSkeleton(rawSkeleton = {}, formInput = {}, targetPublicationCount
     publicationDayMode
   };
 
-  const repairedSlots = Array.from({ length: targetPublicationCount }, (_, idx) => {
+  let repairedSlots = Array.from({ length: targetPublicationCount }, (_, idx) => {
     const source = rawSlots[idx] || {};
     const fallback = buildSlotFallback(idx, config);
     return {
@@ -552,6 +828,8 @@ function repairSkeleton(rawSkeleton = {}, formInput = {}, targetPublicationCount
       tone: normalizeTone(source.tone, fallback.tone)
     };
   });
+  repairedSlots = rebalanceSlotsByObjective(repairedSlots);
+  repairedSlots = rebalanceSlotsByFormat(repairedSlots, resolvedFormats);
 
   const avgKpi = averagePrecedentKpi(compactRagContext);
   const requestedConstraints = buildRequestedConstraints(formInput, targetPublicationCount);
@@ -580,6 +858,7 @@ function repairSkeleton(rawSkeleton = {}, formInput = {}, targetPublicationCount
     notes: typeof rawSkeleton.notes === 'string' && rawSkeleton.notes.trim()
       ? rawSkeleton.notes.trim()
       : `Черновой план для ${projectName}, собранный по частям на основе компактного RAG-контекста.`,
+    content_profile: buildVerticalContext(formInput),
     schedule_preferences: {
       ...(rawSkeleton?.schedule_preferences && typeof rawSkeleton.schedule_preferences === 'object'
         ? rawSkeleton.schedule_preferences
@@ -594,17 +873,7 @@ function repairSkeleton(rawSkeleton = {}, formInput = {}, targetPublicationCount
 }
 
 function buildCallToAction(objective, projectName) {
-  const normalizedProject = typeof projectName === 'string' && projectName.trim() ? projectName.trim() : 'проекта';
-  const actionByObjective = {
-    inform: 0,
-    educate: 1,
-    engage: 2,
-    convert: 0,
-    retain: 3,
-    brand_building: 1
-  };
-  const variantIndex = actionByObjective[objective] ?? 0;
-  return `${CTA_VARIANTS[variantIndex]} по ${normalizedProject}`;
+  return buildObjectiveCta(objective, projectName);
 }
 
 function calculateCtaBounds(totalPublications) {
@@ -654,13 +923,16 @@ function enforceCtaCoverage(publications = [], projectName = '') {
 function buildFallbackTopic(slot, formInput, index) {
   const projectName = typeof formInput.projectName === 'string' && formInput.projectName.trim()
     ? formInput.projectName.trim()
-    : 'IT-проект';
+    : typeof formInput.brandName === 'string' && formInput.brandName.trim()
+      ? formInput.brandName.trim()
+      : 'проект';
   const topicByObjective = {
     inform: 'обновление продукта',
-    educate: 'практика внедрения',
+    educate: 'практический разбор',
     engage: 'обсуждение кейса',
     convert: 'бизнес-эффект решения',
-    retain: 'развитие платформы'
+    retain: 'развитие сервиса',
+    brand_building: 'экспертный образ бренда'
   };
   return `${projectName}: ${topicByObjective[slot.objective] || 'экспертный материал'} ${index + 1}`;
 }
@@ -668,59 +940,81 @@ function buildFallbackTopic(slot, formInput, index) {
 function buildFallbackSummary(slot, formInput) {
   const projectDescription = typeof formInput.projectDescription === 'string' && formInput.projectDescription.trim()
     ? formInput.projectDescription.trim()
-    : 'Экспертная публикация об IT-проекте и его прикладной ценности для целевой аудитории.';
+    : 'Экспертная публикация о продукте, сервисе или бренде и его прикладной ценности для целевой аудитории.';
   const projectBenefits = typeof formInput.projectBenefits === 'string' && formInput.projectBenefits.trim()
     ? formInput.projectBenefits.trim()
     : 'Сфокусируйся на практической пользе решения, прозрачных шагах внедрения и измеримом эффекте для бизнеса.';
   const projectGoals = typeof formInput.projectGoals === 'string' && formInput.projectGoals.trim()
     ? formInput.projectGoals.trim()
     : 'Покажи, как проект повышает эффективность команды, снижает риски и ускоряет принятие решений.';
-  const objectiveHint = `Цель публикации: ${slot?.objective || 'inform'}.`;
-  const base = `${projectDescription} ${projectBenefits} ${projectGoals} ${objectiveHint}`;
-  const minLength = getMinSummaryLengthByFormat(slot?.format);
-  return ensureTextLength(base, minLength, MAX_SUMMARY_LENGTH);
+  const topic = sanitizeTopicTitle(slot?.topic) || buildFallbackTopic(slot, formInput, 0);
+  const scenarioLine =
+    slot?.objective === 'convert'
+      ? 'Покажи, в каком месте процесса решение быстрее всего проявляет бизнес-эффект и почему это видно в цифрах.'
+      : slot?.objective === 'retain'
+        ? 'Объясни, как удерживать результат после запуска и какие сервисные шаги защищают качество.'
+        : slot?.objective === 'engage'
+          ? 'Добавь спорный или неоднозначный сценарий, который хочется обсудить внутри команды.'
+          : 'Сделай акцент на понятном рабочем сценарии, где тема влияет на скорость, качество или стоимость процесса.';
+  const base = `${topic}. ${projectDescription} ${projectBenefits} ${projectGoals} ${scenarioLine}`;
+  return sanitizeUserFacingSummary(base, topic, slot?.format, formInput);
 }
 
 function buildFallbackKeyMessage(formInput, slot = {}) {
-  const slotTopic = typeof slot?.topic === 'string' && slot.topic.trim() ? slot.topic.trim() : '';
-  const objective = typeof slot?.objective === 'string' && slot.objective.trim() ? slot.objective.trim() : 'inform';
-  const projectName = typeof formInput.projectName === 'string' && formInput.projectName.trim()
-    ? formInput.projectName.trim()
-    : '';
+  const slotTopic = sanitizeTopicTitle(slot?.topic);
   if (slotTopic) {
-    const line = projectName
-      ? `${projectName} — ${slotTopic} (цель: ${objective}).`
-      : `${slotTopic} (цель: ${objective}).`;
-    return line.length <= 200 ? line : `${line.slice(0, 197)}...`;
+    return buildNaturalKeyMessage({
+      topic: slotTopic,
+      objective: normalizeObjective(slot?.objective, 'inform'),
+      format: normalizeFormat(slot?.format, 'text'),
+      tone: alignToneToObjective(slotTopic, slot?.tone || 'expert', slot?.objective || 'inform'),
+      index: 0
+    });
   }
   const source = typeof formInput.projectBenefits === 'string' && formInput.projectBenefits.trim()
     ? formInput.projectBenefits.trim()
     : typeof formInput.projectGoals === 'string' && formInput.projectGoals.trim()
       ? formInput.projectGoals.trim()
-      : 'Проект помогает бизнесу быстрее принимать решения на основе данных.';
+      : 'Проект помогает аудитории решать прикладные задачи и быстрее принимать решения.';
   return `${source.slice(0, 180)}${source.length > 180 ? '...' : ''}`;
 }
 
 function buildFallbackPublication(slot, formInput, compactRagContext, skeleton, index) {
   const projectName = typeof formInput.projectName === 'string' && formInput.projectName.trim()
     ? formInput.projectName.trim()
-    : 'IT Project';
+    : typeof formInput.brandName === 'string' && formInput.brandName.trim()
+      ? formInput.brandName.trim()
+      : 'Project';
   const avgKpi = averagePrecedentKpi(compactRagContext);
   const precedentIds = toArray(compactRagContext?.summary?.precedent_ids).slice(0, 2);
-  return {
-    topic: buildFallbackTopic(slot, formInput, index),
+  const topic = buildFallbackTopic(slot, formInput, index);
+  const tone = alignToneToObjective(topic, slot.tone, slot.objective);
+  const cta = buildObjectiveCta(slot.objective, projectName, topic, index);
+  const basePublication = {
+    topic,
     format: slot.format,
     objective: slot.objective,
-    tone: slot.tone,
+    tone,
     summary: buildFallbackSummary(slot, formInput),
-    key_message: buildFallbackKeyMessage(formInput, slot),
-    cta: buildCallToAction(slot.objective, projectName),
-    expected_kpi: {
-      engagement_rate: clamp01(avgKpi.engagement_rate),
-      conversion_potential: clamp01(avgKpi.conversion_potential),
-      reach_potential: clamp01(avgKpi.reach_potential)
-    },
+    key_message: buildNaturalKeyMessage({
+      topic,
+      objective: slot.objective,
+      format: slot.format,
+      tone,
+      index
+    }),
+    cta,
+    expected_kpi: calibrateExpectedKpi(avgKpi, {
+      objective: slot.objective,
+      format: slot.format,
+      tone,
+      cta
+    }),
     used_precedent_ids: precedentIds
+  };
+  return {
+    ...basePublication,
+    semantic_core: buildDraftSemanticCore(basePublication)
   };
 }
 
@@ -793,34 +1087,75 @@ function normalizeBatchPublication(
   ).slice(0, 5);
   const normalizedUsedPrecedentIds = rawUsedPrecedentIds.filter((id) => allowedPrecedentIds.has(id));
 
+  const semanticCore = fallback.semantic_core || buildDraftSemanticCore(fallback);
   const normalizedPublication = {
     publication_id: `plan_pub_${String(index + 1).padStart(3, '0')}`,
     planned_date: slot.planned_date,
     platform: slot.platform,
-    topic: typeof rawItem.topic === 'string' && rawItem.topic.trim() ? rawItem.topic.trim() : fallback.topic,
+    topic: normalizePublicationTopicForUi(
+      choosePreferredTopic(
+        semanticCore,
+        typeof rawItem.topic === 'string' && rawItem.topic.trim() ? rawItem.topic.trim() : fallback.topic,
+        normalizeObjective(rawItem.objective, slot.objective),
+        index
+      )
+    ),
     format: normalizeFormat(rawItem.format, slot.format),
     objective: normalizeObjective(rawItem.objective, slot.objective),
-    tone: normalizeTone(rawItem.tone, slot.tone),
-    summary: normalizedSummary || fallbackSummary,
-    key_message: typeof rawItem.key_message === 'string' && rawItem.key_message.trim()
-      ? rawItem.key_message.trim()
-      : buildFallbackKeyMessage(formInput, {
-          topic:
-            typeof rawItem.topic === 'string' && rawItem.topic.trim()
-              ? rawItem.topic.trim()
-              : fallback.topic,
-          objective: normalizeObjective(rawItem.objective, slot.objective)
-        }),
+    tone: alignToneToObjective(
+      typeof rawItem.topic === 'string' && rawItem.topic.trim() ? rawItem.topic.trim() : fallback.topic,
+      normalizeTone(rawItem.tone, slot.tone),
+      normalizeObjective(rawItem.objective, slot.objective)
+    ),
+    summary: null,
+    key_message: null,
     cta: typeof rawItem.cta === 'string' && rawItem.cta.trim() ? rawItem.cta.trim() : fallback.cta,
-    expected_kpi: {
-      engagement_rate: clamp01(rawItem?.expected_kpi?.engagement_rate ?? fallback.expected_kpi.engagement_rate),
-      conversion_potential: clamp01(
-        rawItem?.expected_kpi?.conversion_potential ?? fallback.expected_kpi.conversion_potential
-      ),
-      reach_potential: clamp01(rawItem?.expected_kpi?.reach_potential ?? fallback.expected_kpi.reach_potential)
-    },
-    used_precedent_ids: normalizedUsedPrecedentIds
+    expected_kpi: calibrateExpectedKpi(
+      rawItem?.expected_kpi || fallback.expected_kpi,
+      {
+        objective: normalizeObjective(rawItem.objective, slot.objective),
+        format: normalizeFormat(rawItem.format, slot.format),
+        tone: normalizeTone(rawItem.tone, slot.tone),
+        cta: typeof rawItem.cta === 'string' && rawItem.cta.trim() ? rawItem.cta.trim() : fallback.cta
+      }
+    ),
+    used_precedent_ids: normalizedUsedPrecedentIds,
+    semantic_core: semanticCore
   };
+  normalizedPublication.key_message = choosePreferredKeyMessage(
+    semanticCore,
+    typeof rawItem.key_message === 'string' ? rawItem.key_message.trim() : '',
+    {
+      topic: normalizedPublication.topic,
+      objective: normalizedPublication.objective,
+      format: normalizedPublication.format,
+      tone: normalizedPublication.tone,
+      index
+    }
+  );
+  normalizedPublication.summary = sanitizeUserFacingSummary(
+    choosePreferredSummary(
+      semanticCore,
+      normalizedSummary || fallbackSummary,
+      {
+        topic: normalizedPublication.topic,
+        format: slot?.format,
+        formInput,
+        fallbackSummary
+      }
+    ),
+    normalizedPublication.topic,
+    slot?.format,
+    formInput
+  );
+  normalizedPublication.cta = normalizedPublication.cta
+    ? buildObjectiveCta(
+        normalizedPublication.objective,
+        typeof formInput?.projectName === 'string' ? formInput.projectName : '',
+        normalizedPublication.topic,
+        index
+      )
+    : '';
 
   return repairPublicationSemanticCoherence(
     normalizedPublication,
@@ -869,15 +1204,13 @@ function ensureDistinctTopicTitles(publications) {
     const key = normalizeTopicDedupKey(topic);
     const occurrence = (seen.get(key) || 0) + 1;
     seen.set(key, occurrence);
-    if (occurrence === 1) return pub;
-    const tag = OBJECTIVE_TOPIC_TAG[pub.objective] || 'фокус';
-    const focus = TOPIC_DEDUP_FOCUS[(occurrence + index) % TOPIC_DEDUP_FOCUS.length];
-    const suffix = ` (${tag}: ${focus})`;
-    const maxLen = 220;
-    if (topic.length + suffix.length <= maxLen) {
-      return { ...pub, topic: `${topic}${suffix}` };
+    if (occurrence === 1) {
+      return { ...pub, topic: normalizePublicationTopicForUi(topic) };
     }
-    return { ...pub, topic: `${topic.slice(0, Math.max(0, maxLen - suffix.length - 3))}...${suffix}` };
+    return {
+      ...pub,
+      topic: normalizePublicationTopicForUi(buildNaturalTopicVariation(topic, pub.objective, occurrence, index))
+    };
   });
 }
 
@@ -992,10 +1325,18 @@ function validateDraftPlan(plan = {}, formInput = {}) {
 
 async function generateSkeleton(formInput, query, compactRagContext, targetPublicationCount) {
   const systemPrompt = readPromptFile(SKELETON_PROMPT_PATH);
+  const verticalContext = buildVerticalContext(formInput);
+  const stylePack = buildVerticalStylePack(formInput);
   const userPrompt = `Собери skeleton чернового контент-плана.
 
 Требования проекта:
 ${JSON.stringify(formInput, null, 2)}
+
+Вертикаль и контекст ниши:
+${JSON.stringify(verticalContext, null, 2)}
+
+Style pack:
+${stylePack}
 
 RAG query:
 ${query}
@@ -1033,10 +1374,18 @@ async function generateMonthlyPublications({
   totalMonths
 }) {
   const systemPrompt = readPromptFile(BATCH_PROMPT_PATH);
+  const verticalContext = buildVerticalContext(formInput);
+  const stylePack = buildVerticalStylePack(formInput);
   const userPrompt = `Сгенерируй публикации для одного месяца по skeleton.
 
 Требования проекта:
 ${JSON.stringify(formInput, null, 2)}
+
+Вертикаль и контекст ниши:
+${JSON.stringify(verticalContext, null, 2)}
+
+Style pack:
+${stylePack}
 
 RAG query:
 ${query}
@@ -1056,6 +1405,12 @@ ${JSON.stringify(compactRagContext, null, 2)}
 Ранее сгенерированные публикации предыдущих месяцев:
 ${JSON.stringify(buildGeneratedPublicationsContext(previousPublications), null, 2)}
 
+summary_openings_to_avoid (не начинать новый summary с тех же 100 символов после нормализации):
+${JSON.stringify(buildSummaryOpeningsToAvoidList(previousPublications, 14), null, 2)}
+
+Рекомендуемый тип входа в текст поста по слотам (соблюдай разнообразие):
+${JSON.stringify(buildMonthlySlotSummaryHints(slots, monthIndex), null, 2)}
+
 Месяц ${monthIndex + 1} из ${totalMonths}:
 ${monthKey}
 
@@ -1064,12 +1419,13 @@ ${JSON.stringify(slots, null, 2)}
 `;
 
   const llmResponse = await callDeepSeekAPI(systemPrompt, userPrompt, {
-    temperature: 0.25,
+    temperature: 0.28,
     maxTokens: 12000,
     responseFormat: 'json'
   });
   const parsed = extractJsonFromLlmContent(llmResponse.content || '');
-  const publications = toArray(parsed?.publications || parsed?.batch_publications || parsed);
+  const rawPubs = toArray(parsed?.publications || parsed?.batch_publications || parsed);
+  const publications = applyDraftBatchSummaryDeduplication(rawPubs, slots, formInput, monthIndex);
 
   return {
     publications,
@@ -1164,7 +1520,8 @@ export async function generateDraftPlanBatched({
       return normalizedResult.publication;
     }),
     kpi_targets: skeleton.kpi_targets,
-    notes: skeleton.notes
+    notes: skeleton.notes,
+    content_profile: skeleton.content_profile || buildVerticalContext(formInput)
   };
 
   mergedPlan.publications = ensureDistinctTopicTitles(mergedPlan.publications);
@@ -1192,6 +1549,66 @@ export async function generateDraftPlanBatched({
     repairedPlan.publications,
     typeof formInput?.projectName === 'string' ? formInput.projectName : ''
   );
+  repairedPlan.publications = repairedPlan.publications.map((publication, index) => {
+    const topic = sanitizeTopicTitle(publication?.topic);
+    const canonical = normalizePublicationTopicForUi(publication?.title || publication?.topic) || topic;
+    const tone = alignToneToObjective(topic, publication?.tone, publication?.objective);
+    const semanticCore = publication?.semantic_core || buildDraftSemanticCore(publication);
+    const cta = publication?.cta
+      ? buildObjectiveCta(
+          publication?.objective,
+          typeof formInput?.projectName === 'string' ? formInput.projectName : '',
+          topic,
+          index
+        )
+      : '';
+    const preferredKeyMessage = choosePreferredKeyMessage(
+      semanticCore,
+      shouldRewriteMachineKeyMessage(publication?.key_message)
+        ? ''
+        : publication?.key_message,
+      {
+        topic: canonical,
+        objective: publication?.objective,
+        format: publication?.format,
+        tone,
+        index
+      }
+    );
+    return {
+      ...publication,
+      topic,
+      tone,
+      key_message: reconcilePublicationKeyMessageWithTopic(
+        { ...publication, topic, title: publication?.title, key_message: preferredKeyMessage },
+        index
+      ),
+      summary: sanitizeUserFacingSummary(
+        choosePreferredSummary(
+          semanticCore,
+          publication?.summary,
+          { topic: canonical, format: publication?.format, formInput, fallbackSummary: publication?.summary }
+        ),
+        canonical,
+        publication?.format,
+        formInput
+      ),
+      cta,
+      expected_kpi: calibrateExpectedKpi(publication?.expected_kpi, {
+        objective: publication?.objective,
+        format: publication?.format,
+        tone,
+        cta
+      }),
+      semantic_core: semanticCore
+    };
+  });
+
+  repairedPlan.publications = dedupeKeyMessagesAcrossPublications(repairedPlan.publications);
+  repairedPlan.publications = repairedPlan.publications.map((publication, index) => ({
+    ...publication,
+    key_message: reconcilePublicationKeyMessageWithTopic(publication, index)
+  }));
 
   const validation = validateDraftPlan(repairedPlan, formInput);
   if (!validation.valid) {
@@ -1212,12 +1629,22 @@ export async function generateDraftPlanBatched({
       target_publications: targetPublicationCount,
       total_months: monthlyGroups.length,
       coherence_repairs: coherenceRepairs,
-      compact_rag_context: compactRagContext.summary
+      compact_rag_context: compactRagContext.summary,
+      content_profile: buildVerticalContext(formInput),
+      style_pack: buildVerticalStylePack(formInput)
     }
   };
 }
 
 export const DRAFT_PLAN_PIPELINE_TEST_UTILS = {
   tokenizeSemanticText,
-  hasSemanticOverlap
+  hasSemanticOverlap,
+  buildDraftSemanticCore,
+  sanitizeTopicTitle,
+  buildNaturalTopicVariation,
+  buildObjectiveCta,
+  calibrateExpectedKpi,
+  choosePreferredTopic,
+  choosePreferredKeyMessage,
+  choosePreferredSummary
 };

@@ -5,6 +5,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "postinstall": "node tools/scripts/install-api-deps.mjs",
+    "setup": "node tools/scripts/setup.mjs",
     "dev": "concurrently \"npm:dev:vite\" \"npm:dev:server\"",
     "dev:vite": "vite --config apps/web/vite.config.js",
     "dev:server": "npm run dev --prefix apps/api",

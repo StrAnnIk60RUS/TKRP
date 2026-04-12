@@ -105,11 +105,13 @@ test('normalizePlanPublicationsFields normalizes format and tone', () => {
 test('buildRagQueryFromForm includes only present meaningful sections', () => {
   const query = buildRagQueryFromForm({
     projectName: 'TKRP',
+    content_vertical: 'FinTech',
     projectDescription: 'Автоматизация продвижения',
     platforms: ['vk', 'telegram'],
     contentFormats: ['text', 'video']
   });
-  assert.match(query, /IT-проект TKRP/);
+  assert.match(query, /Проект TKRP/);
+  assert.match(query, /Вертикаль: FinTech/);
   assert.match(query, /Платформы: vk, telegram/);
   assert.match(query, /Форматы: text, video/);
 });

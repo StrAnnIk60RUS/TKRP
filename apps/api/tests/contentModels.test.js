@@ -59,6 +59,45 @@ test('normalizeContentPlanModel computes KPI and schedule from posts', () => {
   assert.equal(plan.publication_schedule.length, 2);
   assert.ok(plan.posting_frequency_per_week > 0);
   assert.equal(plan.kpi_estimate.best_engagement_rate, 0.25);
+  assert.equal(plan.planning_horizon_days, 8);
+});
+
+test('calculatePostingFrequencyPerWeek uses at least one week window for same-day posts', () => {
+  const competitor = {
+    competitor_id: 'burst',
+    platform: 'vk',
+    posts: Array.from({ length: 5 }, (_, i) => ({
+      datetime: '2026-04-01T12:00:00Z',
+      engagement_rate: 0.05,
+      publication_model: { topic: `T${i}`, format: 'text', objective: 'inform', publication_id: `p${i}` }
+    }))
+  };
+  const plan = normalizeContentPlanModel(competitor);
+  assert.equal(plan.posting_frequency_per_week, 5);
+});
+
+test('metrics_snapshot.metrics_quality and deterministic SPCJ hints', () => {
+  const competitor = { competitor_id: 'c1', platform: 'linkedin' };
+  const post = {
+    topic: 'x',
+    objective: 'inform',
+    metrics: { likes: 10, comments: 0, shares: 0, views: 0 },
+    engagement_rate: 0.1667,
+    metrics_quality: 'interaction_proxy',
+    key_entities: ['a', 'b', 'c'],
+    analysis: {
+      structure: { has_paragraphs: 1, paragraph_count: 3, has_lists: 1 },
+      headline: { length_words: 5, is_question: 1 },
+      first_paragraph: { length_words: 20 },
+      tone_style: { uses_you: 1 },
+      literacy: { hashtags_count: 1 }
+    }
+  };
+  const model = normalizePublicationModel(post, competitor, 0);
+  assert.equal(model.metrics_snapshot.metrics_quality, 'interaction_proxy');
+  assert.ok(model.spcj.dimensions.clarity > 0);
+  assert.ok(model.spcj.dimensions.educational_value > 0);
+  assert.ok(model.spcj.dimensions.audience_relevance > 0);
 });
 
 test('normalizeCompetitorsContentData normalizes nested competitors payload', () => {

@@ -1,13 +1,12 @@
 import React from 'react'
 import {
   getFormatLabel,
+  getKpiPresentation,
   getObjectiveLabel,
   getPlatformLabel,
   isMeaningfulCta,
   normalizePublicationForUi
 } from '../lib/publicationPresentation'
-
-const formatPercent = (value) => `${((Number(value) || 0) * 100).toFixed(1)}%`
 
 const PlanPublicationTable = ({ publications, onEdit }) => {
   return (
@@ -28,6 +27,7 @@ const PlanPublicationTable = ({ publications, onEdit }) => {
         <tbody>
           {publications.map((post, idx) => {
             const normalizedPost = normalizePublicationForUi(post)
+            const kpi = getKpiPresentation(normalizedPost.expected_kpi)
             return (
             <tr key={`${normalizedPost.publication_id || 'pub'}_${normalizedPost.planned_date || 'na'}_${idx}`}>
               <td data-label="Дата">{normalizedPost.planned_date || '—'}</td>
@@ -36,7 +36,10 @@ const PlanPublicationTable = ({ publications, onEdit }) => {
               <td data-label="Формат">{getFormatLabel(normalizedPost.format)}</td>
               <td data-label="Цель">{getObjectiveLabel(normalizedPost.objective)}</td>
               <td data-label="Вовлечённость (оценка)">
-                {formatPercent(normalizedPost.expected_kpi?.engagement_rate)}
+                <div>{kpi.engagementPercent}</div>
+                {kpi.isRelativeScore && (
+                  <div className="plan-table-kpi-band">Потенциал: {kpi.engagementBand}</div>
+                )}
               </td>
               <td data-label="CTA">{isMeaningfulCta(normalizedPost.cta) ? normalizedPost.cta : '—'}</td>
               <td data-label="Действие">

@@ -163,6 +163,30 @@ export function normalizeDraftPlanResponse(parsedDraft, formInput) {
     normalizedPlan.platforms = requestedPlatforms;
   }
 
+  const contentVertical =
+    typeof formInput?.content_vertical === 'string' && formInput.content_vertical.trim()
+      ? formInput.content_vertical.trim()
+      : typeof formInput?.industry === 'string' && formInput.industry.trim()
+        ? formInput.industry.trim()
+        : '';
+  const contentProfile = {
+    content_vertical: contentVertical || null,
+    industry:
+      typeof formInput?.industry === 'string' && formInput.industry.trim()
+        ? formInput.industry.trim()
+        : null,
+    brand_voice:
+      typeof formInput?.brandVoice === 'string' && formInput.brandVoice.trim()
+        ? formInput.brandVoice.trim()
+        : null
+  };
+  normalizedPlan.content_profile = {
+    ...(normalizedPlan.content_profile && typeof normalizedPlan.content_profile === 'object'
+      ? normalizedPlan.content_profile
+      : {}),
+    ...contentProfile
+  };
+
   const publications = Array.isArray(normalizedPlan.publications) ? normalizedPlan.publications : [];
   const seen = new Set();
   const deduped = [];
@@ -223,8 +247,15 @@ export function normalizeDraftPlanResponse(parsedDraft, formInput) {
 }
 
 export function buildRagQueryFromForm(formInput = {}) {
+  const vertical =
+    typeof formInput.content_vertical === 'string' && formInput.content_vertical.trim()
+      ? formInput.content_vertical.trim()
+      : typeof formInput.industry === 'string' && formInput.industry.trim()
+        ? formInput.industry.trim()
+        : '';
   const parts = [
-    formInput.projectName ? `IT-проект ${formInput.projectName}` : '',
+    formInput.projectName ? `Проект ${formInput.projectName}` : '',
+    vertical ? `Вертикаль: ${vertical}` : '',
     formInput.projectDescription || '',
     formInput.projectBenefits ? `Преимущества: ${formInput.projectBenefits}` : '',
     formInput.consumerCategory ? `Аудитория: ${formInput.consumerCategory}` : '',

@@ -711,6 +711,13 @@
   font-weight: 500;
 }
 
+.plan-table-kpi-band {
+  margin-top: 4px;
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
 .plan-table-edit-btn {
   padding: 8px 14px;
   font-size: 0.82rem;

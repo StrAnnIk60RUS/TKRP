@@ -1,8 +1,10 @@
 # TKRP — Project Context for AI
 
+**Быстрый запуск из архива (без Git):** см. [ЗАПУСК.md](ЗАПУСК.md).
+
 ## 1) Purpose and Product Scope
 
-`TKRP` is a local R&D system for generating and optimizing IT project content plans using:
+`TKRP` is a local R&D system for generating and optimizing content plans for products, services, and brands using:
 
 - competitor data ingestion (publications + observed content plans),
 - LLM enrichment and draft generation,
@@ -10,7 +12,7 @@
 - ML surrogate models for engagement prediction,
 - two-stage genetic optimization (plan-level + post-level).
 
-Main business goal: produce a better content plan than a raw LLM draft by combining precedent-based context, predictive scoring, and constrained evolutionary search.
+Main business goal: produce a better content plan than a raw LLM draft by combining precedent-based context, predictive scoring, and constrained evolutionary search across different verticals.
 
 ---
 
@@ -73,6 +75,11 @@ Key architecture rules (from project docs):
 3. Relevant precedents are fetched and reliability-scored.
 4. LLM generates a draft skeleton and publications for planning horizon.
 5. Draft is normalized/repaired and sent to optimization pipeline.
+
+Optional planning context fields that can improve cross-vertical quality:
+
+- `content_vertical` or `industry` — business/domain vertical.
+- `brandVoice` — preferred brand voice/style hint.
 
 ## 4.3 Two-Stage Evolutionary Optimization
 - **Stage 1 (plan evolution):** optimize slot-level structure (`topic`, `format`, `objective`, `tone`, `cta`, `creativity`) for whole-plan fitness.
@@ -165,6 +172,8 @@ Key operational constraints from repository docs:
 
 From root:
 
+- `npm install` — installs root and `apps/api` dependencies (`postinstall` runs `npm install --prefix apps/api`). Set `SKIP_POSTINSTALL=1` to skip the API install step.
+- `npm run setup` — one-shot bootstrap: `npm install`, `pip install -r requirements.txt`, copy `.env.example` → `.env` if missing. See [docs/local-developer-setup.md](docs/local-developer-setup.md) for Docker / Dev Container.
 - `npm run dev` — run frontend + backend concurrently.
 - `npm run ml:retrain` — retrain ML models on current local precedent dataset.
 - `npm run ml:retrain:full` — re-embed precedents with wrong dimensions, then retrain models.
@@ -209,6 +218,13 @@ Typical required env values include:
 - optional parser cookies (`VK_COOKIE`, `LINKEDIN_COOKIE`)
 - optional security config (`SERVER_API_KEY`, `ADMIN_API_KEY`)
 - optional CORS and python timeout/path settings
+- ontology enrichment flags:
+  - `ONTOLOGY_LLM_ENRICHMENT_MODE=off|shadow|active` (default `off`)
+  - `ONTOLOGY_LLM_HIGH_CONFIDENCE_THRESHOLD` (default `0.85`)
+  - `ONTOLOGY_LLM_MOCK_CANDIDATES_JSON` (optional deterministic test payload)
+- controlled scoring rollout flags:
+  - `ONTOLOGY_SCORING_ROLLOUT_PERCENT` (default `0`)
+  - `ONTOLOGY_SCORING_MAX_ENRICH_ERRORS` (default `0`, auto-disable threshold)
 
 ---
 

@@ -1,4 +1,4 @@
-import { calculateEngagementRate } from '../../../../openrouter.js';
+import { computePostEngagementMetrics } from '../../../../openrouter.js';
 
 /**
  * Подсчитывает количество слов в строке.
@@ -153,7 +153,9 @@ function enrichPostWithDeterministicFeatures(post) {
 
   // --- Метрика вовлеченности уже считается в openrouter.js, но на всякий случай обновим, если нет ---
   if (!post.engagement_rate && post.metrics) {
-    post.engagement_rate = calculateEngagementRate(post.metrics);
+    const { rate, metrics_quality } = computePostEngagementMetrics(post.metrics);
+    post.engagement_rate = rate;
+    post.metrics_quality = post.metrics_quality || metrics_quality;
   }
 
   return {

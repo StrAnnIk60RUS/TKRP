@@ -9,6 +9,17 @@ import autoTable from 'jspdf-autotable'
 
 const formatPercent = (v) => ((Number(v) || 0) * 100).toFixed(1) + '%'
 
+/** Табуляция и переносы строк ломают колонки в Excel (TSV) и плывёт PDF-таблица. */
+function sanitizeCellForExport(value) {
+  if (value === null || value === undefined) return '—'
+  const s = String(value)
+    .replace(/\r\n|\r|\n/g, ' ')
+    .replace(/\t/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return s || '—'
+}
+
 /** Кэш base64 шрифта Roboto для кириллицы */
 let robotoBase64Cache = null
 
@@ -59,14 +70,14 @@ const COLUMN_KEYS = [
 function buildPublicationRows(publications) {
   return (publications || []).map((pub, idx) => ({
     [COLUMN_KEYS[0]]: idx + 1,
-    [COLUMN_KEYS[1]]: pub.planned_date || '—',
-    [COLUMN_KEYS[2]]: (pub.platform || '—').toUpperCase(),
-    [COLUMN_KEYS[3]]: pub.topic || '—',
-    [COLUMN_KEYS[4]]: pub.format || '—',
-    [COLUMN_KEYS[5]]: pub.objective || '—',
-    [COLUMN_KEYS[6]]: pub.key_message || '—',
-    [COLUMN_KEYS[7]]: pub.cta || '—',
-    [COLUMN_KEYS[8]]: pub.tone || '—',
+    [COLUMN_KEYS[1]]: sanitizeCellForExport(pub.planned_date),
+    [COLUMN_KEYS[2]]: sanitizeCellForExport((pub.platform || '—').toUpperCase()),
+    [COLUMN_KEYS[3]]: sanitizeCellForExport(pub.topic),
+    [COLUMN_KEYS[4]]: sanitizeCellForExport(pub.format),
+    [COLUMN_KEYS[5]]: sanitizeCellForExport(pub.objective),
+    [COLUMN_KEYS[6]]: sanitizeCellForExport(pub.key_message),
+    [COLUMN_KEYS[7]]: sanitizeCellForExport(pub.cta),
+    [COLUMN_KEYS[8]]: sanitizeCellForExport(pub.tone),
     [COLUMN_KEYS[9]]: formatPercent(pub.expected_kpi?.engagement_rate),
     [COLUMN_KEYS[10]]: formatPercent(pub.expected_kpi?.conversion_potential),
     [COLUMN_KEYS[11]]: formatPercent(pub.expected_kpi?.reach_potential)

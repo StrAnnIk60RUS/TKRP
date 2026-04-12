@@ -1,0 +1,18 @@
+# Dev image: Node 20 + Python venv with ML/parser requirements (API spawns Python).
+FROM node:20-bookworm
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-venv \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN python3 -m venv /opt/tkrp-py
+ENV PATH="/opt/tkrp-py/bin:$PATH"
+
+COPY requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt
+
+WORKDIR /app
+
+# Default: install deps and run Vite + API (override in compose if needed).
+CMD ["sh", "-c", "npm install && npm run dev"]

@@ -38,18 +38,39 @@ const SEMANTIC_ENRICHMENT_PROMPT_PATH = path.join(
 export { OPENROUTER_API_KEY, AI_MODEL };
 
 /**
- * Вычисляет engagement_rate для поста
+ * Считает вовлечённость и помечает, насколько метрики надёжны.
+ * При отсутствии просмотров (типично LinkedIn) используется прокси по сумме взаимодействий.
+ * @param {Object} metrics
+ * @returns {{ rate: number, metrics_quality: 'views_based' | 'interaction_proxy' | 'unknown' }}
+ */
+export function computePostEngagementMetrics(metrics = {}) {
+  const likes = Number(metrics.likes) || 0;
+  const comments = Number(metrics.comments) || 0;
+  const shares = Number(metrics.shares) || 0;
+  const views = Number(metrics.views) || 0;
+  const interactions = likes + comments + shares;
+
+  if (views > 0) {
+    const rate = Number((interactions / views).toFixed(4));
+    return { rate, metrics_quality: 'views_based' };
+  }
+
+  if (interactions > 0) {
+    // Ограниченный 0..1 прокси: насыщение при росте суммы реакций (reach неизвестен).
+    const proxy = interactions / (interactions + 50);
+    return { rate: Number(proxy.toFixed(4)), metrics_quality: 'interaction_proxy' };
+  }
+
+  return { rate: 0, metrics_quality: 'unknown' };
+}
+
+/**
+ * Вычисляет engagement_rate для поста (число; для качества метрик см. computePostEngagementMetrics).
  * @param {Object} metrics - метрики поста
  * @returns {number} - engagement_rate
  */
 export function calculateEngagementRate(metrics) {
-  const { likes = 0, comments = 0, shares = 0, views = 0 } = metrics;
-  
-  if (views === 0) {
-    return 0;
-  }
-  
-  return Number(((likes + comments + shares) / views).toFixed(4));
+  return computePostEngagementMetrics(metrics).rate;
 }
 
 /**
@@ -65,7 +86,9 @@ export function enrichWithEngagementRate(competitorsData) {
       if (competitor.posts && Array.isArray(competitor.posts)) {
         competitor.posts.forEach(post => {
           if (post.metrics) {
-            post.engagement_rate = calculateEngagementRate(post.metrics);
+            const { rate, metrics_quality } = computePostEngagementMetrics(post.metrics);
+            post.engagement_rate = rate;
+            post.metrics_quality = metrics_quality;
           }
         });
       }
@@ -285,7 +308,7 @@ export async function enrichCompetitorsData(competitorsData) {
   const rawResponses = [];
   const usageItems = [];
   const batchStats = [];
-  let parseError = null;
+  const batchErrors = [];
 
   const isRetryableApiError = (err) =>
     typeof err.responseStatus === 'number' && err.responseStatus >= 500 && err.responseStatus < 600;
@@ -341,8 +364,10 @@ export async function enrichCompetitorsData(competitorsData) {
     }
 
     if (lastError) {
-      const isApi = isRetryableApiError(lastError) || (typeof lastError.responseStatus === 'number' && lastError.responseStatus >= 400);
-      parseError = {
+      const isApi =
+        isRetryableApiError(lastError) ||
+        (typeof lastError.responseStatus === 'number' && lastError.responseStatus >= 400);
+      batchErrors.push({
         message: lastError.message,
         batch_index: index + 1,
         total_batches: batches.length,
@@ -350,31 +375,37 @@ export async function enrichCompetitorsData(competitorsData) {
         raw_content: typeof lastError.raw_content === 'string' ? lastError.raw_content.slice(0, 3000) : null,
         error_type: isApi ? 'api_error' : 'validation_error',
         response_status: lastError.responseStatus ?? null
-      };
-      break;
+      });
+      console.warn(
+        `[LLM] Батч ${index + 1}/${batches.length} пропущен; остальные батчи будут объединены при частичном enrichment.`
+      );
     }
   }
 
-  const enrichedData = !parseError
-    ? mergeSemanticBatchResults(dataWithEngagementRate, semanticMaps)
-    : null;
-  const postProcessedData = enrichedData ? applyDeterministicPostProcessing(enrichedData) : null;
-  const normalizedData = postProcessedData
-    ? normalizeCompetitorsContentData(postProcessedData)
-    : null;
+  const enrichedData = mergeSemanticBatchResults(dataWithEngagementRate, semanticMaps);
+  const postProcessedData = applyDeterministicPostProcessing(enrichedData);
+  const normalizedData = normalizeCompetitorsContentData(postProcessedData);
   const normalizedValidation = normalizedData
     ? validateNormalizedEnrichmentResult(normalizedData)
     : { valid: false, errors: ['normalized_data is null'] };
 
-  if (!parseError && !normalizedValidation.valid) {
+  let parseError = null;
+  if (!normalizedValidation.valid) {
     parseError = {
+      partial: false,
       message: 'Нормализованный результат enrichment не прошел валидацию',
       validation_errors: normalizedValidation.errors
+    };
+  } else if (batchErrors.length > 0) {
+    parseError = {
+      partial: true,
+      message: `Частичное обогащение: не удалось обработать ${batchErrors.length} из ${batches.length} батч(ей)`,
+      batch_errors: batchErrors
     };
   }
 
   return {
-    enriched_data: parseError ? null : normalizedData,
+    enriched_data: normalizedValidation.valid ? normalizedData : null,
     raw_response: rawResponses.join('\n\n--- batch separator ---\n\n'),
     parse_error: parseError,
     usage: usageItems.length ? mergeUsageStats(usageItems) : null,
@@ -382,12 +413,14 @@ export async function enrichCompetitorsData(competitorsData) {
       enriched_at: new Date().toISOString(),
       model: 'llm',
       engagement_rate_calculated_locally: true,
-      parse_successful: parseError === null,
-      normalized_to_content_model: parseError === null && normalizedData !== null,
+      parse_successful: normalizedValidation.valid,
+      normalized_to_content_model: normalizedValidation.valid && normalizedData !== null,
+      partial_enrichment: batchErrors.length > 0 && normalizedValidation.valid,
       batching: {
         total_batches: batches.length,
         auto_batched: batches.length > 1,
-        batch_stats: batchStats
+        batch_stats: batchStats,
+        failed_batches: batchErrors.length
       },
       request_limits: limitsSummary
     }

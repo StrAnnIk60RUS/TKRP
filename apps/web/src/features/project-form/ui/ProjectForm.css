@@ -1521,6 +1521,46 @@
     border: 1px solid #cbd5e0;
     background: #fafbfc;
   }
+
+  .evolution-settings-lead {
+    margin: 0 0 20px;
+    font-size: 0.95rem;
+    line-height: 1.5;
+    color: #4a5568;
+  }
+
+  .evolution-settings-lead_compact {
+    margin-bottom: 16px;
+  }
+
+  .evolution-settings-subblock {
+    margin-bottom: 28px;
+    padding-top: 8px;
+    border-top: 1px solid #e2e8f0;
+  }
+
+  .evolution-settings-subblock:first-of-type {
+    border-top: none;
+    padding-top: 0;
+  }
+
+  .evolution-settings-subtitle {
+    margin: 0 0 16px;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #2d3748;
+    text-transform: none;
+    letter-spacing: normal;
+  }
+
+  .evolution-settings-methods-title {
+    margin: 20px 0 12px;
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: #4a5568;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
   
   .form-label {
     display: flex;

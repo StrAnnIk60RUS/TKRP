@@ -105,24 +105,29 @@ export function validateFieldValue(name, value, formData) {
       break
     case 'evoPopulationSize':
     case 'evoGenerations':
+    case 'evoPostPopulationSize':
+    case 'evoPostGenerations':
       if (value) {
         const num = parseInt(value, 10)
         if (Number.isNaN(num) || num < 10 || num > 2000) error = 'От 10 до 2000'
       }
       break
     case 'evoStagnationGenerations':
+    case 'evoPostStagnationGenerations':
       if (value) {
         const num = parseInt(value, 10)
         if (Number.isNaN(num) || num < 1 || num > 500) error = 'От 1 до 500'
       }
       break
     case 'evoTournamentSize':
+    case 'evoPostTournamentSize':
       if (value) {
         const num = parseInt(value, 10)
         if (Number.isNaN(num) || num < 2 || num > 20) error = 'От 2 до 20'
       }
       break
     case 'evoEliteSize':
+    case 'evoPostEliteSize':
       if (value) {
         const num = parseInt(value, 10)
         if (Number.isNaN(num) || num < 0 || num > 20) error = 'От 0 до 20'
@@ -130,6 +135,8 @@ export function validateFieldValue(name, value, formData) {
       break
     case 'evoCrossoverProbability':
     case 'evoMutationProbability':
+    case 'evoPostCrossoverProbability':
+    case 'evoPostMutationProbability':
       if (value) {
         const num = parseFloat(value)
         if (Number.isNaN(num) || num < 0 || num > 1) error = 'От 0 до 1.0'
@@ -241,11 +248,11 @@ export function buildAlphaByDimension(precedentPubs = [], optimizationGoal) {
   return base
 }
 
-export function buildGaConfigFromForm(formData) {
+/** GA этапа контент-плана (stage1 / optimizeContentPlanEvolution). */
+export function buildPlanGaConfigFromForm(formData) {
   const seed = formData.evoRandomSeed && formData.evoRandomSeed.trim() ? formData.evoRandomSeed.trim() : null
   return {
     seed,
-    // Числовые параметры — с оптимальными значениями по умолчанию
     populationSize: parseNumberOrNull(formData.evoPopulationSize) ?? 32,
     maxGenerations: parseNumberOrNull(formData.evoGenerations) ?? 40,
     stagnationGenerations: parseNumberOrNull(formData.evoStagnationGenerations) ?? 12,
@@ -253,11 +260,33 @@ export function buildGaConfigFromForm(formData) {
     tournamentSize: parseNumberOrNull(formData.evoTournamentSize) ?? 3,
     crossoverProbability: parseNumberOrNull(formData.evoCrossoverProbability) ?? 0.75,
     mutationProbability: parseNumberOrNull(formData.evoMutationProbability) ?? 0.12,
-    // НОВЫЕ поля — выбор методов
     selectionMethod: formData.evoSelectionMethod || 'tournament',
     crossoverMethod: formData.evoCrossoverMethod || 'one_point',
-    mutationMethod: formData.evoMutationMethod || 'random_replace',
+    mutationMethod: formData.evoMutationMethod || 'random_replace'
   }
+}
+
+/** GA этапа постов (stage2 / optimizePublicationsEvolution). Семя — то же, что у плана. */
+export function buildPostGaConfigFromForm(formData) {
+  const seed = formData.evoRandomSeed && formData.evoRandomSeed.trim() ? formData.evoRandomSeed.trim() : null
+  return {
+    seed,
+    populationSize: parseNumberOrNull(formData.evoPostPopulationSize) ?? 48,
+    maxGenerations: parseNumberOrNull(formData.evoPostGenerations) ?? 50,
+    stagnationGenerations: parseNumberOrNull(formData.evoPostStagnationGenerations) ?? 12,
+    eliteSize: parseNumberOrNull(formData.evoPostEliteSize) ?? 3,
+    tournamentSize: parseNumberOrNull(formData.evoPostTournamentSize) ?? 4,
+    crossoverProbability: parseNumberOrNull(formData.evoPostCrossoverProbability) ?? 0.9,
+    mutationProbability: parseNumberOrNull(formData.evoPostMutationProbability) ?? 0.12,
+    selectionMethod: formData.evoPostSelectionMethod || 'tournament',
+    crossoverMethod: formData.evoPostCrossoverMethod || 'one_point',
+    mutationMethod: formData.evoPostMutationMethod || 'random_replace'
+  }
+}
+
+/** @deprecated Используйте buildPlanGaConfigFromForm; оставлено для тестов и обратной совместимости. */
+export function buildGaConfigFromForm(formData) {
+  return buildPlanGaConfigFromForm(formData)
 }
 
 /**

@@ -109,11 +109,11 @@ router.post('/search', async (req, res) => {
   }
 });
 
-router.get('/ontology', (req, res) => {
+router.get('/ontology', async (req, res) => {
   try {
     return res.json({
       success: true,
-      ontology: getAggregatedOntology(),
+      ontology: await getAggregatedOntology(),
       request_id: req.requestId
     });
   } catch (error) {
@@ -121,7 +121,7 @@ router.get('/ontology', (req, res) => {
   }
 });
 
-router.get('/ontology/export', (req, res) => {
+router.get('/ontology/export', async (req, res) => {
   try {
     const {
       classesRows,
@@ -132,7 +132,7 @@ router.get('/ontology/export', (req, res) => {
       hierarchyRows,
       synonymsRows,
       metaEntitiesRows
-    } = getOntologyExportData();
+    } = await getOntologyExportData();
 
     const wb = XLSX.utils.book_new();
 
@@ -171,9 +171,9 @@ router.get('/ontology/export', (req, res) => {
   }
 });
 
-router.get('/ontology/export/turtle', (req, res) => {
+router.get('/ontology/export/turtle', async (req, res) => {
   try {
-    const turtle = getOntologyTurtleData();
+    const turtle = await getOntologyTurtleData();
     const filename = `ontology_${new Date().toISOString().slice(0, 10)}.ttl`;
 
     res.setHeader('Content-Type', 'text/turtle; charset=utf-8');

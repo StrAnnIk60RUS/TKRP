@@ -38,6 +38,27 @@ function asNumberOrNull(value) {
   return Number.isFinite(numeric) ? numeric : null;
 }
 
+const METRICS_QUALITY_VALUES = ['views_based', 'interaction_proxy', 'unknown'];
+
+function inferMetricsQualitySnapshot(post) {
+  const raw = asString(post?.metrics_quality);
+  if (raw && METRICS_QUALITY_VALUES.includes(raw)) {
+    return raw;
+  }
+  const views = Number(post?.metrics?.views) || 0;
+  if (views > 0) {
+    return 'views_based';
+  }
+  const interactions =
+    (Number(post?.metrics?.likes) || 0) +
+    (Number(post?.metrics?.comments) || 0) +
+    (Number(post?.metrics?.shares) || 0);
+  if (interactions > 0) {
+    return 'interaction_proxy';
+  }
+  return 'unknown';
+}
+
 function inferPostFormat(post) {
   const attachments = post?.attachments || {};
   if (attachments.has_video) return 'video';
@@ -103,6 +124,70 @@ function buildSpcjDimensions(post) {
     dimensions.engagement_potential = clamp01(Math.min(post.engagement_rate * 4, 1));
   }
 
+  // Детерминированный analysis (postDeterministicFeatures) — заполняем нули, если LLM не дал content_meaning
+  const det = post?.analysis || {};
+  const struct = det.structure || {};
+  const head = det.headline || {};
+  const fp = det.first_paragraph || {};
+  const ts = det.tone_style || {};
+  const lit = det.literacy || {};
+
+  if (dimensions.clarity === 0) {
+    let score = 0;
+    if (Number(head.length_words) > 0) score += 0.22;
+    if (struct.has_paragraphs === 1) score += 0.18;
+    if (struct.has_lists === 1) score += 0.15;
+    if (Number(fp.length_words) >= 15) score += 0.2;
+    if (score > 0) {
+      dimensions.clarity = clamp01(Math.min(score + 0.12, 0.92));
+    }
+  }
+
+  if (dimensions.educational_value === 0 && Number(struct.paragraph_count) >= 2) {
+    dimensions.educational_value = Number(struct.paragraph_count) >= 4 ? 0.58 : 0.42;
+  }
+
+  if (dimensions.evidence_strength === 0 && struct.has_lists === 1) {
+    dimensions.evidence_strength = 0.38;
+  }
+
+  if (dimensions.engagement_potential === 0) {
+    let e = 0;
+    if (ts.uses_we === 1 || ts.uses_you === 1) e += 0.28;
+    if (Number(lit.hashtags_count) > 0) e += 0.12;
+    if (head.is_question === 1) e += 0.15;
+    if (e > 0) {
+      dimensions.engagement_potential = clamp01(e);
+    }
+  }
+
+  if (dimensions.cta_strength === 0 && head.is_question === 1) {
+    dimensions.cta_strength = 0.42;
+  }
+
+  if (dimensions.audience_relevance === 0) {
+    const entities = asStringArray(post?.key_entities || publicationModel?.key_entities);
+    if (entities.length >= 3) {
+      dimensions.audience_relevance = 0.52;
+    } else if (entities.length >= 1) {
+      dimensions.audience_relevance = 0.36;
+    }
+  }
+
+  if (dimensions.timeliness === 0) {
+    const d = new Date(post?.datetime);
+    if (Number.isFinite(d.getTime())) {
+      dimensions.timeliness = 0.42;
+    }
+  }
+
+  if (dimensions.brand_fit === 0) {
+    const summaryText = asString(post?.summary || publicationModel?.summary);
+    if (summaryText.length >= 40) {
+      dimensions.brand_fit = 0.38;
+    }
+  }
+
   return dimensions;
 }
 
@@ -156,7 +241,8 @@ export function normalizePublicationModel(post, competitor = {}, index = 0) {
       comments: asNumberOrNull(post?.metrics?.comments) ?? 0,
       shares: asNumberOrNull(post?.metrics?.shares) ?? 0,
       views: asNumberOrNull(post?.metrics?.views) ?? 0,
-      engagement_rate: clamp01(post?.engagement_rate ?? 0)
+      engagement_rate: clamp01(post?.engagement_rate ?? 0),
+      metrics_quality: inferMetricsQualitySnapshot(post)
     },
     kpi_estimate: normalizeKpiEstimate(publicationModel.kpi_estimate, post),
     spcj: {
@@ -166,6 +252,8 @@ export function normalizePublicationModel(post, competitor = {}, index = 0) {
     }
   };
 }
+
+const MIN_OBSERVATION_SPAN_MS = 7 * 24 * 60 * 60 * 1000;
 
 function calculatePostingFrequencyPerWeek(posts = []) {
   const datedPosts = posts
@@ -179,9 +267,22 @@ function calculatePostingFrequencyPerWeek(posts = []) {
 
   const first = datedPosts[0];
   const last = datedPosts[datedPosts.length - 1];
-  const diffMs = Math.max(last - first, 24 * 60 * 60 * 1000);
-  const diffWeeks = diffMs / (7 * 24 * 60 * 60 * 1000);
+  // Не оцениваем частоту по окну короче недели — иначе снимок «все посты за день» даёт завышение.
+  const diffMs = Math.max(last - first, MIN_OBSERVATION_SPAN_MS);
+  const diffWeeks = diffMs / MIN_OBSERVATION_SPAN_MS;
   return Number((datedPosts.length / diffWeeks).toFixed(2));
+}
+
+function derivePlanningHorizonDaysFromPosts(posts = []) {
+  const dates = posts
+    .map((post) => new Date(post?.datetime))
+    .filter((date) => Number.isFinite(date.getTime()))
+    .sort((a, b) => a - b);
+  if (dates.length < 2) {
+    return null;
+  }
+  const spanMs = dates[dates.length - 1] - dates[0];
+  return Math.max(1, Math.round(spanMs / 86400000) + 1);
 }
 
 function buildContentPlanItems(posts = []) {
@@ -310,7 +411,10 @@ export function normalizeContentPlanModel(competitor = {}) {
     plan_type: 'observed_competitor_content_plan',
     platform: asNullableString(contentPlanModel.platform) || asNullableString(competitor.platform),
     audience_segments: asStringArray(contentPlanModel.audience_segments),
-    planning_horizon_days: asNumberOrNull(contentPlanModel.planning_horizon_days) || 30,
+    planning_horizon_days:
+      asNumberOrNull(contentPlanModel.planning_horizon_days) ||
+      derivePlanningHorizonDaysFromPosts(posts) ||
+      30,
     posting_frequency_per_week:
       asNumberOrNull(contentPlanModel.posting_frequency_per_week) ||
       calculatePostingFrequencyPerWeek(posts),

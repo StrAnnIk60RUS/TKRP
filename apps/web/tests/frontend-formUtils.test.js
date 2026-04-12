@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 
 import {
   buildGaConfigFromForm,
+  buildPostGaConfigFromForm,
   buildSafeFormInputForGeneration,
   buildSuggestedPrecedentQuery,
   validateFormData
@@ -59,4 +60,19 @@ test('buildGaConfigFromForm parses numeric fields', () => {
   assert.equal(config.maxGenerations, 40)
   assert.equal(config.tournamentSize, 4)
   assert.equal(config.mutationProbability, 0.2)
+})
+
+test('buildPostGaConfigFromForm uses post fields and shared seed', () => {
+  const config = buildPostGaConfigFromForm({
+    ...initialFormData,
+    evoRandomSeed: '42',
+    evoPostPopulationSize: '64',
+    evoPostGenerations: '30',
+    evoPostMutationProbability: '0.09'
+  })
+
+  assert.equal(config.seed, '42')
+  assert.equal(config.populationSize, 64)
+  assert.equal(config.maxGenerations, 30)
+  assert.equal(config.mutationProbability, 0.09)
 })

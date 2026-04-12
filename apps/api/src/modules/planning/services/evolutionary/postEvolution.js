@@ -8,6 +8,16 @@ import {
   uniformCrossoverArrays,
   inversionMutation
 } from './operators.js';
+import {
+  buildDraftSemanticCore,
+  buildObjectiveCta,
+  calibrateExpectedKpi,
+  choosePreferredKeyMessage,
+  choosePreferredSummary,
+  choosePreferredTopic,
+  normalizePublicationTopicForUi,
+  sanitizeTopicTitle
+} from '../contentOutputUtils.js';
 
 const TONE_START = 24;
 const TONE_END = 28;
@@ -28,6 +38,13 @@ function clampInt(value, min, max, fallback) {
   const numeric = Math.floor(Number(value));
   if (!Number.isFinite(numeric)) return fallback;
   return Math.max(min, Math.min(max, numeric));
+}
+
+function readPostGaEnvNumber(name) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
 }
 
 // Веса для фитнес-функции поста
@@ -51,6 +68,24 @@ function calculateFitness(predictedMetrics, metadata) {
   return FITNESS_WEIGHTS.likes * normLikes +
          FITNESS_WEIGHTS.shares * normShares +
          FITNESS_WEIGHTS.views * normViews;
+}
+
+/** Средняя L1-разница по измеримым признакам (0..1): выше — дальше от других слотов плана. */
+function peerGenomeDiversityScore(candidate, peerGenomes) {
+  if (!Array.isArray(candidate) || !Array.isArray(peerGenomes) || peerGenomes.length === 0) return 0;
+  let sum = 0;
+  for (const peer of peerGenomes) {
+    if (!Array.isArray(peer)) continue;
+    const dim = Math.min(candidate.length, peer.length, 34);
+    if (dim <= 0) continue;
+    let d = 0;
+    for (let i = 0; i < dim; i += 1) {
+      d += Math.abs(asNumber(candidate[i], 0) - asNumber(peer[i], 0));
+    }
+    sum += d / dim;
+  }
+  if (sum <= 0) return 0;
+  return Math.max(0, Math.min(1, sum / peerGenomes.length));
 }
 
 function buildAllowedValues(index) {
@@ -155,7 +190,14 @@ function capPostPredictedMetrics(predictedMetrics, metadata) {
   };
 }
 
-async function evolveSinglePublication(publication, planFeatureMap, gaConfig = {}, publicationIndex = 0, lockedFields = {}) {
+async function evolveSinglePublication(
+  publication,
+  planFeatureMap,
+  gaConfig = {},
+  publicationIndex = 0,
+  lockedFields = {},
+  stage2Options = {}
+) {
   const baseVector = buildPostFeatureVector(publication, {
     tonesCount: planFeatureMap.unique_tones,
     creativityFromBestPlan: planFeatureMap.avg_creativity
@@ -202,7 +244,13 @@ async function evolveSinglePublication(publication, planFeatureMap, gaConfig = {
   }
 
   const traces = [];
-  
+  const repairedBasesAll = stage2Options.repairedBases;
+  const peerWeight = clampProbability(asNumber(stage2Options.peerDiversityWeight, 0.1), 0.1);
+  const peerGenomes =
+    Array.isArray(repairedBasesAll) && repairedBasesAll.length > 1
+      ? repairedBasesAll.filter((_, j) => j !== publicationIndex)
+      : [];
+
   const result = await runAsyncGeneticAlgorithm({
     direction: 'max',
     seed: gaConfig.seed ?? null,
@@ -212,7 +260,8 @@ async function evolveSinglePublication(publication, planFeatureMap, gaConfig = {
     eliteSize: gaConfig.eliteSize ?? 3,
     tournamentSize: gaConfig.tournamentSize ?? 4,
     crossoverProbability: gaConfig.crossoverProbability ?? 0.9,
-    mutationProbability: gaConfig.mutationProbability ?? 0.1,
+    mutationProbability:
+      gaConfig.mutationProbability ?? readPostGaEnvNumber('PLAN_GA_POST_MUTATION_PROBABILITY') ?? 0.12,
     selectionMethod: selectionMethod,
     createIndividual: (rng) => createIndividual(baseVector, constants, rng),
     cloneIndividual: (individual) => cloneJson(individual),
@@ -228,18 +277,21 @@ async function evolveSinglePublication(publication, planFeatureMap, gaConfig = {
       
       return predictionResult.predictions.map((predictedMetrics, index) => {
         const capped = capPostPredictedMetrics(predictedMetrics, predictionResult.metadata);
-        const fitness = calculateFitness(
+        const kpi = calculateFitness(
           [capped.cappedLikes, capped.cappedShares, capped.cappedViews],
           predictionResult.metadata
         );
-        
+        const diversity = peerGenomeDiversityScore(repaired[index], peerGenomes);
+        const fitness = peerGenomes.length ? kpi + peerWeight * diversity : kpi;
+
         return {
           score: fitness,
           meta: {
             predicted_likes: capped.cappedLikes,
             predicted_shares: capped.cappedShares,
             predicted_views: capped.cappedViews,
-            fitness
+            fitness,
+            peer_diversity: diversity
           }
         };
       });
@@ -415,7 +467,7 @@ function rankCtaPriority(publication = {}) {
   return 1;
 }
 
-const DEFAULT_PLAN_CTA = 'Свяжитесь с нами, чтобы получить детали.';
+const DEFAULT_PLAN_CTA = 'Запросить демонстрацию решения';
 
 function resolveEffectiveCta(basePublication, sourcePublication, featureMap) {
   const base = basePublication || {};
@@ -423,14 +475,15 @@ function resolveEffectiveCta(basePublication, sourcePublication, featureMap) {
   const pref = resolveCtaPreference(base);
   const existing = String(base?.cta || source?.cta || '').trim();
   const hasFeatureCta = asNumber(featureMap?.has_cta, 0) > 0;
+  const fallback = buildObjectiveCta(base?.objective || source?.objective, '', base?.topic || source?.topic, 0);
   if (pref === 'required') {
-    return existing || DEFAULT_PLAN_CTA;
+    return existing || fallback || DEFAULT_PLAN_CTA;
   }
   if (pref === 'preferred' && (hasFeatureCta || existing)) {
-    return existing || DEFAULT_PLAN_CTA;
+    return existing || fallback || DEFAULT_PLAN_CTA;
   }
   if (hasFeatureCta) {
-    return existing || DEFAULT_PLAN_CTA;
+    return existing || fallback || DEFAULT_PLAN_CTA;
   }
   return '';
 }
@@ -438,8 +491,32 @@ function resolveEffectiveCta(basePublication, sourcePublication, featureMap) {
 function buildFinalPublication(basePublication, bestPublication, featureMap, predictedLikes, predictedShares, predictedViews, index) {
   const source = cloneJson(bestPublication || {});
   const base = cloneJson(basePublication || {});
+  const semanticCore = base?.semantic_core || source?.semantic_core || buildDraftSemanticCore(basePublication || bestPublication || {});
   const baseKpi = base?.expected_kpi && typeof base.expected_kpi === 'object' ? base.expected_kpi : {};
   const sourceKpi = source?.expected_kpi && typeof source.expected_kpi === 'object' ? source.expected_kpi : {};
+  const objective = base?.objective || source?.objective || null;
+  const format = base?.format || source?.format || null;
+  const tone = base?.tone || source?.tone || null;
+  const topic = normalizePublicationTopicForUi(
+    choosePreferredTopic(semanticCore, base?.topic || source?.topic || null, objective, index)
+  );
+  const cta = resolveEffectiveCta(
+    { ...base, objective, topic },
+    { ...source, objective, topic },
+    featureMap
+  );
+  const keyMessage = choosePreferredKeyMessage(semanticCore, base?.key_message || source?.key_message || '', {
+    topic,
+    objective,
+    format,
+    tone,
+    index
+  });
+  const summary = choosePreferredSummary(semanticCore, base?.summary || source?.summary || '', {
+    topic,
+    format,
+    fallbackSummary: base?.summary || source?.summary || ''
+  });
   return {
     ...source,
     ...base,
@@ -448,19 +525,22 @@ function buildFinalPublication(basePublication, bestPublication, featureMap, pre
     planned_at: base?.planned_at || source?.planned_at || null,
     platform: base?.platform || source?.platform || null,
     // Keep semantic fields from the slot itself to avoid cross-slot text mixing.
-    topic: base?.topic || source?.topic || null,
-    format: base?.format || source?.format || null,
-    objective: base?.objective || source?.objective || null,
-    tone: base?.tone || source?.tone || null,
-    summary: base?.summary || source?.summary || null,
-    key_message: base?.key_message || source?.key_message || null,
-    cta: resolveEffectiveCta(base, source, featureMap),
+    topic,
+    format,
+    objective,
+    tone,
+    summary: summary || null,
+    key_message: keyMessage || null,
+    cta,
     expected_kpi: {
-      engagement_rate:
-        baseKpi.engagement_rate ?? sourceKpi.engagement_rate,
-      conversion_potential:
-        baseKpi.conversion_potential ?? sourceKpi.conversion_potential,
-      reach_potential: baseKpi.reach_potential ?? sourceKpi.reach_potential,
+      ...calibrateExpectedKpi(
+        {
+          engagement_rate: baseKpi.engagement_rate ?? sourceKpi.engagement_rate,
+          conversion_potential: baseKpi.conversion_potential ?? sourceKpi.conversion_potential,
+          reach_potential: baseKpi.reach_potential ?? sourceKpi.reach_potential
+        },
+        { objective, format, tone, cta }
+      ),
       predicted_likes: predictedLikes,
       predicted_shares: predictedShares,
       predicted_views: predictedViews,
@@ -469,19 +549,49 @@ function buildFinalPublication(basePublication, bestPublication, featureMap, pre
       ml_predicted_views: predictedViews,
       predicted_likes_source: 'final_best_post_template'
     },
-    ontology_features: featureMap
+    ontology_features: featureMap,
+    semantic_core: semanticCore
   };
 }
 
 export async function optimizePublicationsEvolution(publications = [], planFeatureMap = {}, config = {}) {
   const gaConfig = config.ga || config;
   const lockedFields = config.lockedFields || {};
-  
+
+  const repairedBases = publications.map((pub) => {
+    const targetToneIndex =
+      lockedFields.targetToneIndex !== undefined
+        ? lockedFields.targetToneIndex
+        : resolveToneIndex(pub?.tone);
+    const constants = {
+      tonesCount: planFeatureMap.unique_tones,
+      creativityFromBestPlan: planFeatureMap.avg_creativity,
+      hasCta: lockedFields.has_cta !== undefined ? lockedFields.has_cta : null,
+      targetToneIndex
+    };
+    const raw = buildPostFeatureVector(pub, {
+      tonesCount: planFeatureMap.unique_tones,
+      creativityFromBestPlan: planFeatureMap.avg_creativity
+    });
+    return repairGenome(raw, constants);
+  });
+
+  const peerDivRaw =
+    gaConfig.peerDiversityWeight ??
+    config.peerDiversityWeight ??
+    readPostGaEnvNumber('PLAN_GA_PEER_DIVERSITY_WEIGHT');
+  const peerDiversityWeight = Number.isFinite(Number(peerDivRaw))
+    ? clampProbability(peerDivRaw, 0.1)
+    : 0.1;
+
   const optimized = await mapWithConcurrency(
     publications,
     gaConfig.parallelism ?? config.parallelism ?? 3,
     (publication, index) =>
-      evolveSinglePublication(publication, planFeatureMap, gaConfig, index, lockedFields)
+      evolveSinglePublication(publication, planFeatureMap, gaConfig, index, lockedFields, {
+        repairedBases,
+        peerDiversityWeight
+      })
   );
 
   const bestPublication = optimized

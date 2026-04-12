@@ -30,7 +30,18 @@ export const initialFormData = {
   // НОВЫЕ поля — выбор методов
   evoSelectionMethod: 'tournament',   // tournament | roulette | rank
   evoCrossoverMethod: 'one_point',    // one_point | two_point | uniform
-  evoMutationMethod: 'random_replace' // random_replace | inversion
+  evoMutationMethod: 'random_replace', // random_replace | inversion
+  // GA этапа постов (stage2) — дефолты ближе к postEvolution.js
+  evoPostPopulationSize: '48',
+  evoPostGenerations: '50',
+  evoPostStagnationGenerations: '12',
+  evoPostTournamentSize: '4',
+  evoPostEliteSize: '3',
+  evoPostCrossoverProbability: '0.9',
+  evoPostMutationProbability: '0.12',
+  evoPostSelectionMethod: 'tournament',
+  evoPostCrossoverMethod: 'one_point',
+  evoPostMutationMethod: 'random_replace'
 }
 
 export const wizardSteps = [
@@ -157,5 +168,15 @@ export const demoExampleFormData = {
   evoEliteSize: '6',
   evoCrossoverProbability: '0.75',
   evoMutationProbability: '0.12',
-  evoRandomSeed: ''
+  evoRandomSeed: '',
+  evoPostPopulationSize: '48',
+  evoPostGenerations: '50',
+  evoPostStagnationGenerations: '12',
+  evoPostTournamentSize: '4',
+  evoPostEliteSize: '3',
+  evoPostCrossoverProbability: '0.9',
+  evoPostMutationProbability: '0.12',
+  evoPostSelectionMethod: 'tournament',
+  evoPostCrossoverMethod: 'one_point',
+  evoPostMutationMethod: 'random_replace'
 }

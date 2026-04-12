@@ -9,8 +9,13 @@ import {
 import {
   buildOntologyExportSheets,
   buildOntologyFromSnapshot,
+  mergeOntologyWithTrustedLlmAdditions,
   serializeOntologyToTurtle
 } from '../services/ontologyAggregationService.js';
+import {
+  buildOntologyLlmEnrichment,
+  getOntologyLlmEnrichmentConfig
+} from '../services/ontologyLlmEnrichmentService.js';
 import { enrichSearchResultsWithReliability } from '../services/precedentReliabilityService.js';
 import { trainRelevanceModel } from '../../ml/services/relevancePredictionService.js';
 
@@ -1029,16 +1034,37 @@ export async function searchPrecedents(query, options = {}) {
   }
 }
 
-export function getAggregatedOntology() {
-  return buildOntologyFromSnapshot(readStorage());
+export async function getAggregatedOntology() {
+  const snapshot = readStorage();
+  const baseOntology = buildOntologyFromSnapshot(snapshot);
+  const config = getOntologyLlmEnrichmentConfig();
+  const llmEnrichment = await buildOntologyLlmEnrichment(baseOntology.contexts, baseOntology);
+
+  if (config.mode === 'active') {
+    return mergeOntologyWithTrustedLlmAdditions(snapshot, baseOntology, llmEnrichment, {
+      highConfidenceThreshold: config.highConfidenceThreshold
+    });
+  }
+
+  return {
+    ...baseOntology,
+    llm_enrichment: {
+      mode: llmEnrichment?.mode || config.mode,
+      usage: llmEnrichment?.usage || null,
+      metrics: llmEnrichment?.metrics || {},
+      errors: llmEnrichment?.errors || []
+    }
+  };
 }
 
-export function getOntologyExportData() {
-  return buildOntologyExportSheets(getAggregatedOntology());
+export async function getOntologyExportData() {
+  const ontology = await getAggregatedOntology();
+  return buildOntologyExportSheets(ontology);
 }
 
-export function getOntologyTurtleData() {
-  return serializeOntologyToTurtle(getAggregatedOntology());
+export async function getOntologyTurtleData() {
+  const ontology = await getAggregatedOntology();
+  return serializeOntologyToTurtle(ontology);
 }
 
 

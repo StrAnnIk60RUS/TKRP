@@ -1,8 +1,12 @@
-import { optimizeContentPlanEvolution } from './planEvolution.js';
+import { optimizeContentPlanEvolution, sanitizePlanPublicationsBodies } from './planEvolution.js';
 import { fillPlanWithBestPublication, optimizePublicationsEvolution } from './postEvolution.js';
 import { buildPlanFeatureMap } from '../../../ml/services/ml/ontologyFeatureEngineering.js';
 import { predictContentPlanMetrics } from '../../../ml/services/relevancePredictionService.js';
 import { normalizePlanPublicationsFields } from '../../routes/shared/planUtils.js';
+import {
+  applyPlanDiversityLlmRewrite,
+  shouldRunPlanDiversityLlmRewrite
+} from '../planDiversityLlmPass.js';
 
 function asNumber(value, fallback = 0) {
   const numeric = Number(value);
@@ -110,6 +114,7 @@ export async function runHierarchicalOptimization(payload = {}) {
 
   const stage1Config = payload?.stage1 || {};
   const stage2Config = payload?.stage2 || {};
+  const stage3Config = payload?.stage3 && typeof payload.stage3 === 'object' ? payload.stage3 : {};
   const lockedFields = payload?.locked_fields || {};
   
   validateOptimizationInputs(draft, stage1Config);
@@ -153,10 +158,45 @@ export async function runHierarchicalOptimization(payload = {}) {
     }
   );
 
-  const normalizedPublications = normalizePlanPublicationsFields(filledPlanResult.publications);
+  let publicationsAfterRewrite = filledPlanResult.publications;
+  let stage3LlmMeta = {
+    llm_diversity_rewrite: false,
+    skipped: true,
+    reason: 'not_requested'
+  };
+
+  if (shouldRunPlanDiversityLlmRewrite(payload, stage3Config)) {
+    try {
+      const rewriteResult = await applyPlanDiversityLlmRewrite(
+        {
+          plan_id: draft?.plan_id || contentPlanResult.optimizedPlan?.plan_id || null,
+          content_profile: draft?.content_profile || contentPlanResult.optimizedPlan?.content_profile || null,
+          publications: publicationsAfterRewrite
+        },
+        stage3Config
+      );
+      publicationsAfterRewrite = rewriteResult.publications;
+      stage3LlmMeta = {
+        llm_diversity_rewrite: true,
+        skipped: Boolean(rewriteResult.meta?.skipped),
+        reason: rewriteResult.meta?.reason || null,
+        usage: rewriteResult.meta?.usage || null
+      };
+    } catch (err) {
+      stage3LlmMeta = {
+        llm_diversity_rewrite: true,
+        skipped: true,
+        reason: 'error',
+        error: String(err?.message || err)
+      };
+    }
+  }
+
+  const normalizedPublications = normalizePlanPublicationsFields(publicationsAfterRewrite);
+  const bodySanitizedPublications = sanitizePlanPublicationsBodies(normalizedPublications);
 
   // Финальные метаданные плана
-  const finalPlanFeatureMap = buildPlanFeatureMap(normalizedPublications, {
+  const finalPlanFeatureMap = buildPlanFeatureMap(bodySanitizedPublications, {
     durationDays: contentPlanResult.optimizedPlan?.planning_horizon?.duration_days,
     expectedPlatforms: contentPlanResult.optimizedPlan?.platforms || draft?.platforms || [],
     targetAudience: contentPlanResult.optimizedPlan?.target_audience || draft?.target_audience || []
@@ -166,7 +206,7 @@ export async function runHierarchicalOptimization(payload = {}) {
   const finalPlanPrediction = await predictContentPlanMetrics(
     {
       ...contentPlanResult.optimizedPlan,
-      publications: normalizedPublications
+      publications: bodySanitizedPublications
     },
     {
       forceTrain: false,
@@ -187,7 +227,7 @@ export async function runHierarchicalOptimization(payload = {}) {
 
   const optimizedContentPlan = {
     ...contentPlanResult.optimizedPlan,
-    publications: normalizedPublications,
+    publications: bodySanitizedPublications,
     expected_kpi: {
       ...(contentPlanResult.optimizedPlan.expected_kpi || {}),
       predicted_total_likes: safeFinalPredictedLikes,
@@ -213,6 +253,10 @@ export async function runHierarchicalOptimization(payload = {}) {
         stop_reason: contentPlanResult.ga.stop_reason,
         history: contentPlanResult.ga.history
       }
+    },
+    stage3: {
+      phase: 'plan_text_diversity_llm',
+      ...stage3LlmMeta
     },
     stage2: {
       phase: 'post_evolution',
@@ -243,7 +287,7 @@ export async function runHierarchicalOptimization(payload = {}) {
       })),
       constraints_check: validatePlanConstraints(optimizedContentPlan, stage1Config.constraints || {})
     },
-    optimized_publications: normalizedPublications,
+    optimized_publications: bodySanitizedPublications,
     best_publication: postResult.bestPublication,
     optimized_content_plan: optimizedContentPlan
   };
