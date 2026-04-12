@@ -11,6 +11,14 @@
   flex-wrap: wrap;
 }
 
+/* Внутри секции шага — рядом с кнопками/действием, без «прилипания» к окну */
+.process-indicator--contextual {
+  margin-top: 12px;
+  margin-bottom: 16px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
 .process-indicator::before {
   content: '';
   position: absolute;

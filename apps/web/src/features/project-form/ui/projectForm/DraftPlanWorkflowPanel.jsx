@@ -1,4 +1,5 @@
 import React from 'react'
+import ProcessIndicator from '../../../../shared/ui/ProcessIndicator'
 
 const formatPercent = (value) => `${((Number(value) || 0) * 100).toFixed(1)}%`
 const formatNumber = (value) => {
@@ -37,6 +38,12 @@ const DraftPlanWorkflowPanel = ({
       ].filter(([, beforeValue, afterValue]) => beforeValue !== afterValue)
     : []
 
+  const draftActiveProcessId = isGeneratingDraftPlan
+    ? 'generatingPlan'
+    : isOptimizingPlan
+      ? 'optimizingPlan'
+      : null
+
   return (
     <section className="form-section precedent-workflow-section">
       <div className="workflow-section-heading">
@@ -49,6 +56,8 @@ const DraftPlanWorkflowPanel = ({
           </p>
         </div>
       </div>
+
+      <ProcessIndicator active={Boolean(draftActiveProcessId)} processId={draftActiveProcessId} contextual />
 
       <div className="workflow-action-row workflow-action-row-tight">
         <button

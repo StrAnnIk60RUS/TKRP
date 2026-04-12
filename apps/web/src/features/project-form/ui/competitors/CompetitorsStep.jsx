@@ -1,4 +1,5 @@
-import React from 'react';
+import React from 'react'
+import ProcessIndicator from '../../../../shared/ui/ProcessIndicator'
 
 const CompetitorsStep = ({
   competitorUrls,
@@ -115,6 +116,10 @@ const CompetitorsStep = ({
           </details>
         </div>
 
+        {isParsingFromUrls && (
+          <ProcessIndicator active processId="parsing" contextual />
+        )}
+
         <div className="competitors-inputs">
           {competitorUrls.map((url, index) => (
             <div key={index} className="competitor-url-row">
@@ -186,6 +191,7 @@ const CompetitorsStep = ({
 
         {competitorsData && (
           <div className="competitors-status">
+            {isEnriching && <ProcessIndicator active processId="enriching" contextual />}
             <span className="competitors-status-text">
               ✓ Данные конкурентов в форме
               {competitorsFileName && ` (${competitorsFileName})`}

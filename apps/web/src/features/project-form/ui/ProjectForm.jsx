@@ -2,7 +2,6 @@ import React, { useState, useMemo, useEffect, useRef, useReducer, useCallback } 
 import { useNavigate } from 'react-router-dom'
 import { ToastContainer } from '../../../shared/ui/Toast'
 import CompetitorsStep from './competitors/CompetitorsStep'
-import ProcessIndicator from '../../../shared/ui/ProcessIndicator'
 import WizardHeader from '../../../shared/ui/WizardHeader'
 import WizardNavActions from '../../../shared/ui/WizardNavActions'
 import WorkflowSummaryPanel from './projectForm/WorkflowSummaryPanel'
@@ -12,7 +11,7 @@ import FieldHint from './projectForm/FieldHint'
 import DraftPlanWorkflowPanel from './projectForm/DraftPlanWorkflowPanel'
 import TechnicalDetailsPanel from './projectForm/TechnicalDetailsPanel'
 import OperationStatusPanel from './projectForm/OperationStatusPanel'
-import { getCurrentProcessId, initialWizardState, wizardReducer } from './projectForm/wizardState'
+import { initialWizardState, wizardReducer } from './projectForm/wizardState'
 import { useCompetitorsPipeline } from '../model/useCompetitorsPipeline'
 import {
   getAggregatedOntology,
@@ -967,7 +966,6 @@ const ProjectForm = () => {
   )
   const isFirstStep = currentStep === 1
 
-  const currentProcessId = useMemo(() => getCurrentProcessId(operations), [operations])
   const isLastStep = currentStep === wizardSteps.length
 
   const goToNextStep = () => {
@@ -986,7 +984,6 @@ const ProjectForm = () => {
   return (
     <>
       <ToastContainer toasts={toasts} removeToast={removeToast} />
-      <ProcessIndicator active={!!currentProcessId} processId={currentProcessId} />
       {isDeveloper && (
         <OperationStatusPanel
           operations={operations}

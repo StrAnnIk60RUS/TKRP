@@ -1,4 +1,5 @@
 import React from 'react'
+import ProcessIndicator from '../../../../shared/ui/ProcessIndicator'
 
 const formatPrecedentScore = (score) => `${Math.round((Number(score) || 0) * 100)}%`
 
@@ -86,6 +87,15 @@ const PrecedentSearchPanel = ({
   onSelectPrecedent
 }) => {
   const [isOntologyVisible, setIsOntologyVisible] = React.useState(false)
+  const precedentActiveProcessId = isSearchingPrecedents
+    ? 'searchingPrecedents'
+    : isSeedingPrecedents
+      ? 'seedingPrecedents'
+      : isLoadingOntology
+        ? 'loadingOntology'
+        : isExportingOntology
+          ? 'exportingOntology'
+          : null
   const hasResults = Boolean(precedentSearchResults)
   const hasPublicationResults = (precedentSearchResults?.publications?.length || 0) > 0
   const hasPlanResults = (precedentSearchResults?.content_plans?.length || 0) > 0
@@ -130,6 +140,12 @@ const PrecedentSearchPanel = ({
           </div>
         )}
       </div>
+
+      <ProcessIndicator
+        active={Boolean(precedentActiveProcessId)}
+        processId={precedentActiveProcessId}
+        contextual
+      />
 
       <div className="workflow-action-row">
         {showDemoButtons && (

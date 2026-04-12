@@ -32,23 +32,31 @@ const PROCESS_LABELS = {
   exportingOntology: {
     label: 'Экспорт онтологии в Excel',
     hint: 'Формирование файла.'
+  },
+  loadingOntology: {
+    label: 'Загрузка агрегированной онтологии',
+    hint: 'Сбор JSON со сущностями и связями.'
   }
 }
 
 /**
- * Глобальный индикатор длительного процесса.
- * Показывает пользователю, что выполняется операция, и помогает избежать впечатления «зависания».
+ * Индикатор длительного процесса.
+ * Рекомендуется рендерить внутри секции, где запущена операция (`contextual`), а не вверху страницы.
  *
- * @param {{ active: boolean; processId?: string }} props
+ * @param {{ active: boolean; processId?: string; contextual?: boolean }} props
  */
-const ProcessIndicator = ({ active, processId }) => {
+const ProcessIndicator = ({ active, processId, contextual = false }) => {
   if (!active || !processId) return null
 
   const meta = PROCESS_LABELS[processId]
   if (!meta) return null
 
+  const rootClass = ['process-indicator', contextual ? 'process-indicator--contextual' : '']
+    .filter(Boolean)
+    .join(' ')
+
   return (
-    <div className="process-indicator" role="status" aria-live="polite" aria-busy="true">
+    <div className={rootClass} role="status" aria-live="polite" aria-busy="true">
       <div className="process-indicator-spinner" aria-hidden="true" />
       <div className="process-indicator-content">
         <span className="process-indicator-label">{meta.label}</span>
