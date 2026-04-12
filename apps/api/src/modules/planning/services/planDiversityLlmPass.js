@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { callDeepSeekAPI, OPENROUTER_API_KEY } from '../../../../openrouter.js';
+import { callOpenRouterChat, OPENROUTER_API_KEY } from '../../../../openrouter.js';
 import { extractJsonObjectFromContent } from '../../enrichment/services/semanticEnrichmentPipeline.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -63,7 +63,7 @@ export function shouldRunPlanDiversityLlmRewrite(payload = {}, stage3Override = 
 /**
  * Переписывает key_message и summary плана для лексического разнообразия.
  * @param {{ publications?: Array, plan_id?: string }} planSlice
- * @param {{ temperature?: number, maxTokens?: number }} options
+ * @param {{ temperature?: number }} options
  * @returns {Promise<{ publications: Array, meta: object }>}
  */
 export async function applyPlanDiversityLlmRewrite(planSlice = {}, options = {}) {
@@ -94,11 +94,9 @@ export async function applyPlanDiversityLlmRewrite(planSlice = {}, options = {})
   const userPrompt = `Входной план (JSON). Перепиши key_message и summary по правилам из системного промпта.\n\n${JSON.stringify(payloadIn)}`;
 
   const temperature = Number.isFinite(Number(options.temperature)) ? Number(options.temperature) : 0.35;
-  const maxTokens = Number.isFinite(Number(options.maxTokens)) ? Number(options.maxTokens) : 16000;
 
-  const llmResponse = await callDeepSeekAPI(systemPrompt, userPrompt, {
+  const llmResponse = await callOpenRouterChat(systemPrompt, userPrompt, {
     temperature,
-    maxTokens,
     responseFormat: 'json'
   });
 

@@ -20,15 +20,19 @@ import {
   choosePreferredKeyMessage,
   choosePreferredSummary,
   choosePreferredTopic,
-  normalizePublicationTopicForUi,
   dedupeKeyMessagesAcrossPublications,
+  dedupeRepeatedProductBoilerplateInSummaries,
+  ensureDistinctTopicTitles,
+  normalizePublicationTopicForUi,
   reconcilePublicationKeyMessageWithTopic,
   sanitizeTopicTitle,
   scorePlanDraftGeneAlignment,
   shouldRewriteMachineKeyMessage,
   stripMisalignedSummaryLead,
-  stripObjectiveMeta
+  stripObjectiveMeta,
+  summaryLeadAngleMismatchesTopic
 } from '../contentOutputUtils.js';
+import { sanitizeUserFacingSummary } from '../draftPlanGenerationPipeline.js';
 
 function asNumber(value, fallback = 0) {
   const numeric = Number(value);
@@ -85,7 +89,7 @@ function readPlanGaEnvNumber(name) {
   return Number.isFinite(n) ? n : null;
 }
 
-/** Углы подачи темы (согласовано с draftPlanGenerationPipeline TOPIC_DEDUP_FOCUS). */
+/** Углы подачи темы (согласовано с банками вариаций тем в contentOutputUtils). */
 const EVO_TOPIC_ANGLE_FOCUS = [
   'узкие места и риски',
   'метрики и KPI',
@@ -561,6 +565,7 @@ function shouldPreserveDraftKeyMessage(km, base, resolvedTopic, resolvedObjectiv
 function shouldPreserveDraftSummary(sm, base, resolvedTopic, resolvedObjective, syncOptions = {}) {
   if (!sm) return false;
   if (textDeclaresObjectiveMismatch(sm, resolvedObjective)) return false;
+  if (summaryLeadAngleMismatchesTopic(resolvedTopic, sm)) return false;
   const objectiveChanged = normalizeKey(resolvedObjective) !== normalizeKey(base.objective);
   if (objectiveChanged && !draftAlignsWithObjective(sm, resolvedObjective)) return false;
   if (!draftTextAlignsWithTopicCore(sm, resolvedTopic, 0.26, 2)) return false;
@@ -759,6 +764,46 @@ function diversifyDuplicateSummaryOpenings(publications = []) {
   });
 }
 
+function diversifyHighlySimilarSummaries(publications = []) {
+  if (!Array.isArray(publications) || publications.length <= 1) return publications;
+  const midKey = (sm) => {
+    const t = stripObjectiveMeta(String(sm || ''))
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+    if (t.length < 220) return '';
+    const chunk = t.slice(100, Math.min(t.length, 380));
+    return chunk.length >= 48 ? normalizeKey(chunk.slice(0, 140)) : '';
+  };
+  const counts = new Map();
+  for (const p of publications) {
+    const k = midKey(p?.summary);
+    if (!k) continue;
+    counts.set(k, (counts.get(k) || 0) + 1);
+  }
+  return publications.map((pub, index) => {
+    const sm = String(pub?.summary || '').trim();
+    const k = midKey(sm);
+    if (!k || (counts.get(k) || 0) < 2) return pub;
+    const semanticCore = pub?.semantic_core || buildDraftSemanticCore(pub);
+    const variantKey = (hashString(`${k}|${index}|midDedup`) >>> 0) + 101;
+    const rebuilt = buildSyncedSummary(
+      pub.topic,
+      pub.objective,
+      pub.format,
+      index,
+      pub.tone,
+      variantKey
+    );
+    const summary = choosePreferredSummary(semanticCore, rebuilt, {
+      topic: pub.topic,
+      format: pub.format,
+      fallbackSummary: pub.summary || rebuilt
+    });
+    return { ...pub, summary };
+  });
+}
+
 function applyGenomeToPlan(
   basePublications,
   draftContentPlan,
@@ -815,7 +860,7 @@ function applyGenomeToPlan(
       semantic_core: semanticCore
     };
   });
-  const dedupedBodies = diversifyDuplicateSummaryOpenings(publications);
+  const dedupedBodies = diversifyHighlySimilarSummaries(diversifyDuplicateSummaryOpenings(publications));
   const publicationsWithTitles = assignPublicationDisplayTitles(dedupedBodies);
 
   return {
@@ -1385,6 +1430,13 @@ export function sanitizePlanPublicationsBodies(publications = []) {
       fallbackSummary: pub?.summary || ''
     });
     sanitizedSummary = stripMisalignedSummaryLead(canonical, sanitizedSummary);
+    sanitizedSummary = sanitizeUserFacingSummary(
+      sanitizedSummary,
+      canonical,
+      format,
+      {},
+      typeof objective === 'string' ? objective : 'inform'
+    );
     const cta = pub?.cta
       ? buildObjectiveCta(pub?.objective, '', topic, index)
       : '';
@@ -1442,8 +1494,14 @@ export function sanitizePlanPublicationsBodies(publications = []) {
     };
   });
   const pass2 = dedupeKeyMessagesAcrossPublications(pass1);
-  return pass2.map((pub, index) => ({
+  const pass3 = pass2.map((pub, index) => ({
     ...pub,
     key_message: reconcilePublicationKeyMessageWithTopic(pub, index)
   }));
+  const pass4 = dedupeRepeatedProductBoilerplateInSummaries(pass3);
+  const pass5 = pass4.map((pub, index) => ({
+    ...pub,
+    key_message: reconcilePublicationKeyMessageWithTopic(pub, index)
+  }));
+  return ensureDistinctTopicTitles(pass5);
 }

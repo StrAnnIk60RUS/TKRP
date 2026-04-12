@@ -202,6 +202,35 @@ export function normalizePublicationTopicForUi(rawTopic = '') {
   return sanitizeTopicTitle(stripServiceTopicTail(rawTopic));
 }
 
+/** Ключ для дедупликации заголовков тем в плане. */
+export function normalizeTopicDedupKey(topic) {
+  return String(topic || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+/** Уникальные topic в массиве публикаций (повторы получают вариацию угла). */
+export function ensureDistinctTopicTitles(publications) {
+  if (!Array.isArray(publications)) return publications;
+  const seen = new Map();
+  return publications.map((pub, index) => {
+    if (!pub || typeof pub !== 'object') return pub;
+    const topic = typeof pub.topic === 'string' ? pub.topic.trim() : '';
+    if (!topic) return pub;
+    const key = normalizeTopicDedupKey(topic);
+    const occurrence = (seen.get(key) || 0) + 1;
+    seen.set(key, occurrence);
+    if (occurrence === 1) {
+      return { ...pub, topic: normalizePublicationTopicForUi(topic) };
+    }
+    return {
+      ...pub,
+      topic: normalizePublicationTopicForUi(buildNaturalTopicVariation(topic, pub.objective, occurrence, index))
+    };
+  });
+}
+
 /**
  * Для ключевого сообщения: если тема «длинный продукт: короткий угол», в шаблонах
  * используем только угол — иначе заголовок карточки и «ключевое» трижды повторяют одно имя.
@@ -247,6 +276,62 @@ export function replaceQuotedFullTopicWithCompact(keyMessage, canonicalTopic, co
 }
 
 /**
+ * Индекс точки, завершающей первое предложение; пропускает ложные границы вида «… угла 1. Далее текст»
+ * (нумерация после номера варианта в первой строке).
+ */
+export function findSummaryFirstSentenceEnd(text = '', minPos = 24, maxPos = 320) {
+  const s = String(text || '');
+  let search = 0;
+  while (search < s.length) {
+    const rel = s.slice(search).search(/\.\s+/u);
+    if (rel === -1) return -1;
+    const abs = search + rel;
+    if (abs < minPos || abs > maxPos) return -1;
+    const beforeDot = abs - 1;
+    if (beforeDot >= 0 && /\d/u.test(s[beforeDot])) {
+      let k = beforeDot;
+      while (k >= 0 && /\d/u.test(s[k])) k -= 1;
+      const digitRun = s.slice(k + 1, abs);
+      const charBeforeRun = k >= 0 ? s[k] : '';
+      const afterChunk = s.slice(abs + 2).trimStart();
+      const looksLikeListEnumerator =
+        /^\d{1,3}$/u.test(digitRun) &&
+        /[\s:;—–\-]/u.test(charBeforeRun) &&
+        /^[А-ЯЁA-Z«"„]/u.test(afterChunk);
+      if (looksLikeListEnumerator) {
+        search = abs + 2;
+        continue;
+      }
+    }
+    return abs;
+  }
+  return -1;
+}
+
+export function getSummaryLeadForAngleCheck(summary) {
+  const s = stripObjectiveMeta(summary);
+  if (!s) return '';
+  const end = findSummaryFirstSentenceEnd(s, 12, 400);
+  if (end < 0) return s.length <= 400 ? s : s.slice(0, 400);
+  return s.slice(0, end).trim();
+}
+
+function shouldStripMisalignedLead(canonical, lead, rest) {
+  if (!rest || rest.length < 48) return false;
+  const leadNorm = normalizeWhitespace(lead).toLowerCase();
+  const canNorm = normalizeWhitespace(canonical).toLowerCase();
+  if (leadNorm === canNorm) return false;
+  const cIdx = canonical.indexOf(': ');
+  const lIdx = lead.indexOf(': ');
+  const minStemForSplit = 12;
+  if (cIdx === -1 || lIdx === -1) return false;
+  const cStem = canonical.slice(0, cIdx).trim().toLowerCase();
+  const lStem = lead.slice(0, lIdx).trim().toLowerCase();
+  if (cStem.length < minStemForSplit || lStem !== cStem) return false;
+  return keyMessageAngleMismatchesTopic(canonical, lead) || leadNorm !== canNorm;
+}
+
+/**
  * Убирает первое предложение summary, если это устаревшая строка-тема с тем же стержнем продукта,
  * но другим хвостом (рассинхрон после эволюции / merge).
  */
@@ -254,28 +339,118 @@ export function stripMisalignedSummaryLead(canonicalTopic, summary) {
   const s = stripObjectiveMeta(summary);
   const canonical = normalizePublicationTopicForUi(canonicalTopic);
   if (!s || !canonical) return s;
-  const firstDot = s.search(/\.\s+/u);
-  if (firstDot < 24 || firstDot > 320) return s;
-  const lead = s.slice(0, firstDot).trim();
-  const rest = s.slice(firstDot + 1).trim();
-  if (!rest || rest.length < 48) return s;
 
-  const leadNorm = normalizeWhitespace(lead).toLowerCase();
-  const canNorm = normalizeWhitespace(canonical).toLowerCase();
-  if (leadNorm === canNorm) return s;
+  const tryAtDot = (firstDot) => {
+    if (firstDot < 24 || firstDot > 520) return null;
+    const lead = s.slice(0, firstDot).trim();
+    const rest = s.slice(firstDot + 1).trim();
+    if (!shouldStripMisalignedLead(canonical, lead, rest)) return null;
+    return rest;
+  };
 
-  const cIdx = canonical.indexOf(': ');
-  const lIdx = lead.indexOf(': ');
-  if (cIdx !== -1 && lIdx !== -1) {
-    const cStem = canonical.slice(0, cIdx).trim().toLowerCase();
-    const lStem = lead.slice(0, lIdx).trim().toLowerCase();
-    if (cStem.length >= 20 && lStem === cStem) {
-      if (keyMessageAngleMismatchesTopic(canonical, lead) || leadNorm !== canNorm) {
-        return rest;
-      }
+  const naiveDot = s.search(/\.\s+/u);
+  const naiveRest = tryAtDot(naiveDot);
+  if (naiveRest) return naiveRest;
+
+  const smartDot = findSummaryFirstSentenceEnd(s, 24, 320);
+  if (smartDot < 0) return s;
+  const smartRest = tryAtDot(smartDot);
+  return smartRest || s;
+}
+
+/** Сегменты угла по em dash (и похожим тире) для сравнения хвостов вроде «… бренда — A» vs «… бренда — B». */
+function splitTopicAngleSegments(text = '') {
+  return normalizeWhitespace(String(text || ''))
+    .toLowerCase()
+    .split(/\s*(?:—|–)\s*/u)
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+/**
+ * В key_message есть «…» с углом, не совпадающим с углом canonical (без опоры только на номера вариантов).
+ */
+function keyMessageQuotedAngleMismatchesCanonical(canonical, keyMessage) {
+  const km = stripObjectiveMeta(String(keyMessage || ''));
+  const m = km.match(/«([^»]{10,240})»/u);
+  if (!m) return false;
+  const inner = m[1].trim();
+  const compact = getCompactTopicForMessage(canonical);
+  if (!compact || compact.length < 12) return false;
+
+  const innerL = normalizeWhitespace(inner).toLowerCase();
+  const compactL = normalizeWhitespace(compact).toLowerCase();
+  const canonL = normalizeWhitespace(canonical).toLowerCase();
+
+  if (innerL === compactL || innerL === canonL) return false;
+  if (canonL.includes(innerL) && innerL.length >= 28) return false;
+  if (compactL.length >= 24 && innerL.includes(compactL)) return false;
+
+  const iSeg = splitTopicAngleSegments(inner);
+  const cSeg = splitTopicAngleSegments(compact);
+
+  if (iSeg.length >= 2 && cSeg.length >= 2 && iSeg[0] === cSeg[0]) {
+    const tailI = iSeg.slice(1).join(' — ');
+    const tailC = cSeg.slice(1).join(' — ');
+    if (tailI === tailC) return false;
+    if (tailI.length >= 8 && tailC.length >= 8) {
+      const ol = textOverlapRatio(tailI, tokenizeCoreTerms(tailC));
+      if (ol < 0.48) return true;
     }
+    return false;
   }
-  return s;
+
+  const compactTerms = tokenizeCoreTerms(compact);
+  if (compactTerms.length < 3) return false;
+  const overlapCompact = textOverlapRatio(inner, compactTerms);
+  if (overlapCompact >= 0.34) return false;
+
+  return innerL.length >= 14;
+}
+
+/**
+ * Одинаковый RAG-абзац «Комплексная система контроля…» — оставляем в первом посту плана, в остальных вырезаем.
+ */
+export function dedupeRepeatedProductBoilerplateInSummaries(publications = []) {
+  if (!Array.isArray(publications) || publications.length <= 1) return publications;
+  const BOILERPLATE_HEAD_RE = /Комплексная система контроля сварочных процессов,?\s*включающ/iu;
+  const BOILERPLATE_SENTENCE_RE =
+    /(?:комплексн[а-я]*\s+систем|регистратор|блок(?:ом)?\s+датчик|мобильн[а-я]*\s+приложени|веб[\s-]?приложени|идентификац|график[а-я]*\s+параметр|документальн[а-я]*\s+подтверждени|сварочн[а-я]*\s+процесс)/iu;
+
+  const stripLeadingBoilerplate = (summary = '') => {
+    const normalized = normalizeWhitespace(summary);
+    if (!normalized || !BOILERPLATE_HEAD_RE.test(normalized)) return normalized;
+    const sentences = normalized
+      .split(/(?<=[.!?])\s+/u)
+      .map((part) => part.trim())
+      .filter(Boolean);
+    if (sentences.length <= 1) return normalized;
+
+    let cutSentences = 1;
+    for (let i = 1; i < Math.min(sentences.length, 5); i += 1) {
+      if (BOILERPLATE_SENTENCE_RE.test(sentences[i])) {
+        cutSentences = i + 1;
+        continue;
+      }
+      break;
+    }
+    const stripped = normalizeWhitespace(sentences.slice(cutSentences).join(' ')).trim();
+    return stripped.length >= 180 ? stripped : normalized;
+  };
+
+  let keptFirstBlock = false;
+  return publications.map((pub) => {
+    const sm = String(pub?.summary || '').trim();
+    if (!sm || !BOILERPLATE_HEAD_RE.test(sm)) return pub;
+    if (!keptFirstBlock) {
+      keptFirstBlock = true;
+      return pub;
+    }
+    const stripped = stripLeadingBoilerplate(sm);
+    if (stripped.length < 180) return pub;
+    const next = { ...pub, summary: stripped };
+    return { ...next, semantic_core: buildDraftSemanticCore(next) };
+  });
 }
 
 /** Согласовать ключевое сообщение с финальной темой карточки (title || topic). */
@@ -290,6 +465,9 @@ export function reconcilePublicationKeyMessageWithTopic(publication = {}, slotIn
   const index = Number.isFinite(Number(slotIndex)) ? Number(slotIndex) : 0;
 
   if (keyMessageAngleMismatchesTopic(canonical, key_message)) {
+    return buildNaturalKeyMessage({ topic: canonical, objective, format, tone, index });
+  }
+  if (keyMessageQuotedAngleMismatchesCanonical(canonical, key_message)) {
     return buildNaturalKeyMessage({ topic: canonical, objective, format, tone, index });
   }
   const compact = getCompactTopicForMessage(canonical);
@@ -333,6 +511,13 @@ export function keyMessageAngleMismatchesTopic(topic = '', keyMessage = '') {
     if (!tn.has(k)) return true;
   }
   return false;
+}
+
+export function summaryLeadAngleMismatchesTopic(canonicalTopic, summary) {
+  const canonical = normalizePublicationTopicForUi(canonicalTopic);
+  const lead = getSummaryLeadForAngleCheck(summary);
+  if (!canonical || !lead) return false;
+  return keyMessageAngleMismatchesTopic(canonical, lead);
 }
 
 const BUILTIN_KEY_MESSAGE_LEAD_RE = [
@@ -624,9 +809,16 @@ export function buildNaturalTopicVariation(topic, objective = 'inform', occurren
   if (!baseTopic) return '';
   if (occurrence <= 1) return baseTopic;
   const bank = OBJECTIVE_TOPIC_VARIATIONS[normalizeObjectiveKey(objective)] || OBJECTIVE_TOPIC_VARIATIONS.inform;
-  const suffix = bank[(Math.max(0, occurrence - 2) + Math.max(0, index)) % bank.length];
+  const start = (Math.max(0, occurrence - 2) + Math.max(0, index)) % bank.length;
   const separator = /[:!?]$/.test(baseTopic) || baseTopic.includes(':') ? ' — ' : ': ';
-  return `${baseTopic}${separator}${suffix}`;
+  const baseLower = baseTopic.toLowerCase();
+  for (let tries = 0; tries < bank.length; tries += 1) {
+    const suffix = bank[(start + tries) % bank.length];
+    if (!baseLower.includes(suffix.toLowerCase())) {
+      return `${baseTopic}${separator}${suffix}`;
+    }
+  }
+  return `${baseTopic}${separator}${bank[start]}`;
 }
 
 export function buildObjectiveCta(objective = 'inform', projectName = '', topic = '', index = 0) {
@@ -644,6 +836,33 @@ export function buildObjectiveCta(objective = 'inform', projectName = '', topic 
     cta = `${cta} ${normalizedProject}`;
   }
   return cta;
+}
+
+/** Согласовано с промптом articleDraftPlanBatchPrompt (п.17). */
+export const KEY_MESSAGE_MAX_LENGTH = 200;
+
+function truncateKeyMessageAtWord(text, maxLen) {
+  const t = normalizeWhitespace(text);
+  if (!t || t.length <= maxLen) return t;
+  const budget = Math.max(1, maxLen - 3);
+  let cut = t.slice(0, budget);
+  const sp = cut.lastIndexOf(' ');
+  if (sp > Math.floor(maxLen * 0.42)) cut = cut.slice(0, sp);
+  return `${cut.trimEnd()}...`;
+}
+
+function fitKeyMessageBaseAndSuffix(baseCore, suffixParts, maxLen) {
+  const suffix = suffixParts.filter(Boolean).join(' ');
+  const suffixSpaced = suffix ? ` ${suffix}` : '';
+  const base = normalizeWhitespace(stripObjectiveMeta(baseCore));
+  if (!suffixSpaced) return truncateKeyMessageAtWord(base, maxLen);
+  if (suffixSpaced.length >= maxLen - 16) {
+    return truncateKeyMessageAtWord(`${base}${suffixSpaced}`, maxLen);
+  }
+  const maxBase = maxLen - suffixSpaced.length;
+  const trimmedBase = truncateKeyMessageAtWord(base, maxBase).replace(/\.\.\.$/u, '').trimEnd();
+  const out = normalizeWhitespace(`${trimmedBase}${suffixSpaced}`);
+  return out.length <= maxLen ? out : truncateKeyMessageAtWord(out, maxLen);
 }
 
 export function buildNaturalKeyMessage({
@@ -717,14 +936,12 @@ export function buildNaturalKeyMessage({
   const bank = templatesByObjective[resolvedObjective] || templatesByObjective.inform;
   const pick =
     (hashString(`${shortTopic}|${resolvedFormat}|${resolvedTone}|${index}|${resolvedObjective}`) >>> 0) % bank.length;
-  let message = bank[pick];
-  if (resolvedFormat === 'video' || resolvedFormat === 'image') {
-    message = `${message} ${resolvedFormat === 'video' ? 'Визуальный формат помогает увидеть логику решения быстрее.' : 'Наглядный формат позволяет быстрее сопоставить шаги и результат.'}`;
-  } else if (resolvedTone === 'friendly') {
-    message = `${message} Объясняем спокойно и по делу, без перегруза формулировками.`;
-  }
-  const cleaned = stripObjectiveMeta(message);
-  return cleaned.length <= 200 ? cleaned : `${cleaned.slice(0, 197).trimEnd()}...`;
+  const message = bank[pick];
+  const suffixParts = [];
+  if (resolvedFormat === 'video') suffixParts.push('На видео — шаги и вывод без лишних слов.');
+  else if (resolvedFormat === 'image') suffixParts.push('Схема наглядно фиксирует шаги и результат.');
+  if (resolvedTone === 'friendly') suffixParts.push('Тон спокойный, по делу.');
+  return fitKeyMessageBaseAndSuffix(message, suffixParts, KEY_MESSAGE_MAX_LENGTH);
 }
 
 export function calibrateExpectedKpi(

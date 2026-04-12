@@ -14,6 +14,7 @@ import {
 
 const {
   hasSemanticOverlap,
+  buildGeneratedPublicationContextItem,
   buildDraftSemanticCore,
   sanitizeTopicTitle,
   buildNaturalTopicVariation,
@@ -74,6 +75,33 @@ test('calibrateExpectedKpi returns bounded relative scores and bands', () => {
   assert.ok(calibrated.reach_potential <= 0.78);
   assert.equal(calibrated.scoring_mode, 'relative_model_score');
   assert.match(calibrated.engagement_band, /low|baseline|medium|high/);
+});
+
+test('buildGeneratedPublicationContextItem keeps summary for next-month anti-repeat context', () => {
+  const slot = {
+    slot_id: 'slot_001',
+    planned_date: '2026-05-06',
+    platform: 'telegram',
+    objective: 'inform',
+    format: 'text'
+  };
+  const resolved = {
+    objective: 'convert',
+    format: 'image',
+    topic: '  Мобильный регистратор: обновление продукта  ',
+    key_message: '  Следующий шаг к пилоту и окупаемости  ',
+    summary: '  Комплексная система контроля... уникальный хвост для следующего месяца  '
+  };
+  const out = buildGeneratedPublicationContextItem(slot, resolved);
+  assert.equal(out.publication_id, 'slot_001');
+  assert.equal(out.objective, 'convert');
+  assert.equal(out.format, 'image');
+  assert.equal(out.topic, 'Мобильный регистратор: обновление продукта');
+  assert.equal(out.key_message, 'Следующий шаг к пилоту и окупаемости');
+  assert.equal(
+    out.summary,
+    'Комплексная система контроля... уникальный хвост для следующего месяца'
+  );
 });
 
 test('semantic core prefers strong draft topic over generic optimized label', () => {

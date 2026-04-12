@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { callDeepSeekAPI } from '../../../../openrouter.js';
+import { callOpenRouterChat } from '../../../../openrouter.js';
 import { predictEngagementRatesForGeneratedPublications } from '../../ml/services/relevancePredictionService.js';
 import { parseJsonObjectFromLlmContent } from '../../../shared/utils/llmJsonParsing.js';
 import { normalizePublicationFormatValue, normalizePublicationToneValue } from '../routes/shared/planUtils.js';
@@ -16,6 +16,8 @@ import {
   choosePreferredSummary,
   choosePreferredTopic,
   dedupeKeyMessagesAcrossPublications,
+  dedupeRepeatedProductBoilerplateInSummaries,
+  ensureDistinctTopicTitles,
   normalizePublicationTopicForUi,
   reconcilePublicationKeyMessageWithTopic,
   sanitizeTopicTitle,
@@ -328,7 +330,21 @@ function buildMonthlySlotSummaryHints(slots = [], monthIndex = 0) {
   }));
 }
 
-function sanitizeUserFacingSummary(summary, topic, format, formInput) {
+/** ТЗ автору / повелительное наклонение вместо текста для ленты (без \b — кириллица). */
+const AUTHOR_BRIEF_PHRASE_RE =
+  /(?:^|[\s,.;:!?«»(])(?:Сделай\s+акцент|Добавь\s+спорн[а-я]*|Покажи,\s+в\s+каком\s+месте|Объясни,\s+как\s+удерживать)/iu;
+
+function summarySanitizeSeed(topic, format, objective, summarySnippet) {
+  let h = 2166136261;
+  const pack = `${topic}|${format}|${objective}|${summarySnippet.slice(0, 64)}`;
+  for (let i = 0; i < pack.length; i += 1) {
+    h ^= pack.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+export function sanitizeUserFacingSummary(summary, topic, format, formInput = {}, objective = 'inform') {
   const minLength = getMinSummaryLengthByFormat(format);
   let normalized = stripObjectiveMeta(summary)
     .replace(/\b(?:в\s+фокусе|коротко\s+о\s+главном|для\s+команды\s+на\s+местах)\s*:\s*/giu, '')
@@ -342,6 +358,15 @@ function sanitizeUserFacingSummary(summary, topic, format, formInput) {
     /\b(?:цель\s+публикации|задача\s+материала|читатель\s+получит|структура\s+материала)\b/iu.test(normalized);
   if (hasMetaNarration) {
     return buildSummaryRepairFromTopic(topic, format, formInput);
+  }
+  if (AUTHOR_BRIEF_PHRASE_RE.test(normalized)) {
+    const obj = normalizeObjective(objective, 'inform');
+    const seed = summarySanitizeSeed(topic, format, obj, normalized);
+    return buildDiversifiedSummaryForSlot(
+      { topic, format, objective: obj },
+      formInput,
+      seed
+    );
   }
   return ensureTextLength(normalized, minLength, MAX_SUMMARY_LENGTH);
 }
@@ -387,7 +412,17 @@ function buildDiversifiedSummaryForSlot(slot, formInput, variantSeed = 0) {
     `Смена, где «${topic}» уже работает: что делают иначе, и что ломается, если система есть, а дисциплины нет. ${objectiveLine} ${pd} ${pb} ${aud} Практические шаги, чтобы процесс не рушился на передаче смен и смене персонала.`
   ];
   const body = bodies[v];
-  return sanitizeUserFacingSummary(body, topic, format, formInput);
+  return sanitizeUserFacingSummary(body, topic, format, formInput, objective);
+}
+
+function summaryMiddleFingerprint(text) {
+  const t = stripObjectiveMeta(String(text || ''))
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+  if (t.length < 220) return '';
+  const mid = t.slice(110, Math.min(t.length, 400));
+  return mid.length >= 52 ? mid.slice(0, 140) : '';
 }
 
 function applyDraftBatchSummaryDeduplication(publications = [], slots = [], formInput = {}, monthIndex = 0) {
@@ -395,6 +430,7 @@ function applyDraftBatchSummaryDeduplication(publications = [], slots = [], form
   if (!slotList.length) return toArray(publications);
   const byId = new Map(toArray(publications).map((p) => [p.slot_id, { ...p }]));
   const seenOpeningKeys = new Set();
+  const seenMidKeys = new Set();
   let complexSystemUsed = false;
   let rewriteSalt = monthIndex * 13;
 
@@ -410,16 +446,20 @@ function applyDraftBatchSummaryDeduplication(publications = [], slots = [], form
     };
     const rawSummary = String(pub.summary || '');
     const openingKey = summaryOpeningNormalizer(rawSummary);
+    const midKey = summaryMiddleFingerprint(rawSummary);
     const complex = isGenericComplexSystemOpening(rawSummary);
     const dupOpening = openingKey.length >= 48 && seenOpeningKeys.has(openingKey);
+    const dupMid = midKey.length >= 52 && seenMidKeys.has(midKey);
     const dupComplex = complex && complexSystemUsed;
 
-    if (dupOpening || dupComplex) {
+    if (dupOpening || dupComplex || dupMid) {
       rewriteSalt += 1;
       pub.summary = buildDiversifiedSummaryForSlot(merged, formInput, idx * 17 + rewriteSalt);
     }
     const finalKey = summaryOpeningNormalizer(pub.summary);
     if (finalKey.length >= 48) seenOpeningKeys.add(finalKey);
+    const finalMid = summaryMiddleFingerprint(pub.summary);
+    if (finalMid.length >= 52) seenMidKeys.add(finalMid);
     if (isGenericComplexSystemOpening(pub.summary)) complexSystemUsed = true;
   }
 
@@ -934,7 +974,8 @@ function buildFallbackTopic(slot, formInput, index) {
     retain: 'развитие сервиса',
     brand_building: 'экспертный образ бренда'
   };
-  return `${projectName}: ${topicByObjective[slot.objective] || 'экспертный материал'} ${index + 1}`;
+  const stem = `${projectName}: ${topicByObjective[slot.objective] || 'экспертный материал'}`;
+  return buildNaturalTopicVariation(stem, normalizeObjective(slot.objective, 'inform'), 2, index);
 }
 
 function buildFallbackSummary(slot, formInput) {
@@ -950,12 +991,12 @@ function buildFallbackSummary(slot, formInput) {
   const topic = sanitizeTopicTitle(slot?.topic) || buildFallbackTopic(slot, formInput, 0);
   const scenarioLine =
     slot?.objective === 'convert'
-      ? 'Покажи, в каком месте процесса решение быстрее всего проявляет бизнес-эффект и почему это видно в цифрах.'
+      ? 'На практике эффект чаще всего виден там, где контроль совпадает с циклом партии и смены: какие показатели честно сравнить до и после.'
       : slot?.objective === 'retain'
-        ? 'Объясни, как удерживать результат после запуска и какие сервисные шаги защищают качество.'
+        ? 'После запуска качество держится не «само»: какие регламентные шаги и роли не дают процессу откатиться.'
         : slot?.objective === 'engage'
-          ? 'Добавь спорный или неоднозначный сценарий, который хочется обсудить внутри команды.'
-          : 'Сделай акцент на понятном рабочем сценарии, где тема влияет на скорость, качество или стоимость процесса.';
+          ? 'На участке нередко сталкиваются два рабочих варианта — оба правдоподобны; разбираем, где они расходятся и что проверить в первую очередь.'
+          : 'Сценарий на смене: где теряется время, из‑за чего всплывает брак и какие проверки реально меняют исход.';
   const base = `${topic}. ${projectDescription} ${projectBenefits} ${projectGoals} ${scenarioLine}`;
   return sanitizeUserFacingSummary(base, topic, slot?.format, formInput);
 }
@@ -1146,7 +1187,8 @@ function normalizeBatchPublication(
     ),
     normalizedPublication.topic,
     slot?.format,
-    formInput
+    formInput,
+    normalizedPublication.objective
   );
   normalizedPublication.cta = normalizedPublication.cta
     ? buildObjectiveCta(
@@ -1165,53 +1207,6 @@ function normalizeBatchPublication(
     },
     formInput
   );
-}
-
-function normalizeTopicDedupKey(topic) {
-  return String(topic || '')
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, ' ');
-}
-
-const TOPIC_DEDUP_FOCUS = [
-  'узкие места и риски',
-  'метрики и KPI',
-  'внедрение на практике',
-  'сравнение сценариев',
-  'типовые ошибки',
-  'чек-лист для команды',
-  'экономика решения',
-  'интеграция в процесс'
-];
-
-const OBJECTIVE_TOPIC_TAG = {
-  inform: 'обзор',
-  educate: 'разбор',
-  engage: 'дискуссия',
-  convert: 'ценность',
-  retain: 'сопровождение',
-  brand_building: 'бренд'
-};
-
-function ensureDistinctTopicTitles(publications) {
-  if (!Array.isArray(publications)) return publications;
-  const seen = new Map();
-  return publications.map((pub, index) => {
-    if (!pub || typeof pub !== 'object') return pub;
-    const topic = typeof pub.topic === 'string' ? pub.topic.trim() : '';
-    if (!topic) return pub;
-    const key = normalizeTopicDedupKey(topic);
-    const occurrence = (seen.get(key) || 0) + 1;
-    seen.set(key, occurrence);
-    if (occurrence === 1) {
-      return { ...pub, topic: normalizePublicationTopicForUi(topic) };
-    }
-    return {
-      ...pub,
-      topic: normalizePublicationTopicForUi(buildNaturalTopicVariation(topic, pub.objective, occurrence, index))
-    };
-  });
 }
 
 function validateDraftPlan(plan = {}, formInput = {}) {
@@ -1348,9 +1343,9 @@ ${JSON.stringify(compactRagContext, null, 2)}
 ${targetPublicationCount}
 `;
 
-  const llmResponse = await callDeepSeekAPI(systemPrompt, userPrompt, {
+  // Низкая температура — стабильная структура JSON-скелета плана.
+  const llmResponse = await callOpenRouterChat(systemPrompt, userPrompt, {
     temperature: 0.2,
-    maxTokens: 12000,
     responseFormat: 'json'
   });
   const parsed = extractJsonFromLlmContent(llmResponse.content || '');
@@ -1418,9 +1413,9 @@ ${monthKey}
 ${JSON.stringify(slots, null, 2)}
 `;
 
-  const llmResponse = await callDeepSeekAPI(systemPrompt, userPrompt, {
+  // Чуть выше, чем у скелета — больше лексического разнообразия в текстах постов при том же JSON-режиме.
+  const llmResponse = await callOpenRouterChat(systemPrompt, userPrompt, {
     temperature: 0.28,
-    maxTokens: 12000,
     responseFormat: 'json'
   });
   const parsed = extractJsonFromLlmContent(llmResponse.content || '');
@@ -1430,6 +1425,19 @@ ${JSON.stringify(slots, null, 2)}
   return {
     publications,
     usage: llmResponse.usage || null
+  };
+}
+
+function buildGeneratedPublicationContextItem(slot = {}, resolved = {}) {
+  return {
+    publication_id: slot.slot_id,
+    planned_date: slot.planned_date,
+    platform: slot.platform,
+    objective: normalizeObjective(resolved.objective, slot.objective),
+    format: normalizeFormat(resolved.format, slot.format),
+    topic: typeof resolved.topic === 'string' ? resolved.topic.trim() : '',
+    key_message: typeof resolved.key_message === 'string' ? resolved.key_message.trim() : '',
+    summary: typeof resolved.summary === 'string' ? resolved.summary.trim() : ''
   };
 }
 
@@ -1487,14 +1495,7 @@ export async function generateDraftPlanBatched({
       const resolved = byId || byPosition || null;
       publicationMap.set(slot.slot_id, resolved);
       if (resolved) {
-        generatedPublications.push({
-          publication_id: slot.slot_id,
-          planned_date: slot.planned_date,
-          platform: slot.platform,
-          objective: normalizeObjective(resolved.objective, slot.objective),
-          format: normalizeFormat(resolved.format, slot.format),
-          topic: typeof resolved.topic === 'string' ? resolved.topic.trim() : ''
-        });
+        generatedPublications.push(buildGeneratedPublicationContextItem(slot, resolved));
       }
     });
   }
@@ -1591,7 +1592,8 @@ export async function generateDraftPlanBatched({
         ),
         canonical,
         publication?.format,
-        formInput
+        formInput,
+        publication?.objective
       ),
       cta,
       expected_kpi: calibrateExpectedKpi(publication?.expected_kpi, {
@@ -1605,6 +1607,11 @@ export async function generateDraftPlanBatched({
   });
 
   repairedPlan.publications = dedupeKeyMessagesAcrossPublications(repairedPlan.publications);
+  repairedPlan.publications = repairedPlan.publications.map((publication, index) => ({
+    ...publication,
+    key_message: reconcilePublicationKeyMessageWithTopic(publication, index)
+  }));
+  repairedPlan.publications = dedupeRepeatedProductBoilerplateInSummaries(repairedPlan.publications);
   repairedPlan.publications = repairedPlan.publications.map((publication, index) => ({
     ...publication,
     key_message: reconcilePublicationKeyMessageWithTopic(publication, index)
@@ -1639,6 +1646,7 @@ export async function generateDraftPlanBatched({
 export const DRAFT_PLAN_PIPELINE_TEST_UTILS = {
   tokenizeSemanticText,
   hasSemanticOverlap,
+  buildGeneratedPublicationContextItem,
   buildDraftSemanticCore,
   sanitizeTopicTitle,
   buildNaturalTopicVariation,
