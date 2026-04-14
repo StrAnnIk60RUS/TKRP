@@ -28,7 +28,7 @@
         "vk"
       ],
       "evoPopulationSize": "64",
-      "evoGenerations": "80",
+      "evoGenerations": "78",
       "evoStagnationGenerations": "20",
       "evoTournamentSize": "5",
       "evoEliteSize": "4",
@@ -51,7 +51,7 @@
       "postsPerWeek": "3.5",
       "minPublications": "11"
     },
-    "updated_at": "2026-04-12T17:39:28.584Z"
+    "updated_at": "2026-04-14T19:10:13.383Z"
   },
-  "updated_at": "2026-04-12T17:39:28.584Z"
+  "updated_at": "2026-04-14T19:10:13.383Z"
 }

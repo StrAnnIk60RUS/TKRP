@@ -1,6 +1,16 @@
 import React from 'react'
 
-const formatPercent = (value) => `${((Number(value) || 0) * 100).toFixed(1)}%`
+const formatPercent = (value) => {
+  const n = Number(value)
+  if (!Number.isFinite(n)) return '—'
+  return `${(n * 100).toFixed(1)}%`
+}
+
+const formatCount = (value) => {
+  const n = Number(value)
+  if (!Number.isFinite(n)) return '0'
+  return String(Math.max(0, Math.round(n)))
+}
 
 const formatPredictedPlanLikes = (value) => {
   if (value == null || value === '') return '—'
@@ -9,24 +19,72 @@ const formatPredictedPlanLikes = (value) => {
   return n.toLocaleString('ru-RU', { maximumFractionDigits: 1 })
 }
 
+const toFiniteNumberOrNull = (value) => {
+  if (value == null || value === '') return null
+  const n = Number(value)
+  return Number.isFinite(n) ? n : null
+}
+
 /** Прогноз лайков плана: план (после сохранения) → stage2 API → stage1 черновой прогноз. */
 const resolvePredictedTotalLikes = (planExpectedKpi, optimizationMeta) => {
-  const fromPlan = planExpectedKpi?.predicted_total_likes
-  if (fromPlan != null && fromPlan !== '' && Number.isFinite(Number(fromPlan))) return Number(fromPlan)
-  const s2 =
+  const fromPlan = toFiniteNumberOrNull(planExpectedKpi?.predicted_total_likes)
+  if (fromPlan != null) return fromPlan
+  const s2 = toFiniteNumberOrNull(
     optimizationMeta?.stage2?.predicted_total_likes ??
     optimizationMeta?.stage2?.f_kp ??
     optimizationMeta?.predicted_total_likes ??
     optimizationMeta?.f_kp
-  if (s2 != null && s2 !== '' && Number.isFinite(Number(s2))) return Number(s2)
-  const s1 = optimizationMeta?.stage1?.predicted_total_likes
-  if (s1 != null && s1 !== '' && Number.isFinite(Number(s1))) return Number(s1)
+  )
+  if (s2 != null) return s2
+  const s1 = toFiniteNumberOrNull(optimizationMeta?.stage1?.predicted_total_likes)
+  if (s1 != null) return s1
   return null
+}
+
+const resolvePredictedPlanMetric = (metricName, planExpectedKpi, optimizationMeta) => {
+  const fromPlan = toFiniteNumberOrNull(planExpectedKpi?.[metricName])
+  if (fromPlan != null) return fromPlan
+  const stage2 = toFiniteNumberOrNull(optimizationMeta?.stage2?.[metricName] ?? optimizationMeta?.[metricName])
+  if (stage2 != null) return stage2
+  return toFiniteNumberOrNull(optimizationMeta?.stage1?.[metricName])
 }
 
 const PlanSummaryBar = ({ summary, optimizationMeta, planExpectedKpi = null }) => {
   const predictedTotal = resolvePredictedTotalLikes(planExpectedKpi, optimizationMeta)
   const predictedLabel = formatPredictedPlanLikes(predictedTotal)
+  const predictedTotalShares = resolvePredictedPlanMetric(
+    'predicted_total_shares',
+    planExpectedKpi,
+    optimizationMeta
+  )
+  const predictedTotalViews = resolvePredictedPlanMetric(
+    'predicted_total_views',
+    planExpectedKpi,
+    optimizationMeta
+  )
+  const predictedMetrics = [
+    { label: 'Лайки', value: predictedLabel },
+    ...(predictedTotalShares != null
+      ? [{ label: 'Репосты', value: formatPredictedPlanLikes(predictedTotalShares) }]
+      : []),
+    ...(predictedTotalViews != null
+      ? [{ label: 'Просмотры', value: formatPredictedPlanLikes(predictedTotalViews) }]
+      : [])
+  ]
+  const filteredCountLabel = formatCount(summary?.filteredCount)
+  const totalCountLabel = formatCount(summary?.totalCount)
+  const avgEngagementLabel = formatPercent(summary?.avgEngagementRate)
+  const avgConversionLabel = formatPercent(summary?.avgConversionPotential)
+  const avgReachLabel = formatPercent(summary?.avgReachPotential)
+  const filteredMlCountLabel = formatCount(summary?.postsWithMlMetricsCount)
+  const platformsLabel =
+    typeof summary?.platformsLabel === 'string' && summary.platformsLabel.trim()
+      ? summary.platformsLabel
+      : 'не указаны'
+  const dateRangeLabel =
+    typeof summary?.dateRangeLabel === 'string' && summary.dateRangeLabel.trim()
+      ? summary.dateRangeLabel
+      : '—'
   const constraintCheck = optimizationMeta?.stage2?.constraints_check
   const constraintLabel =
     constraintCheck?.valid === true
@@ -42,28 +100,40 @@ const PlanSummaryBar = ({ summary, optimizationMeta, planExpectedKpi = null }) =
     <section className="plan-summary-bar">
       <div className="plan-summary-metric">
         <span className="plan-summary-metric-label">Публикаций</span>
-        <strong className="plan-summary-metric-value">{summary.filteredCount}</strong>
+        <strong className="plan-summary-metric-value">{filteredCountLabel}</strong>
         <span className="plan-summary-metric-meta">
-          из {summary.totalCount} в текущем плане
+          из {totalCountLabel} в текущем плане
         </span>
       </div>
 
       <div className="plan-summary-metric">
-        <span className="plan-summary-metric-label">Средний engagement</span>
-        <strong className="plan-summary-metric-value">{formatPercent(summary.avgEngagementRate)}</strong>
+        <span className="plan-summary-metric-label">Сводка KPI по фильтру</span>
+        <strong className="plan-summary-metric-value">{avgEngagementLabel}</strong>
+        <ul className="plan-summary-metric-meta-list">
+          <li>
+            <span className="plan-summary-metric-meta-key">Средняя конверсия:</span> {avgConversionLabel}
+          </li>
+          <li>
+            <span className="plan-summary-metric-meta-key">Средний охват:</span> {avgReachLabel}
+          </li>
+          <li>
+            <span className="plan-summary-metric-meta-key">Покрытие ML:</span> {filteredMlCountLabel} из{' '}
+            {filteredCountLabel} публикаций
+          </li>
+        </ul>
         <span className="plan-summary-metric-meta">
-          {summary.engagementLikelySaturated
-            ? 'все публикации имеют ~100%: проверьте исходные данные/ML-нормализацию'
-            : 'по отфильтрованным публикациям'}
+          {summary?.engagementLikelySaturated
+            ? 'Все публикации имеют ~100% engagement: проверьте исходные данные/ML-нормализацию.'
+            : 'Все значения рассчитаны по текущим фильтрам.'}
         </span>
       </div>
 
       <div className="plan-summary-metric">
         <span className="plan-summary-metric-label">Платформы</span>
-        <strong className="plan-summary-metric-value">{summary.platformsLabel}</strong>
+        <strong className="plan-summary-metric-value">{platformsLabel}</strong>
         <span className="plan-summary-metric-meta">
-          {summary.dateRangeLabel}
-          {summary.dateRangeMeta ? ` (публикации: ${summary.dateRangeMeta})` : ''}
+          {dateRangeLabel}
+          {summary?.dateRangeMeta ? ` (публикации: ${summary.dateRangeMeta})` : ''}
         </span>
       </div>
 
@@ -72,11 +142,23 @@ const PlanSummaryBar = ({ summary, optimizationMeta, planExpectedKpi = null }) =
         <strong className="plan-summary-metric-value">
           {optimizationMeta ? 'Оптимизирован' : 'Черновой'}
         </strong>
-        <span className="plan-summary-metric-meta">
-          {optimizationMeta
-            ? `Прогноз лайков плана (ML): ${predictedLabel}; ограничения: ${constraintLabel}`
-            : 'Можно редактировать и оптимизировать'}
-        </span>
+        {optimizationMeta ? (
+          <>
+            <span className="plan-summary-metric-meta">Прогноз метрик плана (ML):</span>
+            <ul className="plan-summary-metric-meta-list">
+              {predictedMetrics.map((metric) => (
+                <li key={metric.label}>
+                  <span className="plan-summary-metric-meta-key">{metric.label}:</span> {metric.value}
+                </li>
+              ))}
+            </ul>
+            <span className="plan-summary-metric-meta">
+              Ограничения: <strong>{constraintLabel}</strong>
+            </span>
+          </>
+        ) : (
+          <span className="plan-summary-metric-meta">Можно редактировать и оптимизировать</span>
+        )}
         {constraintCheck?.valid === false && constraintMessages.length > 0 && (
           <span className="plan-summary-metric-meta plan-summary-constraint-detail">
             {constraintMessages.join(' ')}

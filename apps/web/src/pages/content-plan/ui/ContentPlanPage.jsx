@@ -78,6 +78,57 @@ const sortPublicationsByDate = (pubs) =>
 
 const normalizeText = (value) => (typeof value === 'string' ? value.toLowerCase() : '')
 const clamp01 = (value) => Math.max(0, Math.min(1, Number(value) || 0))
+const PLATFORM_UI_LABELS = { vk: 'VK', linkedin: 'LinkedIn' }
+const METRICS_NORMALIZATION_TOLERANCE_RATIO = 0.05
+
+const toFiniteNumberOrNull = (value) => {
+  if (value == null || value === '') return null
+  const n = Number(value)
+  return Number.isFinite(n) ? n : null
+}
+
+const getPlanTotalMetric = (metricName, planExpectedKpi, optimizationMeta) => {
+  const fromPlan = toFiniteNumberOrNull(planExpectedKpi?.[metricName])
+  if (fromPlan != null) return fromPlan
+  const stage2Value = toFiniteNumberOrNull(optimizationMeta?.stage2?.[metricName])
+  if (stage2Value != null) return stage2Value
+  return toFiniteNumberOrNull(optimizationMeta?.[metricName])
+}
+
+const normalizeMetricByTotal = (items, rawKey, totalValue) => {
+  const targetTotal = Math.max(0, Math.round(totalValue))
+  if (!Array.isArray(items) || items.length === 0) return new Array(0)
+  if (targetTotal === 0) return items.map(() => 0)
+
+  const weights = items.map((item) => Math.max(0, Number(item?.[rawKey]) || 0))
+  const weightSum = weights.reduce((sum, value) => sum + value, 0)
+  if (weightSum <= 0) {
+    const base = Math.floor(targetTotal / items.length)
+    let remainder = targetTotal - base * items.length
+    return items.map(() => {
+      if (remainder > 0) {
+        remainder -= 1
+        return base + 1
+      }
+      return base
+    })
+  }
+
+  const exact = weights.map((value) => (value / weightSum) * targetTotal)
+  const floored = exact.map((value) => Math.floor(value))
+  let remainder = targetTotal - floored.reduce((sum, value) => sum + value, 0)
+
+  const rankedRemainders = exact
+    .map((value, index) => ({ index, fraction: value - Math.floor(value) }))
+    .sort((a, b) => b.fraction - a.fraction)
+
+  for (let idx = 0; idx < rankedRemainders.length && remainder > 0; idx += 1) {
+    floored[rankedRemainders[idx].index] += 1
+    remainder -= 1
+  }
+
+  return floored
+}
 
 const matchesFilters = (publication, filters) => {
   if (filters.platform !== 'all' && publication.platform !== filters.platform) return false
@@ -123,8 +174,96 @@ const ContentPlanPage = () => {
   const safePlan = useMemo(() => ensureUniquePublicationIds(contentPlan), [contentPlan])
   const publications = useMemo(() => {
     if (!Array.isArray(safePlan?.publications)) return []
-    return sortPublicationsByDate(safePlan.publications).map((item) => normalizePublicationForUi(item))
-  }, [safePlan])
+    const stage2Publications = Array.isArray(optimizationMeta?.stage2?.publications)
+      ? optimizationMeta.stage2.publications
+      : []
+    const stage2TotalLikes = getPlanTotalMetric(
+      'predicted_total_likes',
+      safePlan?.expected_kpi,
+      optimizationMeta
+    )
+    const stage2TotalShares = getPlanTotalMetric(
+      'predicted_total_shares',
+      safePlan?.expected_kpi,
+      optimizationMeta
+    )
+    const stage2TotalViews = getPlanTotalMetric(
+      'predicted_total_views',
+      safePlan?.expected_kpi,
+      optimizationMeta
+    )
+    const stage2RawSums = stage2Publications.reduce(
+      (acc, item) => ({
+        likes: acc.likes + Math.max(0, Number(item?.predicted_likes) || 0),
+        shares: acc.shares + Math.max(0, Number(item?.predicted_shares) || 0),
+        views: acc.views + Math.max(0, Number(item?.predicted_views) || 0)
+      }),
+      { likes: 0, shares: 0, views: 0 }
+    )
+    const needsNormalization =
+      stage2Publications.length > 0 &&
+      ((stage2TotalLikes != null &&
+        stage2RawSums.likes > 0 &&
+        Math.abs(stage2RawSums.likes - stage2TotalLikes) >
+          Math.max(1, stage2TotalLikes * METRICS_NORMALIZATION_TOLERANCE_RATIO)) ||
+        (stage2TotalShares != null &&
+          stage2RawSums.shares > 0 &&
+          Math.abs(stage2RawSums.shares - stage2TotalShares) >
+            Math.max(1, stage2TotalShares * METRICS_NORMALIZATION_TOLERANCE_RATIO)) ||
+        (stage2TotalViews != null &&
+          stage2RawSums.views > 0 &&
+          Math.abs(stage2RawSums.views - stage2TotalViews) >
+            Math.max(1, stage2TotalViews * METRICS_NORMALIZATION_TOLERANCE_RATIO)))
+    const normalizedLikes = needsNormalization
+      ? normalizeMetricByTotal(stage2Publications, 'predicted_likes', stage2TotalLikes ?? 0)
+      : null
+    const normalizedShares = needsNormalization
+      ? normalizeMetricByTotal(stage2Publications, 'predicted_shares', stage2TotalShares ?? 0)
+      : null
+    const normalizedViews = needsNormalization
+      ? normalizeMetricByTotal(stage2Publications, 'predicted_views', stage2TotalViews ?? 0)
+      : null
+    const stage2ById = new Map(
+      stage2Publications
+        .filter((item) => typeof item?.publication_id === 'string' && item.publication_id.trim())
+        .map((item) => [item.publication_id.trim(), item])
+    )
+
+    const enriched = safePlan.publications.map((item, index) => {
+      const publicationId =
+        typeof item?.publication_id === 'string' ? item.publication_id.trim() : ''
+      const stage2Match = stage2ById.get(publicationId) || stage2Publications[index] || null
+      if (!stage2Match) return item
+
+      const predictedLikes =
+        normalizedLikes?.[index] ?? toFiniteNumberOrNull(stage2Match?.predicted_likes)
+      const predictedShares =
+        normalizedShares?.[index] ?? toFiniteNumberOrNull(stage2Match?.predicted_shares)
+      const predictedViews =
+        normalizedViews?.[index] ?? toFiniteNumberOrNull(stage2Match?.predicted_views)
+      const hasStage2Metrics =
+        predictedLikes != null || predictedShares != null || predictedViews != null
+      if (!hasStage2Metrics) return item
+
+      return {
+        ...item,
+        expected_kpi: {
+          ...(item?.expected_kpi || {}),
+          ml_predicted_likes: predictedLikes ?? item?.expected_kpi?.ml_predicted_likes ?? null,
+          ml_predicted_shares: predictedShares ?? item?.expected_kpi?.ml_predicted_shares ?? null,
+          ml_predicted_views: predictedViews ?? item?.expected_kpi?.ml_predicted_views ?? null,
+          predicted_likes: predictedLikes ?? item?.expected_kpi?.predicted_likes ?? null,
+          predicted_shares: predictedShares ?? item?.expected_kpi?.predicted_shares ?? null,
+          predicted_views: predictedViews ?? item?.expected_kpi?.predicted_views ?? null,
+          predicted_likes_source:
+            item?.expected_kpi?.predicted_likes_source ||
+            (needsNormalization ? 'stage2_post_evolution_normalized' : 'stage2_post_evolution')
+        }
+      }
+    })
+
+    return sortPublicationsByDate(enriched).map((item) => normalizePublicationForUi(item))
+  }, [optimizationMeta, safePlan])
   const platforms = useMemo(
     () => (Array.isArray(safePlan?.platforms) ? safePlan.platforms : []),
     [safePlan]
@@ -174,10 +313,40 @@ const ContentPlanPage = () => {
     const engagementValues = filteredPublications
       .map((item) => clamp01(item?.expected_kpi?.engagement_rate))
       .filter((value) => Number.isFinite(value))
+    const conversionValues = filteredPublications
+      .map((item) => clamp01(item?.expected_kpi?.conversion_potential))
+      .filter((value) => Number.isFinite(value))
+    const reachValues = filteredPublications
+      .map((item) => clamp01(item?.expected_kpi?.reach_potential))
+      .filter((value) => Number.isFinite(value))
+    const totalPredictedLikes = filteredPublications.reduce(
+      (sum, item) => sum + (toFiniteNumberOrNull(item?.expected_kpi?.ml_predicted_likes) ?? 0),
+      0
+    )
+    const totalPredictedShares = filteredPublications.reduce(
+      (sum, item) => sum + (toFiniteNumberOrNull(item?.expected_kpi?.ml_predicted_shares) ?? 0),
+      0
+    )
+    const totalPredictedViews = filteredPublications.reduce(
+      (sum, item) => sum + (toFiniteNumberOrNull(item?.expected_kpi?.ml_predicted_views) ?? 0),
+      0
+    )
+    const postsWithMlMetricsCount = filteredPublications.filter(
+      (item) =>
+        toFiniteNumberOrNull(item?.expected_kpi?.ml_predicted_likes) != null ||
+        toFiniteNumberOrNull(item?.expected_kpi?.ml_predicted_shares) != null ||
+        toFiniteNumberOrNull(item?.expected_kpi?.ml_predicted_views) != null
+    ).length
     const allSaturated =
       engagementValues.length >= 3 && engagementValues.every((value) => value >= 0.999)
     const avgEngagementRate = engagementValues.length
       ? engagementValues.reduce((sum, value) => sum + value, 0) / engagementValues.length
+      : 0
+    const avgConversionPotential = conversionValues.length
+      ? conversionValues.reduce((sum, value) => sum + value, 0) / conversionValues.length
+      : 0
+    const avgReachPotential = reachValues.length
+      ? reachValues.reduce((sum, value) => sum + value, 0) / reachValues.length
       : 0
     const horizonStart = safePlan?.planning_horizon?.start_date || ''
     const horizonEnd = safePlan?.planning_horizon?.end_date || ''
@@ -192,10 +361,16 @@ const ContentPlanPage = () => {
       totalCount: publications.length,
       filteredCount: filteredPublications.length,
       avgEngagementRate,
+      avgConversionPotential,
+      avgReachPotential,
+      totalPredictedLikes,
+      totalPredictedShares,
+      totalPredictedViews,
+      postsWithMlMetricsCount,
       engagementLikelySaturated: allSaturated,
       platformsLabel:
         Array.from(new Set(filteredPublications.map((item) => item.platform).filter(Boolean)))
-          .map((item) => item.toUpperCase())
+          .map((item) => PLATFORM_UI_LABELS[item] || String(item).toUpperCase())
           .join(', ') || 'не указаны',
       dateRangeLabel: `${horizonStart || '—'} - ${horizonEnd || '—'}`,
       dateRangeMeta: publicationsDateRange
@@ -544,12 +719,6 @@ const ContentPlanPage = () => {
         </div>
       </div>
 
-      <PlanSummaryBar
-        summary={summary}
-        optimizationMeta={optimizationMeta}
-        planExpectedKpi={safePlan?.expected_kpi}
-      />
-
       <div className="content-plan-content">
         <PlanHistoryPanel
           history={planHistory}
@@ -562,51 +731,12 @@ const ContentPlanPage = () => {
         />
 
         <section className="plan-section">
-          <h2 className="section-title">Параметры плана</h2>
-          <div className="plan-summary-grid">
-            <div className="plan-summary-item">
-              <span className="plan-summary-label">Период</span>
-              <span className="plan-summary-value">
-                {contentPlan.planning_horizon?.start_date || '—'} — {contentPlan.planning_horizon?.end_date || '—'}
-              </span>
-            </div>
-            <div className="plan-summary-item">
-              <span className="plan-summary-label">Платформы</span>
-              <span className="plan-summary-value">
-                {platforms.length ? platforms.join(', ').toUpperCase() : 'не заданы'}
-              </span>
-            </div>
-            <div className="plan-summary-item">
-              <span className="plan-summary-label">Публикаций</span>
-              <span className="plan-summary-value">{publications.length}</span>
-            </div>
-            <div className="plan-summary-item">
-              <span className="plan-summary-label">Цели KPI</span>
-              <span className="plan-summary-value">
-                {contentPlan.kpi_targets
-                  ? `ср. вовлечённость ≥ ${((contentPlan.kpi_targets.avg_engagement_rate || 0) * 100).toFixed(
-                      1
-                    )}%${contentPlan.kpi_targets.avg_engagement_rate_source === 'ml_relevance_prediction' ? ' (ML)' : ''}, конверсии ≈ ${
-                      contentPlan.kpi_targets.estimated_conversions || 0
-                    }`
-                  : 'не заданы'}
-              </span>
-            </div>
-            {contentPlan.constraints && (
-              <div className="plan-summary-item plan-summary-item-full">
-                <span className="plan-summary-label">Ограничения</span>
-                <span className="plan-summary-value">
-                  мин. публикаций: {contentPlan.constraints.min_publications ?? '—'}
-                </span>
-              </div>
-            )}
-            {contentPlan.notes && (
-              <div className="plan-summary-item plan-summary-item-full">
-                <span className="plan-summary-label">Заметки</span>
-                <span className="plan-summary-value">{contentPlan.notes}</span>
-              </div>
-            )}
-          </div>
+          <h2 className="section-title">Сводка контент-плана</h2>
+          <PlanSummaryBar
+            summary={summary}
+            optimizationMeta={optimizationMeta}
+            planExpectedKpi={safePlan?.expected_kpi}
+          />
         </section>
 
         <PlanFilters

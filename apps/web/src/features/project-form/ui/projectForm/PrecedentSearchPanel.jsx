@@ -84,7 +84,11 @@ const PrecedentSearchPanel = ({
   smmBlockedReasons = [],
   retrievalBadge,
   precedentRetrieval,
-  onSelectPrecedent
+  onSelectPrecedent,
+  isCompactSmm = false,
+  isEmbedded = false,
+  hideSearchAction = false,
+  isFlatSmmFlow = false
 }) => {
   const [isOntologyVisible, setIsOntologyVisible] = React.useState(false)
   const precedentActiveProcessId = isSearchingPrecedents
@@ -100,6 +104,9 @@ const PrecedentSearchPanel = ({
   const hasPublicationResults = (precedentSearchResults?.publications?.length || 0) > 0
   const hasPlanResults = (precedentSearchResults?.content_plans?.length || 0) > 0
   const hasOntology = Boolean(aggregatedOntology?.global)
+  const isMinimalSmmFlow = isCompactSmm && isEmbedded && isFlatSmmFlow
+  const shouldShowOntologyActions = !isCompactSmm
+  const shouldShowDetailedResults = !isCompactSmm
   const ontologyPreview = React.useMemo(
     () => (hasOntology ? buildOntologyPreview(aggregatedOntology) : null),
     [aggregatedOntology, hasOntology]
@@ -115,31 +122,39 @@ const PrecedentSearchPanel = ({
   }
 
   return (
-    <section className="form-section precedent-workflow-section">
+    <section className={`precedent-workflow-section ${isEmbedded ? 'precedent-workflow-section-embedded' : 'form-section'}`}>
       <div className="workflow-section-heading">
         <div>
-          <h2 className="section-title">Шаг 1. Подбор прецедентов</h2>
-          <p className="workflow-section-subtitle">
+          {isMinimalSmmFlow ? null : isEmbedded ? (
+            <h3 className="smm-unified-step-title">Шаг 1. Подбор прецедентов</h3>
+          ) : (
+            <h2 className="section-title">Шаг 1. Подбор прецедентов</h2>
+          )}
+          {!isMinimalSmmFlow && (
+            <p className="workflow-section-subtitle">
             Найдите релевантные публикации и планы по данным формы, чтобы черновик опирался на накопленную
             базу, а не на «пустой» запрос.
-          </p>
+            </p>
+          )}
         </div>
       </div>
 
-      <div className="precedent-summary-panel">
-        <div className="precedent-summary-line">
-          В базе сейчас: {precedentsSummary?.publications_count || 0} публикаций и{' '}
-          {precedentsSummary?.content_plans_count || 0} контент-планов.
-        </div>
-        <div className="precedent-summary-line">
-          Источник запроса: описание проекта, аудитория, платформы и преимущества из текущей формы.
-        </div>
-        {precedentSearchQuery && (
-          <div className="precedent-query-box">
-            <strong>Последний автоматически собранный запрос:</strong> {precedentSearchQuery}
+      {!isMinimalSmmFlow && (
+        <div className="precedent-summary-panel">
+          <div className="precedent-summary-line">
+            В базе сейчас: {precedentsSummary?.publications_count || 0} публикаций и{' '}
+            {precedentsSummary?.content_plans_count || 0} контент-планов.
           </div>
-        )}
-      </div>
+          <div className="precedent-summary-line">
+            Источник запроса: описание проекта, аудитория, платформы и преимущества из текущей формы.
+          </div>
+          {precedentSearchQuery && !isCompactSmm && (
+            <div className="precedent-query-box">
+              <strong>Последний автоматически собранный запрос:</strong> {precedentSearchQuery}
+            </div>
+          )}
+        </div>
+      )}
 
       <ProcessIndicator
         active={Boolean(precedentActiveProcessId)}
@@ -184,64 +199,70 @@ const PrecedentSearchPanel = ({
             </button>
           </>
         )}
-        <button
-          type="button"
-          className="submit-button secondary"
-          onClick={handleOpenOntology}
-          disabled={isProcessing || isGeneratingDraftPlan || isLoadingOntology || isEnrichmentServerAvailable === false}
-          title="Показать агрегированную JSON-онтологию: сущности, классы, триплеты и иерархию"
-        >
-          <span>
-            {isLoadingOntology
-              ? 'ЗАГРУЗКА ОНТОЛОГИИ...'
-              : hasOntology
-                ? isOntologyVisible
-                  ? 'СКРЫТЬ JSON-ОНТОЛОГИЮ'
-                  : 'ПОКАЗАТЬ JSON-ОНТОЛОГИЮ'
-                : 'ЗАГРУЗИТЬ JSON-ОНТОЛОГИЮ'}
-          </span>
-        </button>
-        <button
-          type="button"
-          className="submit-button secondary"
-          onClick={onExportOntologyToExcel}
-          disabled={
-            isProcessing ||
-            isGeneratingDraftPlan ||
-            isExportingOntology ||
-            isEnrichmentServerAvailable === false
-          }
-          title="Скачать онтологию (классы, сущности, отношения) в Excel"
-        >
-          <span>{isExportingOntology ? 'ЭКСПОРТ...' : 'ЭКСПОРТ ОНТОЛОГИИ В EXCEL'}</span>
-        </button>
-        <button
-          type="button"
-          className="submit-button primary"
-          onClick={onSearchPrecedents}
-          disabled={
-            isProcessing ||
-            isGeneratingDraftPlan ||
-            isSearchingPrecedents ||
-            isEnrichmentServerAvailable === false ||
-            !canSearchPrecedents
-          }
-          title={
-            smmBlockedReasons.length > 0
-              ? `Сначала выполните: ${smmBlockedReasons.join(', ')}`
-              : 'Подобрать релевантные публикации и контент-планы'
-          }
-        >
-          <span>{isSearchingPrecedents ? 'ПОИСК ПРЕЦЕДЕНТОВ...' : 'ПОДОБРАТЬ ПРЕЦЕДЕНТЫ'}</span>
-        </button>
+        {shouldShowOntologyActions && (
+          <>
+            <button
+              type="button"
+              className="submit-button secondary"
+              onClick={handleOpenOntology}
+              disabled={isProcessing || isGeneratingDraftPlan || isLoadingOntology || isEnrichmentServerAvailable === false}
+              title="Показать агрегированную JSON-онтологию: сущности, классы, триплеты и иерархию"
+            >
+              <span>
+                {isLoadingOntology
+                  ? 'ЗАГРУЗКА ОНТОЛОГИИ...'
+                  : hasOntology
+                    ? isOntologyVisible
+                      ? 'СКРЫТЬ JSON-ОНТОЛОГИЮ'
+                      : 'ПОКАЗАТЬ JSON-ОНТОЛОГИЮ'
+                    : 'ЗАГРУЗИТЬ JSON-ОНТОЛОГИЮ'}
+              </span>
+            </button>
+            <button
+              type="button"
+              className="submit-button secondary"
+              onClick={onExportOntologyToExcel}
+              disabled={
+                isProcessing ||
+                isGeneratingDraftPlan ||
+                isExportingOntology ||
+                isEnrichmentServerAvailable === false
+              }
+              title="Скачать онтологию (классы, сущности, отношения) в Excel"
+            >
+              <span>{isExportingOntology ? 'ЭКСПОРТ...' : 'ЭКСПОРТ ОНТОЛОГИИ В EXCEL'}</span>
+            </button>
+          </>
+        )}
+        {!hideSearchAction && (
+          <button
+            type="button"
+            className="submit-button primary"
+            onClick={onSearchPrecedents}
+            disabled={
+              isProcessing ||
+              isGeneratingDraftPlan ||
+              isSearchingPrecedents ||
+              isEnrichmentServerAvailable === false ||
+              !canSearchPrecedents
+            }
+            title={
+              smmBlockedReasons.length > 0
+                ? `Сначала выполните: ${smmBlockedReasons.join(', ')}`
+                : 'Подобрать релевантные публикации и контент-планы'
+            }
+          >
+            <span>{isSearchingPrecedents ? 'ПОИСК ПРЕЦЕДЕНТОВ...' : 'ПОДОБРАТЬ ПРЕЦЕДЕНТЫ'}</span>
+          </button>
+        )}
       </div>
-      {!canSearchPrecedents && smmBlockedReasons.length > 0 && (
+      {!hideSearchAction && !canSearchPrecedents && smmBlockedReasons.length > 0 && (
         <div className="precedent-empty-state precedent-empty-state-light" role="status" aria-live="polite">
           <strong>Почему кнопка неактивна:</strong> {smmBlockedReasons.join(' · ')}
         </div>
       )}
 
-      {isOntologyVisible && (
+      {isOntologyVisible && shouldShowOntologyActions && (
         <div className="ontology-preview-panel">
           {!hasOntology && !isLoadingOntology && (
             <div className="precedent-empty-state precedent-empty-state-light">
@@ -373,7 +394,7 @@ const PrecedentSearchPanel = ({
         </div>
       )}
 
-      {!hasResults && (
+      {!hasResults && !isMinimalSmmFlow && (
         <div className="precedent-empty-state precedent-empty-state-light">
           Сначала нажмите «Подобрать прецеденты».
           {precedentsSummary?.publications_count
@@ -386,44 +407,60 @@ const PrecedentSearchPanel = ({
 
       {hasResults && (
         <>
-          <div className="workflow-next-action">
-            {(hasPublicationResults || hasPlanResults) && (
-              <strong>Следующий шаг: сформируйте черновой план на основе найденных прецедентов.</strong>
-            )}
-            {!hasPublicationResults && !hasPlanResults && (
-              <strong>
-                Результатов нет: уточните описание проекта
-                {showDemoButtons ? ' или загрузите демо-данные' : ''}.
-              </strong>
-            )}
-          </div>
-
-          <div className="precedent-results precedent-results-light">
-            <div className="precedent-results-header precedent-results-header-light">
-              <span className="precedent-results-title precedent-results-title-light">
-                Найдено: {precedentSearchResults.publications?.length || 0} публикаций и{' '}
-                {precedentSearchResults.content_plans?.length || 0} планов
-              </span>
-              <span className="precedent-results-subtitle precedent-results-subtitle-light">
-                Поиск выполнен по {precedentSearchResults.total_publications_searched || 0} публикациям и{' '}
-                {precedentSearchResults.total_content_plans_searched || 0} планам
-              </span>
-              {!!retrievalBadge && (
-                <div className="precedent-retrieval-banner" title="Как выполнялся поиск прецедентов">
-                  <span className={`precedent-retrieval-pill precedent-retrieval-${retrievalBadge.tone}`}>
-                    {retrievalBadge.label}
-                  </span>
-                  <span className="precedent-retrieval-hint">
-                    {retrievalBadge.hint}
-                    {precedentRetrieval?.type === 'token_overlap_fallback' && precedentRetrieval?.error
-                      ? ` · причина: ${precedentRetrieval.error}`
-                      : ''}
-                  </span>
-                </div>
+          {!isMinimalSmmFlow && (
+            <div className="workflow-next-action">
+              {(hasPublicationResults || hasPlanResults) && (
+                <strong>Следующий шаг: сформируйте черновой план на основе найденных прецедентов.</strong>
+              )}
+              {!hasPublicationResults && !hasPlanResults && (
+                <strong>
+                  Результатов нет: уточните описание проекта
+                  {showDemoButtons ? ' или загрузите демо-данные' : ''}.
+                </strong>
               )}
             </div>
+          )}
 
-            {hasPublicationResults && (
+          <div className="precedent-results precedent-results-light">
+            {!isMinimalSmmFlow && (
+              <div className="precedent-results-header precedent-results-header-light">
+                <span className="precedent-results-title precedent-results-title-light">
+                  Найдено: {precedentSearchResults.publications?.length || 0} публикаций и{' '}
+                  {precedentSearchResults.content_plans?.length || 0} планов
+                </span>
+                <span className="precedent-results-subtitle precedent-results-subtitle-light">
+                  Поиск выполнен по {precedentSearchResults.total_publications_searched || 0} публикациям и{' '}
+                  {precedentSearchResults.total_content_plans_searched || 0} планам
+                </span>
+                {!!retrievalBadge && (
+                  <div className="precedent-retrieval-banner" title="Как выполнялся поиск прецедентов">
+                    <span className={`precedent-retrieval-pill precedent-retrieval-${retrievalBadge.tone}`}>
+                      {retrievalBadge.label}
+                    </span>
+                    <span className="precedent-retrieval-hint">
+                      {retrievalBadge.hint}
+                      {precedentRetrieval?.type === 'token_overlap_fallback' && precedentRetrieval?.error
+                        ? ` · причина: ${precedentRetrieval.error}`
+                        : ''}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {isMinimalSmmFlow && (
+              <div className="precedent-empty-state precedent-empty-state-light">
+                {hasPublicationResults || hasPlanResults ? 'Прецеденты подобраны.' : 'Прецеденты не найдены.'}
+              </div>
+            )}
+            {isCompactSmm && !isMinimalSmmFlow && (
+              <div className="precedent-empty-state precedent-empty-state-light">
+                Подбор завершён. Для SMM показана краткая сводка; детальные карточки прецедентов скрыты, чтобы
+                сосредоточиться на генерации плана.
+              </div>
+            )}
+
+            {hasPublicationResults && shouldShowDetailedResults && (
               <div className="precedent-section">
                 <h3 className="precedent-section-title precedent-section-title-light">Публикации</h3>
                 <div className="precedent-cards">
@@ -470,7 +507,7 @@ const PrecedentSearchPanel = ({
               </div>
             )}
 
-            {hasPlanResults && (
+            {hasPlanResults && shouldShowDetailedResults && (
               <div className="precedent-section">
                 <h3 className="precedent-section-title precedent-section-title-light">Контент-планы</h3>
                 <div className="precedent-cards">

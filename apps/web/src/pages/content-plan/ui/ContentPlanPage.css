@@ -275,6 +275,23 @@
   overflow-wrap: anywhere;
 }
 
+.plan-summary-metric-meta-list {
+  margin: 8px 0;
+  padding-left: 18px;
+  color: #2d2d44;
+  line-height: 1.45;
+  font-size: 0.9rem;
+}
+
+.plan-summary-metric-meta-list li {
+  margin: 2px 0;
+}
+
+.plan-summary-metric-meta-key {
+  font-weight: 700;
+  color: #1a1a2e;
+}
+
 .plan-summary-constraint-detail {
   display: block;
   margin-top: 8px;
@@ -421,6 +438,44 @@
   font-weight: 500;
   font-size: 0.85rem;
   color: #4a5568;
+}
+
+.post-metrics-section {
+  flex: 1 1 100%;
+  border: 1px solid #e2e8f0;
+  background: #fafbfc;
+  padding: 10px 12px;
+}
+
+.post-metrics-section-title {
+  margin-bottom: 8px;
+  color: #1a1a2e;
+  font-size: 0.82rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.post-metrics-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+  color: #2d2d44;
+  font-size: 0.88rem;
+  font-weight: 500;
+}
+
+.post-metrics-list-absolute {
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 6px 14px;
+}
+
+.post-metrics-source {
+  margin: 8px 0 0;
+  color: #64748b;
+  font-size: 0.8rem;
+  line-height: 1.4;
 }
 
 .post-edit-actions {

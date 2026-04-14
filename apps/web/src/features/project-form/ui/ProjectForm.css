@@ -886,6 +886,47 @@
   min-width: 0;
 }
 
+.smm-unified-workflow {
+  display: grid;
+  gap: 20px;
+}
+
+.smm-unified-workflow-flat {
+  gap: 14px;
+}
+
+.smm-unified-workflow-header .section-title {
+  margin-bottom: 14px;
+}
+
+.precedent-workflow-section-embedded {
+  margin-top: 0;
+  border: 2px solid #1a1a2e;
+  background: #fafbfc;
+  padding: 20px;
+}
+
+.smm-unified-step-title {
+  margin: 0;
+  color: #1a1a2e;
+  font-size: 1.15rem;
+  font-weight: 800;
+  border-left: 4px solid #ff6b9d;
+  padding-left: 12px;
+}
+
+.smm-unified-workflow-flat .precedent-workflow-section-embedded {
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.smm-unified-workflow-flat .precedent-results {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
 .workflow-next-action {
   margin-bottom: 18px;
   padding: 14px 16px;
@@ -2117,6 +2158,14 @@ body.theme-light .ui-badge-neutral {
 
     .workflow-action-row {
       flex-direction: column;
+    }
+
+    .precedent-workflow-section-embedded {
+      padding: 16px;
+    }
+
+    .smm-unified-workflow-flat .precedent-workflow-section-embedded {
+      padding: 0;
     }
 
     .workflow-action-row .submit-button,

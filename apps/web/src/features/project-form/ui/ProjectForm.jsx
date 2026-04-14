@@ -6,7 +6,6 @@ import WizardHeader from '../../../shared/ui/WizardHeader'
 import WizardNavActions from '../../../shared/ui/WizardNavActions'
 import WorkflowSummaryPanel from './projectForm/WorkflowSummaryPanel'
 import PrecedentSearchPanel from './projectForm/PrecedentSearchPanel'
-import OnboardingMaster from './projectForm/OnboardingMaster'
 import FieldHint from './projectForm/FieldHint'
 import DraftPlanWorkflowPanel from './projectForm/DraftPlanWorkflowPanel'
 import TechnicalDetailsPanel from './projectForm/TechnicalDetailsPanel'
@@ -95,6 +94,7 @@ const hasEnrichedCompetitorsData = (competitorsData) => {
 const ProjectForm = () => {
   const navigate = useNavigate()
   const { isDeveloper, isAnalyst, isExtendedMode } = useUserRole()
+  const isSmm = !isDeveloper && !isAnalyst
   const [wizardState, dispatch] = useReducer(wizardReducer, initialWizardState)
 
   const wizardSteps = getWizardSteps(isDeveloper, isAnalyst)
@@ -651,11 +651,19 @@ const ProjectForm = () => {
         setPrecedentsSummary(summaryResponse.summary || null)
       })
       setOperationTelemetry({ backend: 'success', python: 'idle', llm: 'idle' })
+      return true
     } catch (error) {
       console.error('Ошибка поиска прецедентов:', error)
       addToast(`Ошибка поиска прецедентов: ${error.message}`, 'error')
       setOperationTelemetry({ backend: 'error', python: 'idle', llm: 'idle' })
+      return false
     }
+  }
+
+  const handleSearchAndGenerateDraftPlan = async () => {
+    const searchCompleted = await handleSearchPrecedents()
+    if (!searchCompleted) return
+    await handleGenerateDraftPlan()
   }
 
   const handleSeedDemoPrecedents = async () => {
@@ -967,6 +975,7 @@ const ProjectForm = () => {
   const isFirstStep = currentStep === 1
 
   const isLastStep = currentStep === wizardSteps.length
+  const hasGeneratedPlan = Boolean(draftPlanResult?.draft?.draft_content_plan || optimizationResult?.optimized_content_plan)
 
   const goToNextStep = () => {
     if (!isLastStep) setCurrentStep((prev) => prev + 1)
@@ -1021,16 +1030,6 @@ const ProjectForm = () => {
 
         {currentStep === 1 && (
           <>
-            <OnboardingMaster
-              currentRole={isDeveloper ? 'developer' : isAnalyst ? 'analyst' : 'smm'}
-              onApplyTemplate={(formData) => {
-                restoreDraftCancelledRef.current = true
-                setFormData(formData)
-                setCurrentStep(2)
-                addToast('Шаблон применён. Заполните наименования и даты при необходимости.', 'success')
-              }}
-              isCompact={true}
-            />
             <CompetitorsStep
               competitorUrls={competitorUrls}
               competitorsData={competitorsData}
@@ -1574,7 +1573,7 @@ const ProjectForm = () => {
             <div className="form-row">
               <div className="form-group">
                 <label htmlFor="evoSelectionMethod" className="form-label">
-                  Метод отбора
+                  Метод отбора <FieldHint fieldName="evoSelectionMethod" />
                 </label>
                 <select
                   id="evoSelectionMethod"
@@ -1595,7 +1594,7 @@ const ProjectForm = () => {
               </div>
               <div className="form-group">
                 <label htmlFor="evoCrossoverMethod" className="form-label">
-                  Метод скрещивания
+                  Метод скрещивания <FieldHint fieldName="evoCrossoverMethod" />
                 </label>
                 <select
                   id="evoCrossoverMethod"
@@ -1619,7 +1618,7 @@ const ProjectForm = () => {
             <div className="form-row">
               <div className="form-group">
                 <label htmlFor="evoMutationMethod" className="form-label">
-                  Метод мутации
+                  Метод мутации <FieldHint fieldName="evoMutationMethod" />
                 </label>
                 <select
                   id="evoMutationMethod"
@@ -1793,7 +1792,7 @@ const ProjectForm = () => {
             <div className="form-row">
               <div className="form-group">
                 <label htmlFor="evoPostSelectionMethod" className="form-label">
-                  Метод отбора
+                  Метод отбора <FieldHint fieldName="evoPostSelectionMethod" />
                 </label>
                 <select
                   id="evoPostSelectionMethod"
@@ -1811,7 +1810,7 @@ const ProjectForm = () => {
               </div>
               <div className="form-group">
                 <label htmlFor="evoPostCrossoverMethod" className="form-label">
-                  Метод скрещивания
+                  Метод скрещивания <FieldHint fieldName="evoPostCrossoverMethod" />
                 </label>
                 <select
                   id="evoPostCrossoverMethod"
@@ -1832,7 +1831,7 @@ const ProjectForm = () => {
             <div className="form-row">
               <div className="form-group">
                 <label htmlFor="evoPostMutationMethod" className="form-label">
-                  Метод мутации
+                  Метод мутации <FieldHint fieldName="evoPostMutationMethod" />
                 </label>
                 <select
                   id="evoPostMutationMethod"
@@ -1913,47 +1912,111 @@ const ProjectForm = () => {
               riskSummary={riskSummary}
             />
 
-            <PrecedentSearchPanel
-              precedentsSummary={precedentsSummary}
-              precedentSearchQuery={precedentSearchQuery}
-              precedentSearchResults={precedentSearchResults}
-              aggregatedOntology={aggregatedOntology}
-              demoHorizonExample={demoHorizonExample}
-              onLoadHorizonExample={handleLoadHorizonExample}
-              onSeedDemoPrecedents={handleSeedDemoPrecedents}
-              showDemoButtons={isDeveloper}
-              onExportOntologyToExcel={handleExportOntologyToExcel}
-              onLoadOntology={handleLoadOntology}
-              onSearchPrecedents={handleSearchPrecedents}
-              isProcessing={isProcessing}
-              isLoadingOntology={isLoadingOntology}
-              isExportingOntology={isExportingOntology}
-              isGeneratingDraftPlan={isGeneratingDraftPlan}
-              isSeedingPrecedents={isSeedingPrecedents}
-              isSearchingPrecedents={isSearchingPrecedents}
-              isEnrichmentServerAvailable={isEnrichmentServerAvailable}
-              canSearchPrecedents={canSearchPrecedents}
-              smmBlockedReasons={smmBlockedReasonsForSearch}
-              retrievalBadge={retrievalBadge}
-              precedentRetrieval={precedentRetrieval}
-              onSelectPrecedent={setSelectedPrecedentItem}
-            />
+            {isSmm ? (
+              <section className="form-section smm-unified-workflow smm-unified-workflow-flat">
+                <div className="smm-unified-workflow-header">
+                  <h2 className="section-title">Генерация плана</h2>
+                  <p className="workflow-section-subtitle">
+                    Сформируйте черновой план в один клик и при необходимости улучшите результат.
+                  </p>
+                </div>
+                <PrecedentSearchPanel
+                  precedentsSummary={precedentsSummary}
+                  precedentSearchQuery={precedentSearchQuery}
+                  precedentSearchResults={precedentSearchResults}
+                  aggregatedOntology={aggregatedOntology}
+                  demoHorizonExample={demoHorizonExample}
+                  onLoadHorizonExample={handleLoadHorizonExample}
+                  onSeedDemoPrecedents={handleSeedDemoPrecedents}
+                  showDemoButtons={isDeveloper}
+                  onExportOntologyToExcel={handleExportOntologyToExcel}
+                  onLoadOntology={handleLoadOntology}
+                  onSearchPrecedents={handleSearchPrecedents}
+                  isProcessing={isProcessing}
+                  isLoadingOntology={isLoadingOntology}
+                  isExportingOntology={isExportingOntology}
+                  isGeneratingDraftPlan={isGeneratingDraftPlan}
+                  isSeedingPrecedents={isSeedingPrecedents}
+                  isSearchingPrecedents={isSearchingPrecedents}
+                  isEnrichmentServerAvailable={isEnrichmentServerAvailable}
+                  canSearchPrecedents={canSearchPrecedents}
+                  smmBlockedReasons={smmBlockedReasonsForSearch}
+                  retrievalBadge={retrievalBadge}
+                  precedentRetrieval={precedentRetrieval}
+                  onSelectPrecedent={setSelectedPrecedentItem}
+                  isCompactSmm
+                  isEmbedded
+                  hideSearchAction
+                  isFlatSmmFlow
+                />
 
-            <DraftPlanWorkflowPanel
-              draftPlanResult={draftPlanResult}
-              optimizationResult={optimizationResult}
-              onGenerateDraftPlan={handleGenerateDraftPlan}
-              onOptimizeDraftPlan={handleOptimizeDraftPlan}
-              onOpenPlan={() => navigate('/content-plan')}
-              isGeneratingDraftPlan={isGeneratingDraftPlan}
-              isOptimizingPlan={isOptimizingPlan}
-              isProcessing={isProcessing}
-              isEnrichmentServerAvailable={isEnrichmentServerAvailable}
-              canGenerateDraft={canGenerateDraft}
-              smmBlockedReasons={smmBlockedReasonsForGenerate}
-              publicationDayMode={formData.publicationDayMode}
-              isDeveloper={isDeveloper}
-            />
+                <DraftPlanWorkflowPanel
+                  draftPlanResult={draftPlanResult}
+                  optimizationResult={optimizationResult}
+                  onGenerateDraftPlan={handleGenerateDraftPlan}
+                  onGenerateWithPrecedents={handleSearchAndGenerateDraftPlan}
+                  onOptimizeDraftPlan={handleOptimizeDraftPlan}
+                  onOpenPlan={() => navigate('/content-plan')}
+                  isGeneratingDraftPlan={isGeneratingDraftPlan}
+                  isOptimizingPlan={isOptimizingPlan}
+                  isProcessing={isProcessing}
+                  isEnrichmentServerAvailable={isEnrichmentServerAvailable}
+                  canGenerateDraft={canGenerateDraft}
+                  smmBlockedReasons={smmBlockedReasonsForGenerate}
+                  canSearchPrecedents={canSearchPrecedents}
+                  smmSearchBlockedReasons={smmBlockedReasonsForSearch}
+                  publicationDayMode={formData.publicationDayMode}
+                  isDeveloper={isDeveloper}
+                  isEmbedded
+                  combineSearchAndDraft
+                  isFlatSmmFlow
+                />
+              </section>
+            ) : (
+              <>
+                <PrecedentSearchPanel
+                  precedentsSummary={precedentsSummary}
+                  precedentSearchQuery={precedentSearchQuery}
+                  precedentSearchResults={precedentSearchResults}
+                  aggregatedOntology={aggregatedOntology}
+                  demoHorizonExample={demoHorizonExample}
+                  onLoadHorizonExample={handleLoadHorizonExample}
+                  onSeedDemoPrecedents={handleSeedDemoPrecedents}
+                  showDemoButtons={isDeveloper}
+                  onExportOntologyToExcel={handleExportOntologyToExcel}
+                  onLoadOntology={handleLoadOntology}
+                  onSearchPrecedents={handleSearchPrecedents}
+                  isProcessing={isProcessing}
+                  isLoadingOntology={isLoadingOntology}
+                  isExportingOntology={isExportingOntology}
+                  isGeneratingDraftPlan={isGeneratingDraftPlan}
+                  isSeedingPrecedents={isSeedingPrecedents}
+                  isSearchingPrecedents={isSearchingPrecedents}
+                  isEnrichmentServerAvailable={isEnrichmentServerAvailable}
+                  canSearchPrecedents={canSearchPrecedents}
+                  smmBlockedReasons={smmBlockedReasonsForSearch}
+                  retrievalBadge={retrievalBadge}
+                  precedentRetrieval={precedentRetrieval}
+                  onSelectPrecedent={setSelectedPrecedentItem}
+                />
+
+                <DraftPlanWorkflowPanel
+                  draftPlanResult={draftPlanResult}
+                  optimizationResult={optimizationResult}
+                  onGenerateDraftPlan={handleGenerateDraftPlan}
+                  onOptimizeDraftPlan={handleOptimizeDraftPlan}
+                  onOpenPlan={() => navigate('/content-plan')}
+                  isGeneratingDraftPlan={isGeneratingDraftPlan}
+                  isOptimizingPlan={isOptimizingPlan}
+                  isProcessing={isProcessing}
+                  isEnrichmentServerAvailable={isEnrichmentServerAvailable}
+                  canGenerateDraft={canGenerateDraft}
+                  smmBlockedReasons={smmBlockedReasonsForGenerate}
+                  publicationDayMode={formData.publicationDayMode}
+                  isDeveloper={isDeveloper}
+                />
+              </>
+            )}
 
             {isExtendedMode && isDeveloper && (
               <TechnicalDetailsPanel
@@ -1971,6 +2034,14 @@ const ProjectForm = () => {
           goToNextStep={goToNextStep}
           isFirstStep={isFirstStep}
           isLastStep={isLastStep}
+          onLastStepNext={() => navigate('/content-plan')}
+          canProceedFromLastStep={hasGeneratedPlan}
+          lastStepNextLabel="К ГОТОВОМУ ПЛАНУ"
+          lastStepNextTitle={
+            hasGeneratedPlan
+              ? 'Открыть страницу готового контент-плана'
+              : 'Сначала сформируйте черновой или оптимизированный план'
+          }
           currentStep={currentStep}
           wizardSteps={wizardSteps}
           stepStatuses={stepStatuses}

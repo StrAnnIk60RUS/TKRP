@@ -14,9 +14,25 @@ const WizardNavActions = ({
   isLastStep,
   currentStep,
   wizardSteps,
-  stepStatuses = []
+  stepStatuses = [],
+  onLastStepNext = null,
+  canProceedFromLastStep = false,
+  lastStepNextLabel = 'ПЕРЕЙТИ К ПЛАНУ',
+  lastStepNextTitle = ''
 }) => {
   const currentStatus = stepStatuses[currentStep - 1] || 'pending'
+  const isLastStepRedirectEnabled = isLastStep && typeof onLastStepNext === 'function'
+  const isNextDisabled = isLastStepRedirectEnabled ? !canProceedFromLastStep : isLastStep
+  const nextButtonLabel = isLastStepRedirectEnabled ? lastStepNextLabel : 'ДАЛЕЕ'
+  const nextButtonTitle = isLastStepRedirectEnabled ? lastStepNextTitle : ''
+
+  const handleNextClick = () => {
+    if (isLastStepRedirectEnabled) {
+      if (canProceedFromLastStep) onLastStepNext()
+      return
+    }
+    goToNextStep()
+  }
 
   return (
     <>
@@ -41,10 +57,11 @@ const WizardNavActions = ({
         <button
           type="button"
           className="submit-button primary"
-          onClick={goToNextStep}
-          disabled={isLastStep}
+          onClick={handleNextClick}
+          disabled={isNextDisabled}
+          title={nextButtonTitle}
         >
-          <span>ДАЛЕЕ</span>
+          <span>{nextButtonLabel}</span>
         </button>
       </div>
     </>
