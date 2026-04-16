@@ -9,7 +9,14 @@ import {
   getOntologyLlmEnrichmentConfig
 } from '../../../precedents/services/ontologyLlmEnrichmentService.js';
 import { runAsyncGeneticAlgorithm } from './asyncGaCore.js';
-import { cloneJson, onePointCrossoverArrays, randomReplaceMutation, twoPointCrossoverArrays, uniformCrossoverArrays } from './operators.js';
+import {
+  cloneJson,
+  inversionMutation,
+  onePointCrossoverArrays,
+  randomReplaceMutation,
+  twoPointCrossoverArrays,
+  uniformCrossoverArrays
+} from './operators.js';
 import { normalizePublicationToneValue } from '../../routes/shared/planUtils.js';
 import {
   alignToneToObjective,
@@ -85,8 +92,32 @@ function uniqueDomainTopics(values = [], max = 100) {
 function readPlanGaEnvNumber(name) {
   const raw = process.env[name];
   if (raw === undefined || raw === '') return null;
-  const n = Number(raw);
+  const normalized = typeof raw === 'string' ? raw.replace(',', '.').trim() : raw;
+  const n = Number(normalized);
   return Number.isFinite(n) ? n : null;
+}
+
+function parseNumericInput(value) {
+  if (value === null || value === undefined) return Number.NaN;
+  const normalized = typeof value === 'string' ? value.replace(',', '.').trim() : value;
+  return Number(normalized);
+}
+
+function normalizeGaInteger(value, fallback, min, max) {
+  const numeric = Math.floor(parseNumericInput(value));
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.max(min, Math.min(max, numeric));
+}
+
+function normalizeGaProbability(value, fallback) {
+  const numeric = parseNumericInput(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.max(0, Math.min(1, numeric));
+}
+
+function normalizeGaMethod(value, allowed, fallback) {
+  const method = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  return allowed.includes(method) ? method : fallback;
 }
 
 /** Углы подачи темы (согласовано с банками вариаций тем в contentOutputUtils). */
@@ -1185,8 +1216,19 @@ export async function optimizeContentPlanEvolution(draftContentPlan, config = {}
     0.11
   );
 
-  const crossoverMethod = ga.crossoverMethod || 'one_point';
-  const mutationMethod = ga.mutationMethod || 'random_replace';
+  const crossoverMethod = normalizeGaMethod(ga.crossoverMethod, ['one_point', 'two_point', 'uniform'], 'one_point');
+  const mutationMethod = normalizeGaMethod(ga.mutationMethod, ['random_replace', 'inversion'], 'random_replace');
+  const selectionMethod = normalizeGaMethod(ga.selectionMethod, ['tournament', 'roulette', 'rank'], 'tournament');
+  const normalizedPopulationSize = normalizeGaInteger(ga.populationSize, 64, 2, 2000);
+  const normalizedMaxGenerations = normalizeGaInteger(ga.maxGenerations, 80, 1, 100000);
+  const normalizedStagnationGenerations = normalizeGaInteger(ga.stagnationGenerations, 20, 0, 100000);
+  const normalizedEliteSize = normalizeGaInteger(ga.eliteSize, 4, 0, 64);
+  const normalizedTournamentSize = normalizeGaInteger(ga.tournamentSize, 5, 2, 64);
+  const normalizedCrossoverProbability = normalizeGaProbability(ga.crossoverProbability, 0.9);
+  const normalizedMutationProbability = normalizeGaProbability(
+    ga.mutationProbability ?? readPlanGaEnvNumber('PLAN_GA_MUTATION_PROBABILITY'),
+    0.12
+  );
 
   let crossoverFn;
   switch (crossoverMethod) {
@@ -1300,15 +1342,14 @@ export async function optimizeContentPlanEvolution(draftContentPlan, config = {}
   const result = await runAsyncGeneticAlgorithm({
     direction: 'max',
     seed: ga.seed ?? null,
-    populationSize: ga.populationSize ?? 64,
-    maxGenerations: ga.maxGenerations ?? 80,
-    stagnationGenerations: ga.stagnationGenerations ?? 20,
-    eliteSize: ga.eliteSize ?? 4,
-    tournamentSize: ga.tournamentSize ?? 5,
-    crossoverProbability: ga.crossoverProbability ?? 0.9,
-    mutationProbability:
-      ga.mutationProbability ?? readPlanGaEnvNumber('PLAN_GA_MUTATION_PROBABILITY') ?? 0.12,
-    selectionMethod: ga.selectionMethod || 'tournament',
+    populationSize: normalizedPopulationSize,
+    maxGenerations: normalizedMaxGenerations,
+    stagnationGenerations: normalizedStagnationGenerations,
+    eliteSize: normalizedEliteSize,
+    tournamentSize: normalizedTournamentSize,
+    crossoverProbability: normalizedCrossoverProbability,
+    mutationProbability: normalizedMutationProbability,
+    selectionMethod,
     createIndividual,
     cloneIndividual,
     crossover,

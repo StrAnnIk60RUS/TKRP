@@ -579,14 +579,18 @@ const ContentPlanPage = () => {
 
   const handleDownloadExcel = () => {
     if (!contentPlan) return
-    exportToExcel(contentPlan, baseFilename)
+    exportToExcel(contentPlan, baseFilename, { optimizationMeta })
     setDownloadMenuOpen(false)
   }
 
   const handleDownloadPdf = async () => {
     if (!contentPlan) return
     try {
-      await exportToPdf(contentPlan, { filename: baseFilename, isOptimized: !!optimizationMeta })
+      await exportToPdf(contentPlan, {
+        filename: baseFilename,
+        isOptimized: !!optimizationMeta,
+        optimizationMeta
+      })
     } catch (e) {
       console.error('Ошибка экспорта PDF:', e)
     }

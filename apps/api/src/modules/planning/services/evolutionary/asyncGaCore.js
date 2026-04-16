@@ -118,6 +118,7 @@ export async function runAsyncGeneticAlgorithm(options = {}) {
   const comparator = normalizeComparator(direction);
   const popSize = GA_UTILS.clampInt(populationSize, 2, 2000);
   const elite = GA_UTILS.clampInt(eliteSize, 0, Math.min(popSize, 32));
+  const normalizedCrossoverProbability = clampProbability(crossoverProbability, 0);
   let population = Array.from({ length: popSize }, () => createIndividual(rng));
   let best = null;
   let bestScore = direction === 'min' ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY;
@@ -303,7 +304,7 @@ export async function runAsyncGeneticAlgorithm(options = {}) {
           : normalizedMutationProbability,
         normalizedMutationProbability
       );
-      if (rng() < Number(crossoverProbability) && parentA !== parentB) {
+      if (rng() < normalizedCrossoverProbability && parentA !== parentB) {
         const crossed = crossover(parentA, parentB, rng);
         if (Array.isArray(crossed) && crossed.length === 2) {
           childA = crossed[0];

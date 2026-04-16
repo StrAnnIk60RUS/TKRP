@@ -34,10 +34,10 @@
       "evoEliteSize": "4",
       "evoCrossoverProbability": "0.9",
       "evoMutationProbability": "0.08",
-      "evoRandomSeed": "",
+      "evoRandomSeed": "1",
       "evoSelectionMethod": "tournament",
-      "evoCrossoverMethod": "one_point",
-      "evoMutationMethod": "random_replace",
+      "evoCrossoverMethod": "two_point",
+      "evoMutationMethod": "inversion",
       "evoPostPopulationSize": "48",
       "evoPostGenerations": "50",
       "evoPostStagnationGenerations": "12",
@@ -51,7 +51,7 @@
       "postsPerWeek": "3.5",
       "minPublications": "11"
     },
-    "updated_at": "2026-04-14T19:10:13.383Z"
+    "updated_at": "2026-04-16T20:01:02.843Z"
   },
-  "updated_at": "2026-04-14T19:10:13.383Z"
+  "updated_at": "2026-04-16T20:01:02.843Z"
 }

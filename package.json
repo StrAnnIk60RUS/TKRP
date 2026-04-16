@@ -17,7 +17,7 @@
     "install:api": "npm install --prefix apps/api",
     "lint": "node ./tools/scripts/lint-project.mjs && eslint apps/web apps/api",
     "format": "prettier --write \"apps/web/**/*.{js,jsx}\" \"apps/api/**/*.js\" \"eslint.config.js\"",
-    "test": "node --test apps/web/tests/frontend-formUtils.test.js apps/api/tests/ontologyAggregation.test.js apps/api/tests/security.test.js apps/api/tests/securityMore.test.js apps/api/tests/planRoutes.integration.test.js apps/api/tests/routeUtils.test.js apps/api/tests/expressHttp.integration.test.js apps/api/tests/expressHttp.test.js apps/api/tests/contentModels.test.js apps/api/tests/gaCore.test.js apps/api/tests/operators.test.js apps/api/tests/planUtils.test.js apps/api/tests/llmJsonParsing.test.js apps/api/tests/asyncGaCore.test.js",
+    "test": "node --test apps/web/tests/frontend-formUtils.test.js apps/api/tests/ontologyAggregation.test.js apps/api/tests/security.test.js apps/api/tests/securityMore.test.js apps/api/tests/planRoutes.integration.test.js apps/api/tests/routeUtils.test.js apps/api/tests/expressHttp.integration.test.js apps/api/tests/expressHttp.test.js apps/api/tests/contentModels.test.js apps/api/tests/gaCore.test.js apps/api/tests/operators.test.js apps/api/tests/planEvolution.test.js apps/api/tests/planUtils.test.js apps/api/tests/llmJsonParsing.test.js apps/api/tests/asyncGaCore.test.js",
     "check": "npm run lint && npm run test && npm run build"
   },
   "dependencies": {
@@ -27,6 +27,7 @@
     "express": "^5.2.1",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.7",
+    "pdfmake": "^0.3.7",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^7.13.1",

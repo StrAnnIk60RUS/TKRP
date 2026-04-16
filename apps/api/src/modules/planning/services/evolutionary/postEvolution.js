@@ -43,8 +43,32 @@ function clampInt(value, min, max, fallback) {
 function readPostGaEnvNumber(name) {
   const raw = process.env[name];
   if (raw === undefined || raw === '') return null;
-  const n = Number(raw);
+  const normalized = typeof raw === 'string' ? raw.replace(',', '.').trim() : raw;
+  const n = Number(normalized);
   return Number.isFinite(n) ? n : null;
+}
+
+function parseNumericInput(value) {
+  if (value === null || value === undefined) return Number.NaN;
+  const normalized = typeof value === 'string' ? value.replace(',', '.').trim() : value;
+  return Number(normalized);
+}
+
+function normalizeGaInteger(value, fallback, min, max) {
+  const numeric = Math.floor(parseNumericInput(value));
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.max(min, Math.min(max, numeric));
+}
+
+function normalizeGaProbability(value, fallback) {
+  const numeric = parseNumericInput(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.max(0, Math.min(1, numeric));
+}
+
+function normalizeGaMethod(value, allowed, fallback) {
+  const method = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  return allowed.includes(method) ? method : fallback;
 }
 
 // Веса для фитнес-функции поста
@@ -216,9 +240,23 @@ async function evolveSinglePublication(
   
   const baseFeatureMap = createFeatureMap(baseVector);
   
-  const crossoverMethod = gaConfig.crossoverMethod || 'one_point';
-  const mutationMethod = gaConfig.mutationMethod || 'random_replace';
-  const selectionMethod = gaConfig.selectionMethod || 'tournament';
+  const crossoverMethod = normalizeGaMethod(
+    gaConfig.crossoverMethod,
+    ['one_point', 'two_point', 'uniform'],
+    'one_point'
+  );
+  const mutationMethod = normalizeGaMethod(gaConfig.mutationMethod, ['random_replace', 'inversion'], 'random_replace');
+  const selectionMethod = normalizeGaMethod(gaConfig.selectionMethod, ['tournament', 'roulette', 'rank'], 'tournament');
+  const normalizedPopulationSize = normalizeGaInteger(gaConfig.populationSize, 48, 2, 2000);
+  const normalizedMaxGenerations = normalizeGaInteger(gaConfig.maxGenerations, 50, 1, 100000);
+  const normalizedStagnationGenerations = normalizeGaInteger(gaConfig.stagnationGenerations, 12, 0, 100000);
+  const normalizedEliteSize = normalizeGaInteger(gaConfig.eliteSize, 3, 0, 64);
+  const normalizedTournamentSize = normalizeGaInteger(gaConfig.tournamentSize, 4, 2, 64);
+  const normalizedCrossoverProbability = normalizeGaProbability(gaConfig.crossoverProbability, 0.9);
+  const normalizedMutationProbability = normalizeGaProbability(
+    gaConfig.mutationProbability ?? readPostGaEnvNumber('PLAN_GA_POST_MUTATION_PROBABILITY'),
+    0.12
+  );
 
   let crossoverFn;
   switch (crossoverMethod) {
@@ -254,15 +292,14 @@ async function evolveSinglePublication(
   const result = await runAsyncGeneticAlgorithm({
     direction: 'max',
     seed: gaConfig.seed ?? null,
-    populationSize: gaConfig.populationSize ?? 48,
-    maxGenerations: gaConfig.maxGenerations ?? 50,
-    stagnationGenerations: gaConfig.stagnationGenerations ?? 12,
-    eliteSize: gaConfig.eliteSize ?? 3,
-    tournamentSize: gaConfig.tournamentSize ?? 4,
-    crossoverProbability: gaConfig.crossoverProbability ?? 0.9,
-    mutationProbability:
-      gaConfig.mutationProbability ?? readPostGaEnvNumber('PLAN_GA_POST_MUTATION_PROBABILITY') ?? 0.12,
-    selectionMethod: selectionMethod,
+    populationSize: normalizedPopulationSize,
+    maxGenerations: normalizedMaxGenerations,
+    stagnationGenerations: normalizedStagnationGenerations,
+    eliteSize: normalizedEliteSize,
+    tournamentSize: normalizedTournamentSize,
+    crossoverProbability: normalizedCrossoverProbability,
+    mutationProbability: normalizedMutationProbability,
+    selectionMethod,
     createIndividual: (rng) => createIndividual(baseVector, constants, rng),
     cloneIndividual: (individual) => cloneJson(individual),
     crossover: (left, right, rng) => {
