@@ -1673,7 +1673,7 @@ const ProjectForm = () => {
                   className="form-input"
                   placeholder="0.12"
                   min="0"
-                  max="0.5"
+                  max="1"
                   step="0.001"
                   disabled={!isEditMode}
                 />
@@ -1883,7 +1883,7 @@ const ProjectForm = () => {
                   className="form-input"
                   placeholder="0.12"
                   min="0"
-                  max="0.5"
+                  max="1"
                   step="0.001"
                   disabled={!isEditMode}
                 />
