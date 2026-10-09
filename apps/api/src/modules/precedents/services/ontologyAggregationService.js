@@ -1,3 +1,5 @@
+// Backend-agnostic: работает с snapshot (JSON или DB). Records may carry
+// embedding_model_version (embedding model versioning); ignored here.
 import { extractMetaEntitiesForContext, normalizeOntologyText } from './metaEntityExtractionService.js';
 
 export const ONTOLOGY_SCHEMA_VERSION = 2;
@@ -28,12 +30,6 @@ function slugify(value, fallback = 'item') {
     .replace(/[\s_]+/g, '-')
     .replace(/^-+|-+$/g, '');
   return normalized || fallback;
-}
-
-function pushUniqueById(items, item) {
-  if (!item?.id) return;
-  if (items.some((existing) => existing.id === item.id)) return;
-  items.push(item);
 }
 
 function groupSnapshotByContext(snapshot = {}) {

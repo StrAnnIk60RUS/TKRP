@@ -10,6 +10,9 @@ import {
   createCorsOptions,
   createRateLimitMiddleware
 } from './src/shared/http/security.js';
+import { closePool, isDatabaseEnabled } from './src/shared/db/client.js';
+import { getJobQueueStats } from './src/shared/runtime/jobQueue.js';
+import { getStorageMetricsSnapshot } from './src/shared/runtime/storageMetrics.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -31,7 +34,9 @@ app.get('/health', (req, res) => {
     service: 'LLM Enrichment Server',
     request_id: req.requestId,
     cors_origins: process.env.CORS_ALLOWED_ORIGINS || 'localhost defaults',
-    api_key_protection: Boolean(process.env.SERVER_API_KEY || process.env.ADMIN_API_KEY)
+    api_key_protection: Boolean(process.env.SERVER_API_KEY || process.env.ADMIN_API_KEY),
+    job_queue: getJobQueueStats(),
+    storage_metrics: getStorageMetricsSnapshot()
   });
 });
 
@@ -40,6 +45,19 @@ app.use('/api', apiRoutes);
 app.listen(PORT, () => {
   console.log(`🚀 LLM Enrichment Server запущен на http://localhost:${PORT}`);
   console.log(`📡 LLM API: ${OPENROUTER_API_KEY ? '✅ Настроен' : '❌ Не настроен'}`);
+  console.log(`🗄️ Storage: ${isDatabaseEnabled() ? 'PostgreSQL (USE_DATABASE=true)' : 'JSON-файлы (data/precedents)'}`);
 });
+
+async function shutdown(signal) {
+  try {
+    await closePool();
+  } catch (error) {
+    console.error(`[shutdown] Ошибка закрытия пула БД (${signal}):`, error?.message || error);
+  }
+  process.exit(0);
+}
+
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
 
 

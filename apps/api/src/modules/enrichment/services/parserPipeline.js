@@ -40,6 +40,26 @@ function detectPlatform(url) {
   return 'unknown';
 }
 
+// Cookie-ы (VK_COOKIE / LINKEDIN_COOKIE) наследуются Python-скриптом через process.env
+// (see runPythonProcess env merge). We validate presence before spawning and
+// redact values from stdout/stderr so secrets never leak into API responses or logs.
+function missingCookieEnvName(url) {
+  const platform = detectPlatform(url);
+  if (platform === 'vk' && !String(process.env.VK_COOKIE || '').trim()) return 'VK_COOKIE';
+  if (platform === 'linkedin' && !String(process.env.LINKEDIN_COOKIE || '').trim()) return 'LINKEDIN_COOKIE';
+  return null;
+}
+
+function redactSecrets(text) {
+  if (typeof text !== 'string') return text;
+  let out = text;
+  for (const name of ['VK_COOKIE', 'LINKEDIN_COOKIE']) {
+    const value = String(process.env[name] || '');
+    if (value.length > 0) out = out.replaceAll(value, '[REDACTED]');
+  }
+  return out;
+}
+
 function buildCompetitorId(sourceUrl, platform) {
   const normalized = typeof sourceUrl === 'string' ? sourceUrl.trim() : '';
   const hash = createHash('sha1').update(normalized).digest('hex').slice(0, 12);
@@ -155,7 +175,18 @@ function applyPostsLimit(allPosts, limit) {
 }
 
 export async function parseAndEnrichByUrl(url, limit) {
+  const missingCookie = missingCookieEnvName(url);
+  if (missingCookie) {
+    return {
+      success: false,
+      pipeline: 'parse_and_enrich',
+      error: `Cookie ${missingCookie} не настроен в .env. Парсер не запуска.`,
+      missing_cookie_env: missingCookie
+    };
+  }
   const runResult = await runPythonParser(url);
+  runResult.stdout = redactSecrets(runResult.stdout);
+  runResult.stderr = redactSecrets(runResult.stderr);
 
   if (runResult.exitCode !== 0) {
     return {
@@ -225,7 +256,18 @@ export async function parseAndEnrichByUrl(url, limit) {
 }
 
 export async function parseOnlyByUrl(url, limit) {
+  const missingCookie = missingCookieEnvName(url);
+  if (missingCookie) {
+    return {
+      success: false,
+      pipeline: 'parse_only',
+      error: `Cookie ${missingCookie} не настроен в .env. Парсер не запуска.`,
+      missing_cookie_env: missingCookie
+    };
+  }
   const runResult = await runPythonParser(url);
+  runResult.stdout = redactSecrets(runResult.stdout);
+  runResult.stderr = redactSecrets(runResult.stderr);
 
   if (runResult.exitCode !== 0) {
     return {

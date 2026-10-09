@@ -3,11 +3,17 @@ import {
   getPlanSnapshotFromServer,
   savePlanSnapshotToServer
 } from '../../../shared/api/enrichmentService'
+import { getCurrentUserId } from '../../../shared/api/authService'
 
 const CURRENT_SNAPSHOT_TOKEN_KEY = 'currentContentPlanSnapshotToken'
 const CURRENT_HISTORY_ENTRY_KEY = 'currentContentPlanHistoryEntry'
 const PLAN_HISTORY_KEY = 'contentPlanHistory'
 const MAX_HISTORY_ITEMS = 12
+
+function scopedKey(baseKey) {
+  const userId = getCurrentUserId()
+  return userId ? `${baseKey}:${userId}` : null
+}
 
 function stableSerialize(value) {
   if (value === null || typeof value !== 'object') return JSON.stringify(value)
@@ -27,21 +33,25 @@ function buildEntryFingerprint(entry) {
 }
 
 function safeReadJson(key, fallbackValue) {
+  const scoped = scopedKey(key)
+  if (!scoped) return fallbackValue
   try {
-    const raw = localStorage.getItem(key)
+    const raw = localStorage.getItem(scoped)
     return raw ? JSON.parse(raw) : fallbackValue
   } catch (error) {
-    console.error(`Ошибка чтения ${key}:`, error)
+    console.error(`Ошибка чтения ${scoped}:`, error)
     return fallbackValue
   }
 }
 
 function safeWriteJson(key, value) {
+  const scoped = scopedKey(key)
+  if (!scoped) return false
   try {
-    localStorage.setItem(key, JSON.stringify(value))
+    localStorage.setItem(scoped, JSON.stringify(value))
     return true
   } catch (error) {
-    console.error(`Ошибка записи ${key}:`, error)
+    console.error(`Ошибка записи ${scoped}:`, error)
     return false
   }
 }
@@ -93,8 +103,10 @@ function getCurrentSnapshotToken() {
 
 function clearCurrentPlanPointers() {
   try {
-    localStorage.removeItem(CURRENT_SNAPSHOT_TOKEN_KEY)
-    localStorage.removeItem(CURRENT_HISTORY_ENTRY_KEY)
+    const snapshotKey = scopedKey(CURRENT_SNAPSHOT_TOKEN_KEY)
+    const entryKey = scopedKey(CURRENT_HISTORY_ENTRY_KEY)
+    if (snapshotKey) localStorage.removeItem(snapshotKey)
+    if (entryKey) localStorage.removeItem(entryKey)
   } catch (error) {
     console.error('Ошибка сброса текущего плана:', error)
   }

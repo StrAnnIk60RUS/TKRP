@@ -9,6 +9,12 @@ import {
   getOntologyLlmEnrichmentConfig
 } from '../../../precedents/services/ontologyLlmEnrichmentService.js';
 import { runAsyncGeneticAlgorithm } from './asyncGaCore.js';
+import { GA_UTILS } from './gaCore.js';
+import {
+  DEFAULT_FITNESS_WEIGHTS,
+  kpiScore,
+  combineFitness
+} from './fitnessUtils.js';
 import {
   cloneJson,
   inversionMutation,
@@ -659,7 +665,7 @@ function padEvoSummaryBody(core, minLength, variantKey = 0) {
   return out.slice(0, 2200).trim();
 }
 
-function buildSyncedSummary(resolvedTopic, resolvedObjective, resolvedFormat, index = 0, resolvedTone = '', variantKey = 0) {
+function buildSyncedSummary(resolvedTopic, resolvedObjective, resolvedFormat, index = 0, _resolvedTone = '', variantKey = 0) {
   const fmt = normalizeFormatForSummary(resolvedFormat);
   const minLen = EVO_MIN_SUMMARY_LENGTH[fmt] || EVO_MIN_SUMMARY_LENGTH.text;
   const topicPhrase = toReadablePhrase(resolvedTopic);
@@ -840,7 +846,7 @@ function applyGenomeToPlan(
   draftContentPlan,
   genome,
   planningHorizon,
-  precedentContext = {},
+  _precedentContext = {},
   bodySyncOptions = {}
 ) {
   const publications = genome.map((gene, index) => {
@@ -904,36 +910,8 @@ function applyGenomeToPlan(
   };
 }
 
-function capPlanPredictedMetrics(predictedMetrics, metadata = null) {
-  const [likes, shares, views] = predictedMetrics;
-  const maxLikes = asNumber(metadata?.target_summary?.total_likes?.max, 0);
-  const maxShares = asNumber(metadata?.target_summary?.total_shares?.max, 0);
-  const maxViews = asNumber(metadata?.target_summary?.total_views?.max, 0);
-  
-  return {
-    cappedLikes: maxLikes > 0 ? Math.min(likes, maxLikes) : likes,
-    cappedShares: maxShares > 0 ? Math.min(shares, maxShares) : shares,
-    cappedViews: maxViews > 0 ? Math.min(views, maxViews) : views
-  };
-}
-
-function normalizeAgainstTarget(value, targetMax) {
-  const safeValue = Math.max(0, asNumber(value, 0));
-  const safeTarget = Math.max(0, asNumber(targetMax, 0));
-
-  if (safeTarget > 0) {
-    // Keep ranking sensitivity above historical max values instead of hard clipping to 1.
-    return Math.min(1, Math.log1p(safeValue) / Math.log1p(safeTarget * 10));
-  }
-  return Math.tanh(Math.log1p(safeValue) / 8);
-}
-
-// Веса для фитнес-функции (можно вынести в конфиг)
-const FITNESS_WEIGHTS = {
-  likes: 0.5,
-  shares: 0.3,
-  views: 0.2
-};
+// Веса для фитнес-функции (shared with post-level via fitnessUtils)
+const FITNESS_WEIGHTS = { ...DEFAULT_FITNESS_WEIGHTS };
 
 function buildNormalizedFrequencyMap(values = []) {
   const freq = buildFrequencyMap(values);
@@ -1152,20 +1130,7 @@ function scorePlanSummaryPrefixDiversity(publications = [], prefixLen = 112) {
 }
 
 function calculateFitness(predictedMetrics, metadata, publications = [], options = {}) {
-  const { cappedLikes, cappedShares, cappedViews } = capPlanPredictedMetrics(predictedMetrics, metadata);
-  
-  const maxLikes = metadata?.target_summary?.total_likes?.max || 1;
-  const maxShares = metadata?.target_summary?.total_shares?.max || 1;
-  const maxViews = metadata?.target_summary?.total_views?.max || 1;
-  
-  const normLikes = normalizeAgainstTarget(cappedLikes, maxLikes);
-  const normShares = normalizeAgainstTarget(cappedShares, maxShares);
-  const normViews = normalizeAgainstTarget(cappedViews, maxViews);
-
-  const kpiScore =
-    FITNESS_WEIGHTS.likes * normLikes +
-    FITNESS_WEIGHTS.shares * normShares +
-    FITNESS_WEIGHTS.views * normViews;
+  const kpi = kpiScore(predictedMetrics, metadata, { keyPrefix: 'total_', weights: FITNESS_WEIGHTS });
 
   const diversityScore = scorePlanDiversity(publications);
   const stemSpreadScore = scoreTopicStemSpread(publications);
@@ -1179,15 +1144,21 @@ function calculateFitness(predictedMetrics, metadata, publications = [], options
   );
   const blendedDiversity = clamp01(blendedStructural * structuralBlend + bodyLexScore * textBlend, 0);
   const diversityWeight = clampProbability(options?.diversityWeight, 0.68);
-  const kpiWeight = 1 - diversityWeight;
 
   const ontologyConsistencyBonus = clamp01(asNumber(options?.ontologyConsistencyBonus, 0), 0);
   const ontologyWeight = clampProbability(options?.ontologyWeight, 0.08);
-  const baseScore = kpiWeight * kpiScore + diversityWeight * blendedDiversity;
   const draftAlignment = scorePlanDraftGeneAlignment(options?.genome, options?.basePublications);
   const draftWeight = clampProbability(options?.draftPreservationWeight ?? undefined, 0.11);
-  const scoreWithDraft = clamp01((1 - draftWeight) * baseScore + draftWeight * draftAlignment, 0);
-  return (1 - ontologyWeight) * scoreWithDraft + ontologyWeight * ontologyConsistencyBonus;
+
+  return combineFitness({
+    kpi,
+    diversity: blendedDiversity,
+    diversityWeight,
+    draftAlignment,
+    draftWeight,
+    ontologyBonus: ontologyConsistencyBonus,
+    ontologyWeight
+  }).optimization;
 }
 
 export async function optimizeContentPlanEvolution(draftContentPlan, config = {}) {
@@ -1302,8 +1273,8 @@ export async function optimizeContentPlanEvolution(draftContentPlan, config = {}
   const createIndividual = (rng) => basePublications.map((publication) => createPublicationGene(rng, publication));
   const cloneIndividual = (individual) => cloneJson(individual);
   const crossover = (left, right, rng) => crossoverFn(left, right, rng);
-  const applyLockedFieldsToGene = (gene, slotIndex) => {
-    const nextGene = Array.isArray(gene) ? cloneJson(gene) : cloneJson(createPublicationGene(Math.random, basePublications[slotIndex]));
+  const applyLockedFieldsToGene = (gene, slotIndex, rng = Math.random) => {
+    const nextGene = Array.isArray(gene) ? cloneJson(gene) : cloneJson(createPublicationGene(rng, basePublications[slotIndex]));
     if (lockedFields.topic && basePublications[slotIndex]?.topic) {
       nextGene[0] = basePublications[slotIndex].topic;
     }
@@ -1333,7 +1304,7 @@ export async function optimizeContentPlanEvolution(draftContentPlan, config = {}
     const slotIndex = Math.floor(rng() * individual.length);
     const next = cloneJson(individual);
     next[slotIndex] = mutateFn(next[slotIndex], rng);
-    next[slotIndex] = applyLockedFieldsToGene(next[slotIndex], slotIndex);
+    next[slotIndex] = applyLockedFieldsToGene(next[slotIndex], slotIndex, rng);
     return next;
   };
 
@@ -1425,7 +1396,7 @@ export async function optimizeContentPlanEvolution(draftContentPlan, config = {}
   const optimizedPlan = applyGenomeToPlan(
     basePublications,
     draftContentPlan,
-    result.best || createIndividual(Math.random),
+    result.best || createIndividual(GA_UTILS.makeRng(ga.seed ?? null)),
     planningHorizon,
     precedentContext,
     bodySyncOptions

@@ -1,5 +1,7 @@
 import React from 'react'
 import ProjectForm from '../../../features/project-form/ui/ProjectForm'
+import AuthGate from '../../../shared/ui/AuthGate'
+import { isUserAuthenticated } from '../../../shared/ui/AuthGate'
 import './HomePage.css'
 
 const HomePage = () => {
@@ -12,7 +14,7 @@ const HomePage = () => {
         </p>
       </div>
       <div className="page-content">
-        <ProjectForm />
+        {isUserAuthenticated() ? <ProjectForm /> : <AuthGate />}
       </div>
     </div>
   )

@@ -1,27 +1,13 @@
 import json
-import re
-import os
-import html as html_lib
 from dataclasses import dataclass, asdict
 from datetime import datetime
-from typing import Optional, Dict, Any, Tuple, List, Union
+from typing import Optional, Dict, Any, List
 
 import requests
-from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
 # Загружаем единый .env из корня проекта
 load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
-
-
-@dataclass
-class LinkedInPost:
-    """Модель данных для одного поста LinkedIn."""
-    url: str
-    account_name: Optional[str]
-    text: Optional[str]
-    likes: Optional[int]
-    datetime: Optional[str]
 
 
 @dataclass
@@ -36,10 +22,6 @@ class VKPost:
     datetime: Optional[str]
     views: Optional[int] = None
     attachments: Optional[List[Dict[str, Any]]] = None
-
-
-class LinkedInParserError(Exception):
-    """Базовое исключение парсера LinkedIn."""
 
 
 class VKParserError(Exception):
@@ -69,196 +51,7 @@ def _parse_int_safe(value: Optional[str]) -> Optional[int]:
             return None
 
 
-def _extract_from_bootstrap_json(
-    soup: BeautifulSoup,
-) -> Tuple[Optional[str], Optional[int], Optional[str], Optional[str]]:
-    """
-    Пытается вытащить данные (имя аккаунта, лайки, дату/время)
-    из встроенного JSON, который LinkedIn кладёт в <code id="bpr-guid-...">.
-
-    На странице-посте обычно есть объект ActorComponent с именем,
-    и объект SocialActivityCounts с числом лайков.
-    """
-    account_name: Optional[str] = None
-    likes: Optional[int] = None
-    datetime_str: Optional[str] = None
-    post_text: Optional[str] = None
-
-    code_tags = soup.find_all("code", id=re.compile(r"^bpr-guid-"))
-
-    for code_tag in code_tags:
-        raw = code_tag.string or code_tag.get_text(strip=True)
-        if not raw:
-            continue
-        raw = raw.strip()
-
-        try:
-            data = json.loads(raw)
-        except Exception:
-            continue
-
-        included = []
-        if isinstance(data, dict):
-            if isinstance(data.get("included"), list):
-                included.extend(data["included"])
-
-            inner_data = data.get("data")
-            if isinstance(inner_data, dict) and isinstance(inner_data.get("included"), list):
-                included.extend(inner_data["included"])
-
-        post_obj = None
-        for obj in included:
-            if not isinstance(obj, dict):
-                continue
-            if "commentary" in obj and "actor" in obj:
-                post_obj = obj
-                break
-
-        if post_obj:
-            actor = post_obj.get("actor") or {}
-            if isinstance(actor, dict):
-                name_block = actor.get("name") or {}
-                name_text = name_block.get("text") or name_block.get("accessibilityText")
-                if isinstance(name_text, str) and name_text.strip():
-                    account_name = name_text.strip()
-
-                sub_desc = actor.get("subDescription") or {}
-                dt_text = sub_desc.get("accessibilityText") or sub_desc.get("text")
-                if isinstance(dt_text, str) and dt_text.strip():
-                    datetime_str = dt_text.strip()
-
-            commentary = post_obj.get("commentary") or {}
-            text_block = commentary.get("text") or {}
-            text_val = text_block.get("text")
-            if isinstance(text_val, str) and text_val.strip():
-                post_text = text_val.strip()
-
-        for obj in included:
-            if not isinstance(obj, dict):
-                continue
-
-            otype = obj.get("$type", "")
-
-            if account_name is None and "ActorComponent" in otype:
-                name_block = obj.get("name") or {}
-                name_text = name_block.get("text") or name_block.get("accessibilityText")
-                sub_desc = obj.get("subDescription") or {}
-                if isinstance(name_text, str) and name_text.strip() and sub_desc:
-                    account_name = name_text.strip()
-
-                    dt_text = sub_desc.get("accessibilityText") or sub_desc.get("text")
-                    if isinstance(dt_text, str) and dt_text.strip() and not datetime_str:
-                        datetime_str = dt_text.strip()
-
-            if likes is None and otype.endswith(".SocialActivityCounts"):
-                num_likes = obj.get("numLikes")
-                if isinstance(num_likes, int):
-                    likes = num_likes
-
-            if post_text is None and "commentary" in obj:
-                commentary = obj.get("commentary") or {}
-                text_block = commentary.get("text") or {}
-                text_val = text_block.get("text")
-                if isinstance(text_val, str) and text_val.strip():
-                    post_text = text_val.strip()
-
-            if account_name is None and "firstName" in obj and "lastName" in obj:
-                if "me" not in str(obj).lower() and "viewer" not in str(obj).lower():
-                    first = str(obj.get("firstName") or "").strip()
-                    last = str(obj.get("lastName") or "").strip()
-                    full = f"{first} {last}".strip()
-                    if full:
-                        account_name = full
-
-    return account_name, likes, datetime_str, post_text
-
-
-def fetch_post_html(url: str, headers: Optional[Dict[str, str]] = None) -> str:
-    """Load HTML of a LinkedIn post page."""
-    if headers is None:
-        headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/123.0 Safari/537.36"
-            )
-        }
-    resp = requests.get(url, headers=headers, timeout=30)
-    if not resp.ok:
-        raise LinkedInParserError(
-            f"Не удалось загрузить страницу, статус: {resp.status_code}"
-        )
-    return resp.text
-
-
-def parse_linkedin_post_from_html(url: str, html: str) -> LinkedInPost:
-    """Parse LinkedIn post HTML and extract data."""
-    soup = BeautifulSoup(html, "html.parser")
-
-    json_account_name, json_likes, json_datetime, json_text = _extract_from_bootstrap_json(soup)
-
-    account_name = json_account_name
-    if not account_name:
-        account_el = soup.find("meta", property="og:title")
-        if account_el and account_el.get("content"):
-            content = account_el["content"].strip()
-            if "|" in content:
-                possible_name = content.split("|")[-1].strip()
-                account_name = html_lib.unescape(possible_name)
-            else:
-                account_name = html_lib.unescape(content)
-
-    if not account_name:
-        candidate = soup.find(["span", "a"], attrs={"class": lambda c: c and "feed-shared-actor__name" in c})
-        if candidate and candidate.get_text(strip=True):
-            account_name = candidate.get_text(strip=True)
-
-    text = json_text
-    if not text:
-        desc_el = soup.find("meta", property="og:description")
-        if desc_el and desc_el.get("content"):
-            text = desc_el["content"].strip()
-
-    if not text:
-        text_block = soup.find(attrs={"class": lambda c: c and "feed-shared-update-v2__description" in c})
-        if text_block:
-            text = text_block.get_text(" ", strip=True)
-
-    datetime_str = json_datetime
-    if not datetime_str:
-        time_el = soup.find("time")
-        if time_el and time_el.get("datetime"):
-            datetime_str = time_el["datetime"].strip()
-        elif time_el and time_el.get_text(strip=True):
-            datetime_str = time_el.get_text(strip=True)
-
-    likes = json_likes
-    if likes is None:
-        likes_el = soup.find(attrs={"class": lambda c: c and "social-details-social-counts__reactions-count" in c})
-        if likes_el:
-            likes = _parse_int_safe(likes_el.get_text(strip=True))
-
-    return LinkedInPost(
-        url=url,
-        account_name=account_name,
-        text=text,
-        likes=likes,
-        datetime=datetime_str,
-    )
-
-
-def parse_linkedin_post(
-    url: str,
-    headers: Optional[Dict[str, str]] = None,
-) -> LinkedInPost:
-    """
-    Высокоуровневая функция: качает страницу и парсит её.
-    """
-    html = fetch_post_html(url, headers=headers)
-    return parse_linkedin_post_from_html(url, html)
-
-
-def save_post_to_json(post: Union[LinkedInPost, VKPost], json_path: str = "posts.json") -> None:
+def save_post_to_json(post: VKPost, json_path: str = "posts.json") -> None:
     """Save single post into JSON file (append to 'posts' list)."""
     data: Dict[str, Any] = {}
     try:
@@ -283,7 +76,7 @@ def save_post_to_json(post: Union[LinkedInPost, VKPost], json_path: str = "posts
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
-def save_posts_to_json(posts: list, json_path: str = "posts.json") -> None:
+def save_posts_to_json(posts: List[VKPost], json_path: str = "posts.json") -> None:
     """Save list of posts into JSON file (append to 'posts' list)."""
     data: Dict[str, Any] = {}
     try:
@@ -407,4 +200,3 @@ def parse_vk_account(url: str, headers: Optional[Dict[str, str]] = None) -> List
 
     except requests.RequestException as e:
         raise VKParserError(f"VK API request failed for '{screen_name}': {e}")
-

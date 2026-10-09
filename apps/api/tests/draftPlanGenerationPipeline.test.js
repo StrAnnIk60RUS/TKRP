@@ -77,6 +77,28 @@ test('calibrateExpectedKpi returns bounded relative scores and bands', () => {
   assert.match(calibrated.engagement_band, /low|baseline|medium|high/);
 });
 
+test('calibrateExpectedKpi preserves non-calibrated fields like predicted metrics', () => {
+  const calibrated = calibrateExpectedKpi(
+    {
+      engagement_rate: 0.7,
+      conversion_potential: 0.4,
+      reach_potential: 0.8,
+      predicted_likes: 35,
+      predicted_shares: 5,
+      predicted_views: 2166,
+      predicted_likes_source: 'ml_post_metrics_prediction',
+      engagement_rate_source: 'ml_post_metrics_calculated'
+    },
+    { objective: 'convert', format: 'video', tone: 'expert', cta: 'Запросить демонстрацию решения' }
+  );
+
+  assert.equal(calibrated.predicted_likes, 35);
+  assert.equal(calibrated.predicted_shares, 5);
+  assert.equal(calibrated.predicted_views, 2166);
+  assert.equal(calibrated.predicted_likes_source, 'ml_post_metrics_prediction');
+  assert.equal(calibrated.engagement_rate_source, 'ml_post_metrics_calculated');
+});
+
 test('buildGeneratedPublicationContextItem keeps summary for next-month anti-repeat context', () => {
   const slot = {
     slot_id: 'slot_001',

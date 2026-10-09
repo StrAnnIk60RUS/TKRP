@@ -1,8 +1,15 @@
-﻿import { Router } from 'express';
+/**
+ * ⚠️ TEST-ONLY helper (moved from src/modules/planning/routes/planRouterCore.js, 10.10.2026).
+ * This router factory has NO auth gating and is NOT mounted in the runtime app.
+ * The runtime router is apps/api/src/modules/planning/routes/planRoutes.js (mounted via apiRoutes.js).
+ * Do NOT import this file from src/ — it exists solely for integration tests
+ * (apps/api/tests/planRoutes.integration.test.js).
+ */
+import { Router } from 'express';
 
-import { buildRagQueryFromForm, normalizeDraftPlanResponse } from './shared/planUtils.js';
-import { sendRouteError } from '../../../shared/http/routeUtils.js';
-import { logPlanStructured, timePlanPhase } from './planRouteLog.js';
+import { buildRagQueryFromForm, normalizeDraftPlanResponse } from '../../src/modules/planning/routes/shared/planUtils.js';
+import { sendRouteError } from '../../src/shared/http/routeUtils.js';
+import { logPlanStructured, timePlanPhase } from '../../src/modules/planning/routes/planRouteLog.js';
 
 function buildAudienceSegmentsFromForm(formInput = {}) {
   return Array.from(
@@ -84,7 +91,7 @@ export function createPlanRouter(deps) {
     try {
       return await handleGeneratePlan(req, res, 'generate');
     } catch (error) {
-      return sendRouteError(res, req, 500, 'Внутренняя ошибка сервера в /api/plan/generate', error);
+      return sendRouteError(res, req, 500, 'Внутрення ошибка сервера в /api/plan/generate', error);
     }
   });
 
@@ -92,7 +99,7 @@ export function createPlanRouter(deps) {
     try {
       return await handleGeneratePlan(req, res, 'generate-batched');
     } catch (error) {
-      return sendRouteError(res, req, 500, 'Внутренняя ошибка сервера в /api/plan/generate-batched', error);
+      return sendRouteError(res, req, 500, 'Внутрення ошибка сервера в /api/plan/generate-batched', error);
     }
   });
 
@@ -164,7 +171,7 @@ export function createPlanRouter(deps) {
           request_id: req.requestId
         });
       }
-      return sendRouteError(res, req, 500, 'Внутренняя ошибка сервера в /api/plan/snapshots', error);
+      return sendRouteError(res, req, 500, 'Внутрення ошибка сервера в /api/plan/snapshots', error);
     }
   });
 
@@ -177,7 +184,7 @@ export function createPlanRouter(deps) {
         request_id: req.requestId
       });
     } catch (error) {
-      return sendRouteError(res, req, 500, 'Внутренняя ошибка сервера в GET /api/plan/snapshots', error);
+      return sendRouteError(res, req, 500, 'Внутрення ошибка сервера в GET /api/plan/snapshots', error);
     }
   });
 
@@ -198,7 +205,7 @@ export function createPlanRouter(deps) {
         request_id: req.requestId
       });
     } catch (error) {
-      return sendRouteError(res, req, 500, 'Внутренняя ошибка сервера в /api/plan/snapshots/:token', error);
+      return sendRouteError(res, req, 500, 'Внутрення ошибка сервера в /api/plan/snapshots/:token', error);
     }
   });
 
@@ -218,7 +225,7 @@ export function createPlanRouter(deps) {
         request_id: req.requestId
       });
     } catch (error) {
-      return sendRouteError(res, req, 500, 'Внутренняя ошибка сервера при удалении snapshot', error);
+      return sendRouteError(res, req, 500, 'Внутрення ошибка сервера при удалении snapshot', error);
     }
   });
 

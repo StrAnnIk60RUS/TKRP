@@ -4,9 +4,11 @@ import mlRoutes from '../modules/ml/routes/mlRoutes.js';
 import enrichmentRoutes from '../modules/enrichment/routes/enrichmentRoutes.js';
 import planRoutes from '../modules/planning/routes/planRoutes.js';
 import precedentRoutes from '../modules/precedents/routes/precedentRoutes.js';
+import authRoutes from '../modules/auth/routes/authRoutes.js';
 
 const router = Router();
 
+router.use('/auth', authRoutes);
 router.use('/precedents', precedentRoutes);
 router.use('/plan', planRoutes);
 router.use('/ml', mlRoutes);

@@ -16,7 +16,6 @@ import {
   estimateSentenceLengthBucket,
   getLeadParagraph,
   getTitleLine,
-  mapTernaryToUnit,
   normalizeByRange,
   pickFirstFinite,
   resolveToneFlags,
@@ -25,6 +24,24 @@ import {
   tokenOverlapScore,
   uniqueValues
 } from './featureEngineeringUtils.js';
+
+// Version of the feature set produced by this module. Bump when feature
+// engineering changes (new/removed features, changed semantics). Stored with
+// every trained model artifact; checked at train and predict time.
+export const FEATURE_SET_VERSION = 'v2';
+// Version stamped on legacy artifacts that predate versioning (see tools/ml/migrate_model_versions.py).
+export const LEGACY_FEATURE_SET_VERSION = 'v1';
+
+export function getOntologyFeatureMode() {
+  const mode = String(process.env.ONTOLOGY_LLM_ENRICHMENT_MODE || 'off').trim().toLowerCase();
+  const rolloutPercent = Math.max(0, Math.min(100, Number(process.env.ONTOLOGY_SCORING_ROLLOUT_PERCENT || 0)));
+  const enabled = !(mode === 'off' || mode === 'disabled' || mode === 'false' || mode === '0' || mode === '');
+  return { mode, rolloutPercent, enabled };
+}
+
+export function isOntologyEnrichmentEnabled() {
+  return getOntologyFeatureMode().enabled;
+}
 
 export const POST_FEATURE_NAMES = [
   'paragraphs_exists',
@@ -156,8 +173,12 @@ function buildCreativityScore(title, lead, text, spcj = {}) {
 }
 
 export function buildPostFeatureMap(source = {}, options = {}) {
+  // Ontology-derived features are used only when enrichment is enabled; otherwise
+  // the deterministic feature set is used, keeping train/predict consistent.
   const explicitOntologyFeatures =
-    source?.ontology_features && typeof source.ontology_features === 'object' ? source.ontology_features : null;
+    isOntologyEnrichmentEnabled() && source?.ontology_features && typeof source.ontology_features === 'object'
+      ? source.ontology_features
+      : null;
   const text = getSourceText(source);
   const title = getTitleLine(text, source.topic || source.title || source.publication_model?.topic || '');
   const lead = getLeadParagraph(text, source.summary || source.key_message || '');
@@ -237,6 +258,14 @@ export function buildPostFeatureVectorFromFeatureMap(featureMap = {}) {
   return POST_FEATURE_NAMES.map((name) => featureMap[name] ?? 0);
 }
 
+export function buildPostFeatureVectorWithMeta(source = {}, options = {}) {
+  return {
+    vector: buildPostFeatureVector(source, options),
+    featureSetVersion: FEATURE_SET_VERSION,
+    ontologyFeaturesEnabled: isOntologyEnrichmentEnabled()
+  };
+}
+
 export function buildPlanFeatureMap(publications = [], options = {}) {
   const posts = Array.isArray(publications) ? publications : [];
   const topics = uniqueValues(posts.map((item) => item.topic || item.publication_model?.topic || null));
@@ -313,8 +342,12 @@ export function buildPlanFeatureVectorFromFeatureMap(featureMap = {}) {
   return PLAN_FEATURE_NAMES.map((name) => featureMap[name] ?? 0);
 }
 
-function getPublicationLikes(item = {}) {
-  return pickFirstFinite(item.raw_metrics?.likes, item.publication_model?.metrics_snapshot?.likes, item.likes);
+export function buildPlanFeatureVectorWithMeta(publications = [], options = {}) {
+  return {
+    vector: buildPlanFeatureVector(publications, options),
+    featureSetVersion: FEATURE_SET_VERSION,
+    ontologyFeaturesEnabled: isOntologyEnrichmentEnabled()
+  };
 }
 
 function groupSnapshotByContext(snapshot = {}) {
@@ -343,70 +376,32 @@ function groupSnapshotByContext(snapshot = {}) {
   return groups;
 }
 
-function createPlanPublicationStub(scheduleItem = {}, contentPlan = {}, linkedPublication = null) {
-  const linkedModel = linkedPublication?.publication_model || {};
-  const planModel = contentPlan?.content_plan_model || {};
-  return {
-    ...linkedPublication,
-    publication_model: linkedPublication?.publication_model || {
-      publication_id: scheduleItem?.publication_id || null,
-      topic: scheduleItem?.topic || linkedModel?.topic || null,
-      format: scheduleItem?.format || linkedModel?.format || null,
-      objective: scheduleItem?.objective || linkedModel?.objective || null,
-      tone:
-        linkedModel?.tone ||
-        linkedPublication?.tone ||
-        contentPlan?.content_strategy_snapshot?.dominant_tone ||
-        'expert',
-      audience_segments:
-        linkedModel?.audience_segments ||
-        planModel?.audience_segments ||
-        contentPlan?.content_strategy_snapshot?.core_audience_segments ||
-        [],
-      platform: linkedModel?.platform || linkedPublication?.platform || contentPlan?.platform || null
-    },
-    topic: scheduleItem?.topic || linkedPublication?.topic || linkedModel?.topic || null,
-    format: scheduleItem?.format || linkedPublication?.format || linkedModel?.format || null,
-    objective: scheduleItem?.objective || linkedPublication?.objective || linkedModel?.objective || null,
-    tone:
-      linkedPublication?.tone ||
-      linkedModel?.tone ||
-      contentPlan?.content_strategy_snapshot?.dominant_tone ||
-      'expert',
-    platform: linkedPublication?.platform || linkedModel?.platform || contentPlan?.platform || null,
-    planned_at: scheduleItem?.planned_at || null
-  };
+function extractOptimizationBestMeta(optimization = {}) {
+  const candidates = [];
+  const stage1Meta = optimization?.stage1?.ga?.best_meta;
+  if (stage1Meta && Number.isFinite(Number(stage1Meta.fitness))) {
+    candidates.push(stage1Meta);
+  }
+  (Array.isArray(optimization?.stage2?.items) ? optimization.stage2.items : []).forEach((item) => {
+    const meta = item?.ga?.best_meta;
+    if (meta && Number.isFinite(Number(meta.fitness))) {
+      candidates.push(meta);
+    }
+  });
+  if (!candidates.length) return null;
+  return candidates.reduce((best, candidate) => (Number(candidate.fitness) > Number(best.fitness) ? candidate : best));
 }
 
-function estimatePlanTargetLikes(schedulePublications = [], contextPublications = [], contentPlan = {}) {
-  const scheduleLikes = schedulePublications
-    .map((item) => clampPositive(getPublicationLikes(item), 0))
-    .filter((value) => Number.isFinite(value) && value > 0);
-  if (scheduleLikes.length > 0) {
-    return scheduleLikes.reduce((sum, value) => sum + value, 0);
-  }
-
-  const contextLikes = contextPublications
-    .map((item) => clampPositive(getPublicationLikes(item), 0))
-    .filter((value) => Number.isFinite(value) && value > 0);
-  if (contextLikes.length > 0 && schedulePublications.length > 0) {
-    return average(contextLikes) * schedulePublications.length;
-  }
-
-  const avgEngagement = clampPositive(contentPlan?.content_plan_model?.kpi_estimate?.avg_engagement_rate, 0);
-  const scheduleSize = schedulePublications.length || contextPublications.length || 1;
-  return avgEngagement * 100 * scheduleSize;
-}
-
-export function buildMlTrainingDatasets(snapshot = {}) {
+export function buildMlTrainingDatasets(snapshot = {}, optimizedPlans = []) {
   const postFeatures = [];
   const postTargets = [];      // Будет массивом [likes, shares, views]
   const planFeatures = [];
   const planTargets = [];      // Будет массивом [total_likes, total_shares, total_views]
+  const planSampleMeta = [];   // Parallel to planFeatures: source of each plan sample
 
   const groups = groupSnapshotByContext(snapshot);
 
-  groups.forEach(({ publications, contentPlans }) => {
+  groups.forEach(({ publications }) => {
     if (!publications.length) return;
     
     const planFeatureMap = buildPlanFeatureMap(publications, {
@@ -444,7 +439,37 @@ export function buildMlTrainingDatasets(snapshot = {}) {
       const planFeatureVector = buildPlanFeatureVector(publications, {});
       planFeatures.push(planFeatureVector);
       planTargets.push([totalLikes, totalShares, totalViews]);
+      planSampleMeta.push({ source: 'precedent' });
     }
+  });
+
+  // GA-optimized plan snapshots: predicted targets from best_meta of optimization run.
+  (Array.isArray(optimizedPlans) ? optimizedPlans : []).forEach((entry) => {
+    const plan = entry?.plan || {};
+    const publications = Array.isArray(plan.publications) ? plan.publications : [];
+    if (!publications.length) return;
+    const bestMeta = extractOptimizationBestMeta(entry?.optimization || {});
+    if (!bestMeta) return;
+    const targets = [
+      clampPositive(bestMeta.predicted_likes ?? 0),
+      clampPositive(bestMeta.predicted_shares ?? 0),
+      clampPositive(bestMeta.predicted_views ?? 0)
+    ];
+    if (targets.every((value) => value === 0)) return;
+    const planFeatureVector = buildPlanFeatureVector(publications, {
+      durationDays: plan?.planning_horizon?.duration_days,
+      expectedPlatforms: plan?.platforms,
+      targetAudience: plan?.target_audience
+    });
+    planFeatures.push(planFeatureVector);
+    planTargets.push(targets);
+    planSampleMeta.push({
+      source: 'ga_optimized',
+      optimized: true,
+      optimization_source: entry?.optimization ? 'plan_snapshot' : null,
+      final_fitness: Number(bestMeta.fitness),
+      saved_at: entry?.saved_at || null
+    });
   });
 
   // Если нет планов, создаём fallback
@@ -457,10 +482,13 @@ export function buildMlTrainingDatasets(snapshot = {}) {
       const fallbackPlanFeatureMap = buildPlanFeatureMap(publications, {});
       planFeatures.push(PLAN_FEATURE_NAMES.map((name) => fallbackPlanFeatureMap[name] ?? 0));
       planTargets.push([totalLikes, totalShares, totalViews]);
+      planSampleMeta.push({ source: 'precedent_fallback' });
     });
   }
 
   return {
+    featureSetVersion: FEATURE_SET_VERSION,
+    ontologyFeaturesEnabled: isOntologyEnrichmentEnabled(),
     postDataset: {
       featureNames: POST_FEATURE_NAMES,
       features: postFeatures,
@@ -471,7 +499,8 @@ export function buildMlTrainingDatasets(snapshot = {}) {
       featureNames: PLAN_FEATURE_NAMES,
       features: planFeatures,
       targets: planTargets,        // массив массивов [total_likes, total_shares, total_views]
-      targetNames: ['total_likes', 'total_shares', 'total_views']
+      targetNames: ['total_likes', 'total_shares', 'total_views'],
+      sampleMeta: planSampleMeta
     }
   };
 }

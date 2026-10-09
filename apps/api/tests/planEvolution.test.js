@@ -33,47 +33,57 @@ const BASE_PLAN = {
 };
 
 test('optimizeContentPlanEvolution supports inversion mutation strategy', async () => {
-  const result = await optimizeContentPlanEvolution(BASE_PLAN, {
-    ga: {
-      seed: 1,
-      populationSize: 8,
-      maxGenerations: 3,
-      stagnationGenerations: 2,
-      tournamentSize: 3,
-      eliteSize: 2,
-      crossoverProbability: 0.9,
-      mutationProbability: 1,
-      mutationMethod: 'inversion'
-    }
-  });
+  process.env.ML_CONTENT_PLAN_PREDICT_STUB = '1';
+  try {
+    const result = await optimizeContentPlanEvolution(BASE_PLAN, {
+      ga: {
+        seed: 1,
+        populationSize: 8,
+        maxGenerations: 3,
+        stagnationGenerations: 2,
+        tournamentSize: 3,
+        eliteSize: 2,
+        crossoverProbability: 0.9,
+        mutationProbability: 1,
+        mutationMethod: 'inversion'
+      }
+    });
 
-  assert.ok(result);
-  assert.ok(Array.isArray(result.optimizedPlan?.publications));
-  assert.ok(result.optimizedPlan.publications.length > 0);
-  assert.equal(result.ga?.stop_reason === 'max_generations' || result.ga?.stop_reason === 'stagnation', true);
+    assert.ok(result);
+    assert.ok(Array.isArray(result.optimizedPlan?.publications));
+    assert.ok(result.optimizedPlan.publications.length > 0);
+    assert.equal(result.ga?.stop_reason === 'max_generations' || result.ga?.stop_reason === 'stagnation', true);
+  } finally {
+    delete process.env.ML_CONTENT_PLAN_PREDICT_STUB;
+  }
 });
 
 test('optimizeContentPlanEvolution normalizes invalid and locale-formatted GA params', async () => {
-  const result = await optimizeContentPlanEvolution(BASE_PLAN, {
-    ga: {
-      seed: 'demo-seed',
-      populationSize: 'bad',
-      maxGenerations: '-10',
-      stagnationGenerations: 'oops',
-      eliteSize: 'NaN',
-      tournamentSize: '1',
-      crossoverProbability: '0,9',
-      mutationProbability: '1,5',
-      selectionMethod: 'unsupported',
-      crossoverMethod: 'UNIFORM',
-      mutationMethod: 'UNKNOWN'
-    }
-  });
+  process.env.ML_CONTENT_PLAN_PREDICT_STUB = '1';
+  try {
+    const result = await optimizeContentPlanEvolution(BASE_PLAN, {
+      ga: {
+        seed: 'demo-seed',
+        populationSize: 'bad',
+        maxGenerations: '-10',
+        stagnationGenerations: 'oops',
+        eliteSize: 'NaN',
+        tournamentSize: '1',
+        crossoverProbability: '0,9',
+        mutationProbability: '1,5',
+        selectionMethod: 'unsupported',
+        crossoverMethod: 'UNIFORM',
+        mutationMethod: 'UNKNOWN'
+      }
+    });
 
-  assert.ok(result);
-  assert.ok(result.ga);
-  assert.equal(result.ga.generations, 1);
-  assert.ok(Number.isFinite(result.ga.best_score));
-  assert.ok(Array.isArray(result.optimizedPlan?.publications));
-  assert.ok(result.optimizedPlan.publications.length > 0);
+    assert.ok(result);
+    assert.ok(result.ga);
+    assert.equal(result.ga.generations, 1);
+    assert.ok(Number.isFinite(result.ga.best_score));
+    assert.ok(Array.isArray(result.optimizedPlan?.publications));
+    assert.ok(result.optimizedPlan.publications.length > 0);
+  } finally {
+    delete process.env.ML_CONTENT_PLAN_PREDICT_STUB;
+  }
 });

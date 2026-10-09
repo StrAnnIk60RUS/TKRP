@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
-import { createPlanRouter } from '../src/modules/planning/routes/planRouterCore.js';
+import { createPlanRouter } from './helpers/planRouterCore.js';
 
 function attachRequestContext(req, res, next) {
   req.requestId = 'test-req';

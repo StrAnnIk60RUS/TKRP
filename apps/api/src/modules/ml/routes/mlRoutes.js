@@ -11,6 +11,7 @@ import {
 } from '../services/relevancePredictionService.js';
 import { reembedPrecedentsWithWrongDimension } from '../../precedents/repositories/precedentRepository.js';
 import { requireLocalOrAdminApiKey } from '../../../shared/http/security.js';
+import { requireSessionOrAdminApiKey } from '../../auth/services/sessionGate.js';
 import { sendRouteError } from '../../../shared/http/routeUtils.js';
 
 const router = Router();
@@ -45,7 +46,7 @@ router.post('/relevance/train', requireLocalOrAdminApiKey, async (req, res) => {
   }
 });
 
-router.post('/relevance/predict', async (req, res) => {
+router.post('/relevance/predict', requireSessionOrAdminApiKey, async (req, res) => {
   try {
     const { publications } = req.body || {};
     if (!Array.isArray(publications) || publications.length === 0) {
@@ -71,7 +72,7 @@ router.post('/relevance/predict', async (req, res) => {
   }
 });
 
-router.get('/models/metadata', (req, res) => {
+router.get('/models/metadata', requireSessionOrAdminApiKey, (req, res) => {
   return res.json({
     success: true,
     metadata: getMlModelMetadata(),
@@ -107,7 +108,7 @@ router.post('/content-plan/train', requireLocalOrAdminApiKey, async (req, res) =
   }
 });
 
-router.post('/post/predict', async (req, res) => {
+router.post('/post/predict', requireSessionOrAdminApiKey, async (req, res) => {
   try {
     const { publications } = req.body || {};
     if (!Array.isArray(publications) || publications.length === 0) {
@@ -132,7 +133,7 @@ router.post('/post/predict', async (req, res) => {
   }
 });
 
-router.post('/content-plan/predict', async (req, res) => {
+router.post('/content-plan/predict', requireSessionOrAdminApiKey, async (req, res) => {
   try {
     const payload = req.body || {};
     const candidate = payload.draft_content_plan || payload.draftContentPlan || payload;

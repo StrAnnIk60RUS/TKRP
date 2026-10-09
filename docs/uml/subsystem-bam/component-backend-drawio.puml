@@ -1,0 +1,36 @@
+@startuml
+title Диаграмма компонентов (бэкенд)
+
+package "Маршруты REST API" {
+  component [enrichmentRoutes] as ER
+  component [precedentRoutes] as PR
+  component [planRoutes] as PLR
+}
+
+package "Доменные сервисы" {
+  component [precedentRepository] as Repo
+  component [draftPlanGenerationPipeline] as Draft
+  component [openrouter] as OR
+  component [embeddingService] as Emb
+}
+
+package "Слой данных" {
+  component [data/precedents] as PrecStore
+  component [data/runtime/api] as Runtime
+}
+
+component [OpenRouter] as Ext
+
+ER --> OR : дополнение чата и обогащение пакетов
+ER --> Repo : сохранение обогащённых прецедентов
+PR --> Repo : семантический поиск и сводка корпуса
+PLR --> Repo : контекст прецедентов для генерации
+PLR --> Draft : двухэтапная генерация черновика
+PLR --> Runtime : сохранение оперативных снимков
+Draft --> OR : каркас плана и публикации
+Repo --> Emb : векторизация и семантический поиск
+Repo --> PrecStore : чтение и запись корпуса
+OR --> Ext : внешний вызов дополнения чата
+Emb --> Ext : внешний вызов векторизации текстов
+
+@enduml

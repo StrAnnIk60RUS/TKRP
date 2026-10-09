@@ -1,5 +1,11 @@
 import { GA_UTILS } from './gaCore.js';
 
+/**
+ * Async GA core: production-recommended settings (population 40, generations 40,
+ * elitism 2, tournament 3, stagnation 12). Reproducibility: pass `seed` — the
+ * rng is seeded via GA_UTILS.makeRng (mulberry32); without a seed it falls back
+ * to Math.random and results are not reproducible.
+ */
 function normalizeComparator(direction) {
   return direction === 'min'
     ? (left, right) => (left < right ? -1 : left > right ? 1 : 0)

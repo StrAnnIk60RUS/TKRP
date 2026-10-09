@@ -7,11 +7,12 @@ import {
 } from '../services/semanticEnrichmentPipeline.js';
 import { parseAndEnrichByUrl, parseOnlyByUrl } from '../services/parserPipeline.js';
 import { persistPrecedents } from '../../precedents/repositories/precedentRepository.js';
+import { requireSessionOrAdminApiKey } from '../../auth/services/sessionGate.js';
 import { sendRouteError } from '../../../shared/http/routeUtils.js';
 
 const router = Router();
 
-router.post('/parse', async (req, res) => {
+router.post('/parse', requireSessionOrAdminApiKey, async (req, res) => {
   try {
     const { url, limit } = req.body || {};
     if (!url || typeof url !== 'string') {
@@ -34,7 +35,7 @@ router.post('/parse', async (req, res) => {
   }
 });
 
-router.post('/parse-and-enrich', async (req, res) => {
+router.post('/parse-and-enrich', requireSessionOrAdminApiKey, async (req, res) => {
   try {
     const { url, limit } = req.body || {};
     if (!url || typeof url !== 'string') {
@@ -63,7 +64,7 @@ router.post('/parse-and-enrich', async (req, res) => {
   }
 });
 
-router.post('/enrich', async (req, res) => {
+router.post('/enrich', requireSessionOrAdminApiKey, async (req, res) => {
   try {
     const { competitors_data } = req.body || {};
     if (!competitors_data) {

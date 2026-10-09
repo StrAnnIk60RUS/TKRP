@@ -37,6 +37,21 @@ test('createCorsOptions allows localhost origin by default', async () => {
   })
 })
 
+test('createCorsOptions allows localhost origin on any port (Vite fallback)', async () => {
+  const corsOptions = createCorsOptions()
+
+  await new Promise((resolve, reject) => {
+    corsOptions.origin('http://localhost:5174', (error, allowed) => {
+      if (error) {
+        reject(error)
+        return
+      }
+      assert.equal(allowed, true)
+      resolve()
+    })
+  })
+})
+
 test('requireLocalOrApiKey accepts local requests without key', () => {
   const req = { clientIp: '127.0.0.1', headers: {}, requestId: 'req-1' }
   const res = createMockResponse()

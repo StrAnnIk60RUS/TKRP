@@ -7,11 +7,17 @@ import {
   buildPlanFeatureMap,
   buildPlanFeatureVector,
   buildPostFeatureVector,
+  FEATURE_SET_VERSION,
+  LEGACY_FEATURE_SET_VERSION,
+  getOntologyFeatureMode,
   PLAN_FEATURE_NAMES,
   POST_FEATURE_NAMES
 } from './ml/ontologyFeatureEngineering.js';
 import { runPythonJsonProcess } from '../../../shared/runtime/pythonRuntime.js';
 import { createPythonJsonWorker } from '../../../shared/runtime/pythonJsonWorker.js';
+import { getPrecedentsSnapshot } from '../../precedents/repositories/precedentRepository.js';
+import { isDatabaseEnabled } from '../../../shared/db/client.js';
+import { listSnapshots, loadSnapshot } from '../../planning/services/planSnapshotStore.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = path.join(__dirname, '..', '..', '..', '..');
@@ -109,7 +115,14 @@ function readJson(filePath, fallback) {
   }
 }
 
-function readPrecedentSnapshot() {
+async function readPrecedentSnapshot() {
+  if (isDatabaseEnabled()) {
+    const snapshot = await getPrecedentsSnapshot();
+    return {
+      publications: snapshot.publications || [],
+      content_plans: snapshot.content_plans || []
+    };
+  }
   return {
     publications: readJson(path.join(PRECEDENTS_ROOT, 'publications.json'), []),
     content_plans: readJson(path.join(PRECEDENTS_ROOT, 'content_plans.json'), [])
@@ -127,6 +140,81 @@ function getModelSpec(modelKey) {
 function getModelMetadata(modelKey) {
   const spec = getModelSpec(modelKey);
   return readJson(spec.metadataPath, null);
+}
+
+/**
+ * Compares feature set version of a loaded model with the current one.
+ * Legacy artifacts (no version metadata) are treated as LEGACY_FEATURE_SET_VERSION
+ * and only produce a warning; an explicit mismatch produces a louder warning.
+ * @param {string} modelKey - 'post' | 'content_plan'
+ * @returns {{ current: string, model: string, match: boolean, legacy: boolean }}
+ */
+function checkModelFeatureSetVersion(modelKey) {
+  const metadata = getModelMetadata(modelKey);
+  const modelVersion = metadata?.feature_set_version || LEGACY_FEATURE_SET_VERSION;
+  const legacy = !metadata?.feature_set_version;
+  const match = modelVersion === FEATURE_SET_VERSION;
+  if (!match) {
+    console.warn(
+      `[relevancePredictionService] Feature set version mismatch for ${modelKey}: ` +
+      `model=${modelVersion}${legacy ? ' (legacy, unversioned)' : ''}, current=${FEATURE_SET_VERSION}. ` +
+      `Retrain via /ml/relevance/train or run tools/ml/migrate_model_versions.py.`
+    );
+  }
+  const ontologyState = getOntologyFeatureMode();
+  const modelOntology = metadata?.ontology_features_enabled;
+  if (modelOntology !== undefined && Boolean(modelOntology) !== Boolean(ontologyState.enabled)) {
+    console.warn(
+      `[relevancePredictionService] Ontology enrichment flag mismatch for ${modelKey}: ` +
+      `model=${Boolean(modelOntology)}, current=${Boolean(ontologyState.enabled)} ` +
+      `(ONTOLOGY_LLM_ENRICHMENT_MODE=${ontologyState.mode}). Predictions may drift.`
+    );
+  }
+  return { current: FEATURE_SET_VERSION, model: modelVersion, match, legacy };
+}
+
+async function loadOptimizedPlanSnapshots() {
+  const limit = Math.max(0, Math.floor(Number(process.env.ML_PLAN_SNAPSHOT_TRAINING_LIMIT ?? 20)));
+  if (limit === 0) return [];
+  const listed = await listSnapshots(limit);
+  const entries = [];
+  for (const item of listed) {
+    const loaded = await loadSnapshot(item.token);
+    if (loaded?.plan) {
+      entries.push({
+        plan: loaded.plan,
+        optimization: loaded.optimization || null,
+        saved_at: loaded.saved_at || item.saved_at || null
+      });
+    }
+  }
+  return entries;
+}
+
+async function getTrainingPayload(modelKey) {
+  const snapshot = await readPrecedentSnapshot();
+  const optimizedPlans = await loadOptimizedPlanSnapshots();
+  const datasets = buildMlTrainingDatasets(snapshot, optimizedPlans);
+  const ontologyState = getOntologyFeatureMode();
+
+  if (modelKey === 'post') {
+    const sanitized = sanitizeFeatureMatrix(datasets.postDataset.features, 'train/post');
+    return {
+      features: sanitized.matrix,
+      targets: datasets.postDataset.targets,
+      feature_names: datasets.postDataset.featureNames,
+      feature_set_version: FEATURE_SET_VERSION,
+      ontology_features_enabled: Boolean(ontologyState.enabled)
+    };
+  }
+  const sanitized = sanitizeFeatureMatrix(datasets.contentPlanDataset.features, 'train/content_plan');
+  return {
+    features: sanitized.matrix,
+    targets: datasets.contentPlanDataset.targets,
+    feature_names: datasets.contentPlanDataset.featureNames,
+    feature_set_version: FEATURE_SET_VERSION,
+    ontology_features_enabled: Boolean(ontologyState.enabled)
+  };
 }
 
 function getMlModelMetadata() {
@@ -242,26 +330,6 @@ function enqueueTraining(modelKey, trainFactory) {
   return trainJob;
 }
 
-function getTrainingPayload(modelKey) {
-  const snapshot = readPrecedentSnapshot();
-  const datasets = buildMlTrainingDatasets(snapshot);
-  
-  if (modelKey === 'post') {
-    const sanitized = sanitizeFeatureMatrix(datasets.postDataset.features, 'train/post');
-    return {
-      features: sanitized.matrix,
-      targets: datasets.postDataset.targets,
-      feature_names: datasets.postDataset.featureNames
-    };
-  }
-  const sanitized = sanitizeFeatureMatrix(datasets.contentPlanDataset.features, 'train/content_plan');
-  return {
-    features: sanitized.matrix,
-    targets: datasets.contentPlanDataset.targets,
-    feature_names: datasets.contentPlanDataset.featureNames
-  };
-}
-
 async function ensureModelTrained(modelKey, options = {}) {
   const { forceTrain = false } = options;
   const spec = getModelSpec(modelKey);
@@ -284,6 +352,7 @@ async function predictPostMetricsByFeatureVectors(featureVectors, options = {}) 
   const sanitized = sanitizeFeatureMatrix(featureVectors, 'predict/post');
 
   await ensureModelTrained('post', options);
+  checkModelFeatureSetVersion('post');
   const batches = chunkArray(sanitized.matrix, 128);
   const allPredictions = [];
   let metadata = null;
@@ -313,9 +382,18 @@ async function predictPlanMetricsByFeatureVectors(featureVectors, options = {}) 
   if (!Array.isArray(featureVectors) || featureVectors.length === 0) {
     return { predictions: [], metadata: null };
   }
+  if (process.env.ML_CONTENT_PLAN_PREDICT_STUB === '1') {
+    const n = featureVectors.length;
+    const stubRow = [100, 10, 1000];
+    return {
+      predictions: Array.from({ length: n }, () => stubRow.slice()),
+      metadata: getModelMetadata('content_plan')
+    };
+  }
   const sanitized = sanitizeFeatureMatrix(featureVectors, 'predict/content_plan');
 
   await ensureModelTrained('content_plan', options);
+  checkModelFeatureSetVersion('content_plan');
   const batches = chunkArray(sanitized.matrix, 128);
   const allPredictions = [];
   let metadata = null;
@@ -340,7 +418,7 @@ async function predictPlanMetricsByFeatureVectors(featureVectors, options = {}) 
  * Обучение модели для указанного ключа (post или content_plan)
  */
 async function trainMetricsModel(modelKey) {
-  const payload = getTrainingPayload(modelKey);
+  const payload = await getTrainingPayload(modelKey);
   if (!payload.features.length) {
     throw new Error(`No training samples available for model ${modelKey}`);
   }
@@ -593,5 +671,8 @@ export {
   predictPostLikesForPublications,
   predictContentPlanLikes,
   trainPostLikesModel,
-  trainContentPlanLikesModel
+  trainContentPlanLikesModel,
+  // Versioning helpers
+  checkModelFeatureSetVersion,
+  loadOptimizedPlanSnapshots
 };

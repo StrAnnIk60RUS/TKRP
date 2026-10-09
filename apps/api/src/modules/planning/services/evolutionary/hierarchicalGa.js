@@ -7,6 +7,7 @@ import {
   applyPlanDiversityLlmRewrite,
   shouldRunPlanDiversityLlmRewrite
 } from '../planDiversityLlmPass.js';
+import { kpiScore } from './fitnessUtils.js';
 
 function asNumber(value, fallback = 0) {
   const numeric = Number(value);
@@ -106,6 +107,96 @@ function validatePlanConstraints(plan, constraints = {}) {
   };
 }
 
+/**
+ * Bridge stage1 -> stage2: only pass through locked fields that are actually set.
+ * null/undefined has_cta/targetToneIndex must be OMITTED, otherwise stage2
+ * repairGenome would pin the gene to null and freeze the dimension.
+ */
+export function buildStage2LockedFields(lockedFields = {}, planFeatureMap = {}) {
+  const next = {
+    ...lockedFields,
+    targetCtaShare: planFeatureMap.cta_share,
+    targetAvgCreativity: planFeatureMap.avg_creativity,
+    targetUniqueTones: planFeatureMap.unique_tones
+  };
+  if (lockedFields.has_cta === undefined || lockedFields.has_cta === null) {
+    delete next.has_cta;
+  } else {
+    next.has_cta = lockedFields.has_cta;
+  }
+  if (lockedFields.targetToneIndex === undefined || lockedFields.targetToneIndex === null) {
+    delete next.targetToneIndex;
+  } else {
+    next.targetToneIndex = lockedFields.targetToneIndex;
+  }
+  return next;
+}
+
+/**
+ * Repair loop: clamp dates into horizon, snap unknown platforms to plan platform list.
+ * min_publications shortfall cannot be repaired structurally -> reported as unfixable.
+ */
+export function repairPlanConstraints(plan, constraints = {}) {
+  const repairs = [];
+  const unfixable = [];
+  const publications = Array.isArray(plan?.publications) ? plan.publications : [];
+
+  const minRequired =
+    pickPositiveInt(constraints.min_publications) ?? pickPositiveInt(plan?.constraints?.min_publications);
+  if (minRequired != null && publications.length < minRequired) {
+    unfixable.push(
+      `min_publications: ${publications.length} < ${minRequired}`
+    );
+  }
+
+  const horizonStart = isoDateSlice(constraints.date_min ?? plan?.planning_horizon?.start_date);
+  const horizonEnd = isoDateSlice(constraints.date_max ?? plan?.planning_horizon?.end_date);
+
+  const allowedPlatforms = (Array.isArray(plan?.platforms) ? plan.platforms : [])
+    .map((p) => String(p || '').trim())
+    .filter(Boolean);
+  const allowedLower = new Set(allowedPlatforms.map((p) => p.toLowerCase()));
+
+  for (const publication of publications) {
+    if (!publication) continue;
+    if (publication.planned_date && horizonStart && horizonEnd) {
+      const raw = String(publication.planned_date);
+      const date = isoDateSlice(raw);
+      if (date && (date < horizonStart || date > horizonEnd)) {
+        const clamped = date < horizonStart ? horizonStart : horizonEnd;
+        publication.planned_date = clamped + (raw.length > 10 ? raw.slice(10) : '');
+        repairs.push(`planned_date clamped to ${clamped}`);
+      }
+    }
+    if (allowedLower.size > 0 && publication.platform) {
+      const platform = String(publication.platform).trim().toLowerCase();
+      if (!allowedLower.has(platform)) {
+        publication.platform = allowedPlatforms[0];
+        repairs.push(`platform snapped to ${allowedPlatforms[0]}`);
+      }
+    }
+  }
+
+  return { publications, repairs, unfixable };
+}
+
+/** Display-fitness KPI of a final publication set (for LLM rewrite guard). */
+async function scorePlanFitness(plan, publications) {
+  const prediction = await predictContentPlanMetrics(
+    { ...(plan || {}), publications },
+    { forceTrain: false }
+  );
+  return kpiScore(
+    [
+      asNumber(prediction?.predictedLikes, 0),
+      asNumber(prediction?.predictedShares, 0),
+      asNumber(prediction?.predictedViews, 0)
+    ],
+    prediction?.metadata,
+    { keyPrefix: 'total_' }
+  );
+}
+
 export async function runHierarchicalOptimization(payload = {}) {
   const draft = payload?.draft_content_plan || payload?.draftContentPlan || null;
   if (!draft || typeof draft !== 'object') {
@@ -127,15 +218,7 @@ export async function runHierarchicalOptimization(payload = {}) {
   
   // Подготовка lockedFields для stage2 на основе результатов stage1
   const planFeatureMap = contentPlanResult.planFeatureMap;
-  const stage2LockedFields = {
-    ...lockedFields,
-    // Если в lockedFields не указано иное, берём из результатов эволюции плана
-    has_cta: lockedFields.has_cta !== undefined ? lockedFields.has_cta : null,
-    targetToneIndex: lockedFields.targetToneIndex !== undefined ? lockedFields.targetToneIndex : null,
-    targetCtaShare: planFeatureMap.cta_share,
-    targetAvgCreativity: planFeatureMap.avg_creativity,
-    targetUniqueTones: planFeatureMap.unique_tones
-  };
+  const stage2LockedFields = buildStage2LockedFields(lockedFields, planFeatureMap);
   
   // Stage 2: эволюция признаков каждого поста
   const postResult = await optimizePublicationsEvolution(
@@ -143,6 +226,7 @@ export async function runHierarchicalOptimization(payload = {}) {
     contentPlanResult.planFeatureMap,
     {
       ...stage2Config,
+      targetCtaShare: planFeatureMap.cta_share,
       lockedFields: stage2LockedFields
     }
   );
@@ -154,7 +238,8 @@ export async function runHierarchicalOptimization(payload = {}) {
     contentPlanResult.planFeatureMap,
     {
       ...(stage2Config.ga || stage2Config),
-      targetCtaShare: planFeatureMap.cta_share
+      targetCtaShare: planFeatureMap.cta_share,
+      targetUniqueTones: planFeatureMap.unique_tones
     }
   );
 
@@ -173,7 +258,14 @@ export async function runHierarchicalOptimization(payload = {}) {
           content_profile: draft?.content_profile || contentPlanResult.optimizedPlan?.content_profile || null,
           publications: publicationsAfterRewrite
         },
-        stage3Config
+        {
+          ...stage3Config,
+          // Fitness rollback guard теперь вовнут pass (reason 'rollback');
+          // guard не должен блоки pipeline — fitnessFn падрял log-only внутри.
+          fitnessGuard: {
+            fitnessFn: (pubs) => scorePlanFitness(contentPlanResult.optimizedPlan, pubs)
+          }
+        }
       );
       publicationsAfterRewrite = rewriteResult.publications;
       stage3LlmMeta = {
@@ -182,6 +274,10 @@ export async function runHierarchicalOptimization(payload = {}) {
         reason: rewriteResult.meta?.reason || null,
         usage: rewriteResult.meta?.usage || null
       };
+      if (rewriteResult.meta?.fitness_before != null) {
+        stage3LlmMeta.fitness_before = rewriteResult.meta.fitness_before;
+        stage3LlmMeta.fitness_after = rewriteResult.meta.fitness_after;
+      }
     } catch (err) {
       stage3LlmMeta = {
         llm_diversity_rewrite: true,
@@ -195,8 +291,20 @@ export async function runHierarchicalOptimization(payload = {}) {
   const normalizedPublications = normalizePlanPublicationsFields(publicationsAfterRewrite);
   const bodySanitizedPublications = sanitizePlanPublicationsBodies(normalizedPublications);
 
+  const repairedConstraints = repairPlanConstraints(
+    { ...contentPlanResult.optimizedPlan, publications: bodySanitizedPublications },
+    stage1Config.constraints || {}
+  );
+  if (repairedConstraints.unfixable.length > 0) {
+    throw new Error(
+      'Результат эволюции не удовлетвореч не-repairable constraints: ' +
+      repairedConstraints.unfixable.join('; ')
+    );
+  }
+  const finalPublications = repairedConstraints.publications;
+
   // Финальные метаданные плана
-  const finalPlanFeatureMap = buildPlanFeatureMap(bodySanitizedPublications, {
+  const finalPlanFeatureMap = buildPlanFeatureMap(finalPublications, {
     durationDays: contentPlanResult.optimizedPlan?.planning_horizon?.duration_days,
     expectedPlatforms: contentPlanResult.optimizedPlan?.platforms || draft?.platforms || [],
     targetAudience: contentPlanResult.optimizedPlan?.target_audience || draft?.target_audience || []
@@ -206,7 +314,7 @@ export async function runHierarchicalOptimization(payload = {}) {
   const finalPlanPrediction = await predictContentPlanMetrics(
     {
       ...contentPlanResult.optimizedPlan,
-      publications: bodySanitizedPublications
+      publications: finalPublications
     },
     {
       forceTrain: false,
@@ -227,7 +335,7 @@ export async function runHierarchicalOptimization(payload = {}) {
 
   const optimizedContentPlan = {
     ...contentPlanResult.optimizedPlan,
-    publications: bodySanitizedPublications,
+    publications: finalPublications,
     expected_kpi: {
       ...(contentPlanResult.optimizedPlan.expected_kpi || {}),
       predicted_total_likes: safeFinalPredictedLikes,
@@ -285,9 +393,13 @@ export async function runHierarchicalOptimization(payload = {}) {
           history: item.ga.history
         }
       })),
-      constraints_check: validatePlanConstraints(optimizedContentPlan, stage1Config.constraints || {})
+      constraints_check: {
+        ...validatePlanConstraints(optimizedContentPlan, stage1Config.constraints || {}),
+        repairs: repairedConstraints.repairs,
+        unfixable: repairedConstraints.unfixable
+      }
     },
-    optimized_publications: bodySanitizedPublications,
+    optimized_publications: finalPublications,
     best_publication: postResult.bestPublication,
     optimized_content_plan: optimizedContentPlan
   };

@@ -115,3 +115,19 @@ test('buildRagQueryFromForm includes only present meaningful sections', () => {
   assert.match(query, /Платформы: vk, telegram/);
   assert.match(query, /Форматы: text, video/);
 });
+
+test('normalizeDraftPlanResponse throws on envelope schema violations with raw_value', () => {
+  try {
+    normalizeDraftPlanResponse({ draft_content_plan: { publications: [{ topic: 'no platform' }] } }, {});
+    assert.fail('expected throw');
+  } catch (error) {
+    assert.match(error.message, /^draft plan envelope failed schema validation/);
+    assert.ok(Array.isArray(error.validation_errors));
+    assert.equal(typeof error.raw_value, 'string');
+  }
+});
+
+test('normalizeDraftPlanResponse passes through non-object payloads untouched', () => {
+  assert.equal(normalizeDraftPlanResponse(null, {}), null);
+  assert.equal(normalizeDraftPlanResponse('junk', {}), 'junk');
+});

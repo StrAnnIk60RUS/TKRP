@@ -312,39 +312,6 @@ function getDayKeyDateLabel(rawNotes, dateIso) {
   return label || 'Ключевая дата'
 }
 
-function buildDayCellByPlatformLanes(day, options = {}) {
-  const { keyDates = '', maxPostsPerLane = 2, maxLinesPerCell = 8, maxTopicLen = 18 } = options
-  const pubs = Array.isArray(day?.publications) ? day.publications : []
-  const dayNumber = toDayNumber(day?.date || '')
-  const holidayLabel = getHolidayLabel(day?.date || '')
-  const keyDateLabel = getDayKeyDateLabel(keyDates, day?.date || '')
-  const headerMarkers = [holidayLabel, keyDateLabel].filter(Boolean)
-  const lines = [headerMarkers.length > 0 ? `${dayNumber} • ${headerMarkers[0]}` : dayNumber]
-
-  const platforms = ['vk', 'linkedin']
-  platforms.forEach((platformKey) => {
-    const lanePosts = pubs.filter((item) => String(item?.platform || '').toLowerCase() === platformKey)
-    const laneTitle = platformKey === 'vk' ? 'VK:' : 'LinkedIn:'
-    lines.push(laneTitle)
-    if (lanePosts.length === 0) {
-      lines.push(' -')
-      return
-    }
-    lanePosts.slice(0, maxPostsPerLane).forEach((post) => {
-      const topic = clampText(post?.topic || post?.key_message || post?.objective || 'Пост', maxTopicLen)
-      lines.push(` • ${topic}`)
-    })
-    if (lanePosts.length > maxPostsPerLane) {
-      lines.push(` +${lanePosts.length - maxPostsPerLane}`)
-    }
-  })
-
-  if (lines.length > maxLinesPerCell) {
-    return [...lines.slice(0, maxLinesPerCell - 1), '…']
-  }
-  return lines
-}
-
 function buildPdfLane(publications, label, options = {}) {
   const { maxPostsPerLane = 1, maxTopicLen = 18, compact = false } = options
   const lines = [{ text: label, bold: true, color: '#1f2937', fontSize: compact ? 6.4 : 7 }]

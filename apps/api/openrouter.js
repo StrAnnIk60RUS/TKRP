@@ -17,6 +17,11 @@ import {
   validateAndNormalizeSemanticBatchResult,
   validateNormalizedEnrichmentResult
 } from './src/modules/enrichment/services/semanticEnrichmentPipeline.js';
+import {
+  buildLlmCacheKey,
+  isLlmCacheEnabled,
+  llmCacheOrCompute
+} from './src/shared/utils/llmCache.js';
 
 // Загружаем единый .env из корня проекта
 const __filename = fileURLToPath(import.meta.url);
@@ -38,6 +43,137 @@ const SEMANTIC_ENRICHMENT_PROMPT_PATH = path.join(
 
 // Экспортируем для проверки в server.js
 export { OPENROUTER_API_KEY, AI_MODEL };
+
+/**
+ * Semantic enrichment gate: default ON in development, OFF in production
+ * (detected via APP_ENV/NODE_ENV). Explicit SEMANTIC_ENRICHMENT_ENABLED overrides.
+ * @returns {boolean}
+ */
+export function isSemanticEnrichmentEnabled() {
+  const explicit = process.env.SEMANTIC_ENRICHMENT_ENABLED;
+  if (explicit === 'true' || explicit === 'false') {
+    return explicit === 'true';
+  }
+  const env = (process.env.APP_ENV || process.env.NODE_ENV || 'development').toLowerCase();
+  return env !== 'production';
+}
+
+/**
+ * LLM response cache: implemented in shared/utils/llmCache.js (TTL + LRU,
+ * env-configurable via LLM_CACHE_* with SEMANTIC_ENRICHMENT_CACHE_* fallbacks).
+ */
+
+/**
+ * Rate limiter: at most SEMANTIC_ENRICH_RATE_LIMIT_PER_MIN API calls per rolling minute;
+ * excess calls wait until a slot frees (simple timestamp queue).
+ * @returns {Promise<void>}
+ */
+async function waitForRateLimitSlot() {
+  const perMin = Number(process.env.SEMANTIC_ENRICH_RATE_LIMIT_PER_MIN ?? 0);
+  if (!Number.isFinite(perMin) || perMin <= 0) return;
+  const windowMs = 60000;
+  for (;;) {
+    const now = Date.now();
+    while (requestTimestamps.length && now - requestTimestamps[0] >= windowMs) {
+      requestTimestamps.shift();
+    }
+    if (requestTimestamps.length < perMin) {
+      requestTimestamps.push(now);
+      return;
+    }
+    const waitMs = windowMs - (now - requestTimestamps[0]) + 10;
+    console.log(`[LLM] Rate limit (${perMin}/min) reached; waiting ${waitMs} ms...`);
+    await new Promise((r) => setTimeout(r, waitMs));
+  }
+}
+
+const requestTimestamps = [];
+
+async function callOpenRouterChatUncached(systemPrompt, userPrompt, options = {}) {
+  if (!OPENROUTER_API_KEY) {
+    throw new Error('API ключ для LLM не установлен в переменных окружения');
+  }
+
+  const { temperature = 0.4, responseFormat = null } = options;
+  const maxTokens =
+    options.maxTokens != null && Number.isFinite(Number(options.maxTokens))
+      ? Number(options.maxTokens)
+      : DEFAULT_OPENROUTER_MAX_OUTPUT_TOKENS;
+
+  const requestBody = {
+    model: AI_MODEL,
+    messages: [
+      {
+        role: 'system',
+        content: systemPrompt
+      },
+      {
+        role: 'user',
+        content: userPrompt
+      }
+    ],
+    temperature,
+    max_tokens: maxTokens
+  };
+
+  // Если нужен JSON формат ответа
+  if (responseFormat === 'json') {
+    requestBody.response_format = { type: 'json_object' };
+  }
+
+  try {
+    console.log(`[LLM] Отправка запроса`);  
+    console.log(`[LLM] Размер промпта: ${(systemPrompt.length + userPrompt.length) / 1024} KB`);
+    
+    const response = await axios.post(
+      OPENROUTER_API_URL,
+      requestBody,
+      {
+        headers: {
+          'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': process.env.APP_URL || 'http://localhost:5173',
+          'X-Title': 'IT Project Promotion App'
+        },
+        timeout: 120000 // 2 минуты таймаут
+      }
+    );
+
+    console.log(`[LLM] Ответ получен. Статус: ${response.status}`);
+    console.log(`[LLM] Использовано токенов: ${response.data.usage?.total_tokens || 'N/A'}`);
+    
+    const content = response.data.choices?.[0]?.message?.content || null;
+    if (!content) {
+      console.warn('[LLM] Внимание: контент отсутствует в ответе');
+      console.log('[LLM] Полный ответ:', JSON.stringify(response.data, null, 2));
+    }
+
+    return {
+      success: true,
+      data: response.data,
+      content: content,
+      usage: response.data.usage || null
+    };
+  } catch (error) {
+    console.error('Ошибка при вызове LLM API:', error.response?.data || error.message);
+
+    let errorMessage = 'Ошибка при обращении к LLM API';
+    if (error.response?.data?.error) {
+      errorMessage = error.response.data.error.message || JSON.stringify(error.response.data.error);
+    } else if (error.message) {
+      errorMessage = error.message;
+    }
+    const status = error.response?.status;
+    if (status) {
+      errorMessage += ` (HTTP ${status})`;
+    }
+
+    const err = new Error(errorMessage);
+    err.responseStatus = status;
+    err.responseData = error.response?.data;
+    throw err;
+  }
+}
 
 /**
  * Считает вовлечённость и помечает, насколько метрики надёжны.
@@ -163,95 +299,27 @@ async function enrichSemanticBatch(batch, systemPrompt, options = {}) {
 
 /**
  * Отправляет запрос к OpenRouter Chat Completions API (модель из AI_MODEL).
+ * Cached via shared llmCache.js; rate-limited by SEMANTIC_ENRICH_RATE_LIMIT_PER_MIN.
  * @param {string} systemPrompt - системный промпт
  * @param {string} userPrompt - пользовательский промпт
  * @param {Object} options - дополнительные опции (maxTokens — опционально; без него используется DEFAULT_OPENROUTER_MAX_OUTPUT_TOKENS)
  * @returns {Promise<Object>} - ответ от API
  */
 export async function callOpenRouterChat(systemPrompt, userPrompt, options = {}) {
-  if (!OPENROUTER_API_KEY) {
-    throw new Error('API ключ для LLM не установлен в переменных окружения');
-  }
-
-  const { temperature = 0.4, responseFormat = null } = options;
-  const maxTokens =
-    options.maxTokens != null && Number.isFinite(Number(options.maxTokens))
-      ? Number(options.maxTokens)
-      : DEFAULT_OPENROUTER_MAX_OUTPUT_TOKENS;
-
-  const requestBody = {
+  const cacheKey = buildLlmCacheKey({
     model: AI_MODEL,
-    messages: [
-      {
-        role: 'system',
-        content: systemPrompt
-      },
-      {
-        role: 'user',
-        content: userPrompt
-      }
-    ],
-    temperature,
-    max_tokens: maxTokens
-  };
-
-  // Если нужен JSON формат ответа
-  if (responseFormat === 'json') {
-    requestBody.response_format = { type: 'json_object' };
-  }
-
-  try {
-    console.log(`[LLM] Отправка запроса`);  
-    console.log(`[LLM] Размер промпта: ${(systemPrompt.length + userPrompt.length) / 1024} KB`);
-    
-    const response = await axios.post(
-      OPENROUTER_API_URL,
-      requestBody,
-      {
-        headers: {
-          'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-          'Content-Type': 'application/json',
-          'HTTP-Referer': process.env.APP_URL || 'http://localhost:5173',
-          'X-Title': 'IT Project Promotion App'
-        },
-        timeout: 120000 // 2 минуты таймаут
-      }
-    );
-
-    console.log(`[LLM] Ответ получен. Статус: ${response.status}`);
-    console.log(`[LLM] Использовано токенов: ${response.data.usage?.total_tokens || 'N/A'}`);
-    
-    const content = response.data.choices?.[0]?.message?.content || null;
-    if (!content) {
-      console.warn('[LLM] Внимание: контент отсутствует в ответе');
-      console.log('[LLM] Полный ответ:', JSON.stringify(response.data, null, 2));
+    systemPrompt,
+    userPrompt,
+    options
+  });
+  return await llmCacheOrCompute(cacheKey, async () => {
+    await waitForRateLimitSlot();
+    const response = await callOpenRouterChatUncached(systemPrompt, userPrompt, options);
+    if (isLlmCacheEnabled()) {
+      console.log(`[LLM] Response cached (key=${cacheKey.slice(0, 12)})`);
     }
-
-    return {
-      success: true,
-      data: response.data,
-      content: content,
-      usage: response.data.usage || null
-    };
-  } catch (error) {
-    console.error('Ошибка при вызове LLM API:', error.response?.data || error.message);
-
-    let errorMessage = 'Ошибка при обращении к LLM API';
-    if (error.response?.data?.error) {
-      errorMessage = error.response.data.error.message || JSON.stringify(error.response.data.error);
-    } else if (error.message) {
-      errorMessage = error.message;
-    }
-    const status = error.response?.status;
-    if (status) {
-      errorMessage += ` (HTTP ${status})`;
-    }
-
-    const err = new Error(errorMessage);
-    err.responseStatus = status;
-    err.responseData = error.response?.data;
-    throw err;
-  }
+    return response;
+  });
 }
 
 /** @deprecated Используйте callOpenRouterChat */
@@ -285,7 +353,7 @@ export async function enrichCompetitorsData(competitorsData) {
   const batches = buildSemanticEnrichmentBatches(dataWithEngagementRate, config);
   const systemPrompt = readPromptFile(SEMANTIC_ENRICHMENT_PROMPT_PATH);
 
-  if (!batches.length) {
+  if (!isSemanticEnrichmentEnabled() || !batches.length) {
     const normalizedData = normalizeCompetitorsContentData(
       applyDeterministicPostProcessing(dataWithEngagementRate)
     );

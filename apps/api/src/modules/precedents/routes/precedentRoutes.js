@@ -14,6 +14,7 @@ import {
   searchPrecedents
 } from '../repositories/precedentRepository.js';
 import { requireLocalOrAdminApiKey } from '../../../shared/http/security.js';
+import { requireSessionOrAdminApiKey } from '../../auth/services/sessionGate.js';
 import { sendRouteError } from '../../../shared/http/routeUtils.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -21,11 +22,11 @@ const DEMO_FIXTURE_PATH = path.join(__dirname, '..', 'fixtures', 'demoPrecedents
 
 const router = Router();
 
-router.get('/summary', (req, res) => {
+router.get('/summary', requireSessionOrAdminApiKey, async (req, res) => {
   try {
     return res.json({
       success: true,
-      summary: getPrecedentsSummary(),
+      summary: await getPrecedentsSummary(),
       request_id: req.requestId
     });
   } catch (error) {
@@ -33,11 +34,11 @@ router.get('/summary', (req, res) => {
   }
 });
 
-router.get('/', (req, res) => {
+router.get('/', requireSessionOrAdminApiKey, async (req, res) => {
   try {
     return res.json({
       success: true,
-      data: getPrecedentsSnapshot(),
+      data: await getPrecedentsSnapshot(),
       request_id: req.requestId
     });
   } catch (error) {
@@ -82,7 +83,7 @@ router.post('/seed', requireLocalOrAdminApiKey, (req, res) => {
   }
 });
 
-router.post('/search', async (req, res) => {
+router.post('/search', requireSessionOrAdminApiKey, async (req, res) => {
   try {
     const { query, limit, platform, audience_segments } = req.body || {};
     if (!query || typeof query !== 'string' || !query.trim()) {
@@ -109,7 +110,7 @@ router.post('/search', async (req, res) => {
   }
 });
 
-router.get('/ontology', async (req, res) => {
+router.get('/ontology', requireSessionOrAdminApiKey, async (req, res) => {
   try {
     return res.json({
       success: true,
@@ -121,7 +122,7 @@ router.get('/ontology', async (req, res) => {
   }
 });
 
-router.get('/ontology/export', async (req, res) => {
+router.get('/ontology/export', requireSessionOrAdminApiKey, async (req, res) => {
   try {
     const {
       classesRows,
@@ -171,7 +172,7 @@ router.get('/ontology/export', async (req, res) => {
   }
 });
 
-router.get('/ontology/export/turtle', async (req, res) => {
+router.get('/ontology/export/turtle', requireSessionOrAdminApiKey, async (req, res) => {
   try {
     const turtle = await getOntologyTurtleData();
     const filename = `ontology_${new Date().toISOString().slice(0, 10)}.ttl`;

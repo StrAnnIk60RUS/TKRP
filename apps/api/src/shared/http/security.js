@@ -74,13 +74,15 @@ export function attachRequestContext(req, res, next) {
   next();
 }
 
+const LOCALHOST_ORIGIN_PATTERN = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d{1,5})?$/;
+
 export function createCorsOptions() {
   const configuredOrigins = parseCsv(process.env.CORS_ALLOWED_ORIGINS);
   const allowlist = new Set(configuredOrigins.length ? configuredOrigins : DEFAULT_ALLOWED_ORIGINS);
 
   return {
     origin(origin, callback) {
-      if (!origin || allowlist.has(origin)) {
+      if (!origin || allowlist.has(origin) || LOCALHOST_ORIGIN_PATTERN.test(origin)) {
         callback(null, true);
         return;
       }

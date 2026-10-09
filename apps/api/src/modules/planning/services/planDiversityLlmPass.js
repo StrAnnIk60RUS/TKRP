@@ -25,7 +25,7 @@ function compactPublicationForRewrite(pub = {}) {
   };
 }
 
-function mergePublicationsRewrite(originalPubs, llmList) {
+export function mergePublicationsRewrite(originalPubs, llmList) {
   const byId = new Map(
     (Array.isArray(llmList) ? llmList : [])
       .filter((p) => p && p.publication_id)
@@ -61,9 +61,45 @@ export function shouldRunPlanDiversityLlmRewrite(payload = {}, stage3Override = 
 }
 
 /**
+ * Fitness rollback guard: если post-rewrite fitness < pre-rewrite fitness - epsilon,
+ * возвращает original publications с meta patch { skipped: true, reason: 'rollback', ... }.
+ * @param {Array} originalPubs
+ * @param {Array} mergedPubs
+ * @param {{ fitnessFn: Function, epsilon?: number }} guard - fitnessFn(pubs) -> number (may be async)
+ * @returns {Promise<{ publications: Array, meta: { skipped?: boolean, reason?: string, fitness_before?: number, fitness_after?: number } }>}
+ */
+export async function applyFitnessRollbackGuard(originalPubs, mergedPubs, guard) {
+  const epsilon = Number.isFinite(Number(guard.epsilon)) ? Number(guard.epsilon) : 0;
+  const fitnessBefore = await guard.fitnessFn(originalPubs);
+  const fitnessAfter = await guard.fitnessFn(mergedPubs);
+  if (
+    Number.isFinite(Number(fitnessBefore)) &&
+    Number.isFinite(Number(fitnessAfter)) &&
+    Number(fitnessAfter) < Number(fitnessBefore) - epsilon
+  ) {
+    return {
+      publications: originalPubs,
+      meta: {
+        skipped: true,
+        reason: 'rollback',
+        fitness_before: Number(fitnessBefore),
+        fitness_after: Number(fitnessAfter)
+      }
+    };
+  }
+  return {
+    publications: mergedPubs,
+    meta: { fitness_before: Number(fitnessBefore), fitness_after: Number(fitnessAfter) }
+  };
+}
+
+/**
  * Переписывает key_message и summary плана для лексического разнообразия.
  * @param {{ publications?: Array, plan_id?: string }} planSlice
- * @param {{ temperature?: number }} options
+ * @param {{ temperature?: number, fitnessGuard?: { fitnessFn: Function, epsilon?: number } }} options
+ *  fitnessGuard — optional rollback guard: fitnessFn(publications) -> number (may be async);
+ *  if post-rewrite fitness < pre-rewrite fitness - epsilon, the original publications
+ *  are returned with meta.reason = 'rollback' (fitness_before/fitness_after in meta).
  * @returns {Promise<{ publications: Array, meta: object }>}
  */
 export async function applyPlanDiversityLlmRewrite(planSlice = {}, options = {}) {
@@ -114,6 +150,24 @@ export async function applyPlanDiversityLlmRewrite(planSlice = {}, options = {})
   }
 
   const merged = mergePublicationsRewrite(publications, list);
+
+  const guard = options.fitnessGuard;
+  if (guard && typeof guard.fitnessFn === 'function') {
+    try {
+      const guarded = await applyFitnessRollbackGuard(publications, merged, guard);
+      meta.fitness_before = guarded.meta.fitness_before;
+      meta.fitness_after = guarded.meta.fitness_after;
+      if (guarded.meta.reason === 'rollback') {
+        meta.skipped = true;
+        meta.reason = 'rollback';
+        return { publications: guarded.publications, meta };
+      }
+    } catch (error) {
+      // Если fitness guard сам падрыл — не верт rewrite; log-only (guard не должен блоки pipeline).
+      console.warn(`[planDiversityLlmPass] fitness guard error: ${error.message}`);
+    }
+  }
+
   meta.skipped = false;
   meta.reason = 'ok';
   meta.usage = llmResponse.usage || null;

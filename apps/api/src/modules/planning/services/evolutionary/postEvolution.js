@@ -9,14 +9,18 @@ import {
   inversionMutation
 } from './operators.js';
 import {
+  DEFAULT_FITNESS_WEIGHTS,
+  kpiScore,
+  combineFitness
+} from './fitnessUtils.js';
+import {
   buildDraftSemanticCore,
   buildObjectiveCta,
   calibrateExpectedKpi,
   choosePreferredKeyMessage,
   choosePreferredSummary,
   choosePreferredTopic,
-  normalizePublicationTopicForUi,
-  sanitizeTopicTitle
+  normalizePublicationTopicForUi
 } from '../contentOutputUtils.js';
 
 const TONE_START = 24;
@@ -71,27 +75,11 @@ function normalizeGaMethod(value, allowed, fallback) {
   return allowed.includes(method) ? method : fallback;
 }
 
-// Веса для фитнес-функции поста
-const FITNESS_WEIGHTS = {
-  likes: 0.5,
-  shares: 0.3,
-  views: 0.2
-};
+// Веса для фитнес-функции поста (shared with plan-level via fitnessUtils)
+const FITNESS_WEIGHTS = { ...DEFAULT_FITNESS_WEIGHTS };
 
 function calculateFitness(predictedMetrics, metadata) {
-  const [likes, shares, views] = predictedMetrics;
-  
-  const maxLikes = metadata?.target_summary?.likes?.max || 1;
-  const maxShares = metadata?.target_summary?.shares?.max || 1;
-  const maxViews = metadata?.target_summary?.views?.max || 1;
-  
-  const normLikes = Math.min(1, likes / maxLikes);
-  const normShares = Math.min(1, shares / maxShares);
-  const normViews = Math.min(1, views / maxViews);
-  
-  return FITNESS_WEIGHTS.likes * normLikes +
-         FITNESS_WEIGHTS.shares * normShares +
-         FITNESS_WEIGHTS.views * normViews;
+  return kpiScore(predictedMetrics, metadata, { keyPrefix: '', weights: FITNESS_WEIGHTS });
 }
 
 /** Средняя L1-разница по измеримым признакам (0..1): выше — дальше от других слотов плана. */
@@ -147,7 +135,7 @@ function resolveCtaPreference(publication = {}) {
 
 function repairGenome(genome, constants = {}) {
   const repaired = POST_FEATURE_NAMES.map((_, index) => {
-    if (index === CTA_INDEX && constants.hasCta !== undefined) return constants.hasCta;
+    if (index === CTA_INDEX && constants.hasCta !== undefined && constants.hasCta !== null) return constants.hasCta;
     if (index === 34) return asNumber(constants.tonesCount, 1);
     if (index === 35) return asNumber(constants.creativityFromBestPlan, 0.5);
     return nearestAllowedValue(asNumber(genome[index], 0), buildAllowedValues(index));
@@ -234,11 +222,9 @@ async function evolveSinglePublication(
   const constants = {
     tonesCount: planFeatureMap.unique_tones,
     creativityFromBestPlan: planFeatureMap.avg_creativity,
-    hasCta: lockedFields.has_cta !== undefined ? lockedFields.has_cta : null,
+    hasCta: lockedFields.has_cta,
     targetToneIndex
   };
-  
-  const baseFeatureMap = createFeatureMap(baseVector);
   
   const crossoverMethod = normalizeGaMethod(
     gaConfig.crossoverMethod,
@@ -284,6 +270,10 @@ async function evolveSinglePublication(
   const traces = [];
   const repairedBasesAll = stage2Options.repairedBases;
   const peerWeight = clampProbability(asNumber(stage2Options.peerDiversityWeight, 0.1), 0.1);
+  const targetCtaShare = asNumber(stage2Options.targetCtaShare, -1);
+  const ctaAlignmentWeight = lockedFields.has_cta === undefined || lockedFields.has_cta === null
+    ? clampProbability(asNumber(stage2Options.ctaAlignmentWeight, 0.05), 0.05)
+    : 0;
   const peerGenomes =
     Array.isArray(repairedBasesAll) && repairedBasesAll.length > 1
       ? repairedBasesAll.filter((_, j) => j !== publicationIndex)
@@ -319,7 +309,18 @@ async function evolveSinglePublication(
           predictionResult.metadata
         );
         const diversity = peerGenomeDiversityScore(repaired[index], peerGenomes);
-        const fitness = peerGenomes.length ? kpi + peerWeight * diversity : kpi;
+        let ctaPenalty = 0;
+        if (ctaAlignmentWeight > 0 && targetCtaShare >= 0) {
+          const geneCta = asNumber(repaired[index][CTA_INDEX], 0) >= 0.5 ? 1 : 0;
+          ctaPenalty = ctaAlignmentWeight * Math.abs(geneCta - targetCtaShare);
+        }
+        const combined = combineFitness({
+          kpi,
+          diversity,
+          diversityWeight: peerGenomes.length ? peerWeight : 0,
+          penalty: ctaPenalty
+        });
+        const fitness = combined.optimization;
 
         return {
           score: fitness,
@@ -328,7 +329,9 @@ async function evolveSinglePublication(
             predicted_shares: capped.cappedShares,
             predicted_views: capped.cappedViews,
             fitness,
-            peer_diversity: diversity
+            display_fitness: combined.display,
+            peer_diversity: diversity,
+            cta_penalty: ctaPenalty
           }
         };
       });
@@ -447,7 +450,7 @@ function buildPublicationArchetypes(publicationResults = [], maxCount = 3) {
   return archetypes;
 }
 
-function selectArchetypeForPublication(publication = {}, archetypes = [], usageByKey = new Map()) {
+function selectArchetypeForPublication(publication = {}, archetypes = [], usageByKey = new Map(), toneUsage = null, targetUniqueTones = 0) {
   if (!Array.isArray(archetypes) || archetypes.length === 0) return null;
   let bestArchetype = archetypes[0];
   let bestScore = Number.NEGATIVE_INFINITY;
@@ -455,7 +458,11 @@ function selectArchetypeForPublication(publication = {}, archetypes = [], usageB
   for (const archetype of archetypes) {
     const key = createArchetypeKey(archetype);
     const usagePenalty = (usageByKey.get(key) || 0) * 1.4;
-    const score = scoreArchetypeMatch(publication, archetype) - usagePenalty;
+    const toneKey = String(archetype?.tone || '').toLowerCase();
+    const tonePenalty = toneUsage && targetUniqueTones > toneUsage.size
+      ? (toneUsage.get(toneKey) || 0) * 2
+      : 0;
+    const score = scoreArchetypeMatch(publication, archetype) - usagePenalty - tonePenalty;
     if (score > bestScore) {
       bestArchetype = archetype;
       bestScore = score;
@@ -464,6 +471,10 @@ function selectArchetypeForPublication(publication = {}, archetypes = [], usageB
 
   const selectedKey = createArchetypeKey(bestArchetype);
   usageByKey.set(selectedKey, (usageByKey.get(selectedKey) || 0) + 1);
+  if (toneUsage) {
+    const selectedToneKey = String(bestArchetype?.tone || '').toLowerCase();
+    toneUsage.set(selectedToneKey, (toneUsage.get(selectedToneKey) || 0) + 1);
+  }
   return bestArchetype;
 }
 
@@ -603,7 +614,7 @@ export async function optimizePublicationsEvolution(publications = [], planFeatu
     const constants = {
       tonesCount: planFeatureMap.unique_tones,
       creativityFromBestPlan: planFeatureMap.avg_creativity,
-      hasCta: lockedFields.has_cta !== undefined ? lockedFields.has_cta : null,
+      hasCta: lockedFields.has_cta,
       targetToneIndex
     };
     const raw = buildPostFeatureVector(pub, {
@@ -627,7 +638,9 @@ export async function optimizePublicationsEvolution(publications = [], planFeatu
     (publication, index) =>
       evolveSinglePublication(publication, planFeatureMap, gaConfig, index, lockedFields, {
         repairedBases,
-        peerDiversityWeight
+        peerDiversityWeight,
+        targetCtaShare: config.targetCtaShare ?? planFeatureMap?.cta_share,
+        ctaAlignmentWeight: config.ctaAlignmentWeight ?? gaConfig.ctaAlignmentWeight
       })
   );
 
@@ -701,10 +714,12 @@ export async function fillPlanWithBestPublication(publications = [], publication
   }
   
   const usageByKey = new Map();
+  const toneUsage = new Map();
+  const targetUniqueTones = options.targetUniqueTones ?? asNumber(planFeatureMap.unique_tones, 0);
   const selectedSources = publications.map((publication, index) =>
     slotResultsById.get(publication?.publication_id) ||
     slotResults[index] ||
-    selectArchetypeForPublication(publication, archetypes, usageByKey)
+    selectArchetypeForPublication(publication, archetypes, usageByKey, toneUsage, targetUniqueTones)
   );
   
   const featureVectors = publications.map((_, index) => {

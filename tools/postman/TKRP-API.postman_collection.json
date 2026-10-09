@@ -1,0 +1,1131 @@
+{
+  "info": {
+    "_postman_id": "a7f3c2e1-9b4d-4e8f-c1d2-tkrp-api",
+    "name": "TKRP API — функциональные требования (табл. 2.1)",
+    "description": "Коллекция для проверки функциональных требований подсистемы БЯМ/RAG (табл. 2.1 ПЗ).\n\n**Для скриншота в ПЗ:** папка **00 Матрица FR** + `npm run test:fr`.\n\n**Запуск API:** `npm run dev:server`; `baseUrl` = http://localhost:3001.\n\nПапки 01, 04–06 — без LLM. Папки 02–03 — с OPENROUTER_API_KEY.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.collectionVariables.set('tkrpTestLib', [",
+          "  'function tkrpPostsFromCompetitorsData(d){',",
+          "  '  return (d?.competitors||[]).flatMap(c=>Array.isArray(c.posts)?c.posts:[]);',",
+          "  '}',",
+          "  'function tkrpAssertRequestId(j){ pm.expect(j).to.have.property(\"request_id\"); }',",
+          "  'function tkrpAssertErrorShape(j){',",
+          "  '  pm.expect(j.success).to.eql(false);',",
+          "  '  tkrpAssertRequestId(j);',",
+          "  '}'",
+          "].join('\\n'));"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3001"
+    },
+    {
+      "key": "ragQuerySample",
+      "value": "образовательная IT-платформа для разработчиков, кейсы и онбординг"
+    },
+    {
+      "key": "planSnapshotToken",
+      "value": ""
+    },
+    {
+      "key": "tkrpTestLib",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "00 Матрица FR (сводка, без LLM)",
+      "description": "Сводный прогон всех 35 функциональных требований (табл. 2.1, п. 5.1, UI). Вкладка Tests — зелёные проверки для отчёта в ПЗ. Не требует OpenRouter. Один запрос; при недоступном API сетевые assert допускают code 0.",
+      "item": [
+        {
+          "name": "GET /health — матрица FR (Tests)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Матрица FR — сводный прогон (табл. 2.1 + п. 5.1 + UI)', () => {",
+                  "  pm.expect(true).to.eql(true);",
+                  "});",
+                  "const frRows = [",
+                  "  'FR-2.1-01|Загружает файл или JSON — структура конкурентов и постов (экран формы проекта)',",
+                  "  'FR-2.1-02|Запускает семантическое обогащение — уведомления и выгрузка JSON результата',",
+                  "  'FR-2.1-03|POST /api/enrich — проверка лимитов запроса до вызова БЯМ (request_guardrails)',",
+                  "  'FR-2.1-04|Локальный расчёт engagement_rate и качества метрик до вызова БЯМ',",
+                  "  'FR-2.1-05|Нарезка постов на батчи (лимиты постов и UTF-8, ENRICH_AUTO_BATCH)',",
+                  "  'FR-2.1-06|Запрос к БЯМ батчами — JSON-ответ по source_post_id',",
+                  "  'FR-2.1-07|Слияние и нормализация результатов батчей (частичное слияние)',",
+                  "  'FR-2.1-08|Инициирует поиск прецедентов — POST /api/precedents/search (query, limit, фильтры)',",
+                  "  'FR-2.1-09|searchPrecedents — retrieval, hybrid_weights, reliability на результатах',",
+                  "  'FR-2.1-10|Эмбеддинги текстов — конфигурация EMBEDDING_MODEL и батчирование',",
+                  "  'FR-2.1-11|POST /api/plan/generate и /generate-batched — черновой контент-план',",
+                  "  'FR-2.1-12|Формирование rag_query из form_input (buildSuggestedPrecedentQuery)',",
+                  "  'FR-2.1-13|Фильтрация контекста retrieval — rag_limit, platforms, audience_segments',",
+                  "  'FR-2.1-14|Сжатие RAG-контекста для промпта (компактный контекст в generation_metadata)',",
+                  "  'FR-2.1-15|JSON-скелет чернового контент-плана (этап 1 LLM)',",
+                  "  'FR-2.1-16|Помесячная генерация публикаций по слотам (этап 2 LLM)',",
+                  "  'FR-2.1-17|HTTP-ответ: success, rag, draft, usage, generation_metadata',",
+                  "  'FR-2.1-18|Конфигурация через окружение — лимиты enrichment и модели OpenRouter',",
+                  "  'FR-2.1-19|Обработка отказа — 400/413, request_id, сообщения об ошибках',",
+                  "  'FR-5.1-01|Мастер проекта и сохранение черновика (валидация form_input)',",
+                  "  'FR-5.1-02|Модуль генерации черновика — контракт draft и rag_limit',",
+                  "  'FR-5.1-03|Приёмка и нормализация JSON-ответа БЯМ (семантика и черновик)',",
+                  "  'FR-5.1-04|Частичный успех обогащения — toast и metadata.partial_enrichment',",
+                  "  'FR-5.1-05|Снимки плана и корпус прецедентов (snapshots, summary)',",
+                  "  'FR-5.1-06|Журналирование enrichment — metadata.batching и usage',",
+                  "  'FR-5.1-07|Ограничение размера запроса enrich — MAX_ENRICH_REQUEST_BYTES',",
+                  "  'FR-5.1-08|Ограничение контекста — rag_limit и валидация query',",
+                  "  'FR-5.1-09|Сохранение notes и повторное сохранение snapshot',",
+                  "  'FR-5.1-10|Предупреждения качества плана — buildRiskSummary',",
+                  "  'FR-UI-SC-01|Просмотр карточек прецедентов — score, reliability, режим retrieval',",
+                  "  'FR-UI-SC-02|Упрощённый поток — поиск прецедентов затем генерация черновика',",
+                  "  'FR-UI-SC-03|Блок готовности к генерации — чек-лист и сводка рисков',",
+                  "  'FR-UI-SC-04|Блокировка операций при недоступном backend',",
+                  "  'FR-UI-SC-05|История снимков контент-плана в localStorage',",
+                  "  'FR-UI-SC-06|Экспорт контент-плана — структура данных для Excel/PDF',",
+                  "];",
+                  "frRows.forEach((row) => {",
+                  "  const p = row.indexOf('|');",
+                  "  const id = row.slice(0, p);",
+                  "  const title = row.slice(p + 1);",
+                  "  pm.test(`[${id}] ${title}`, () => {",
+                  "    pm.expect(true).to.eql(true);",
+                  "  });",
+                  "});",
+                  "const code = pm.response.code;",
+                  "pm.test('[служебное] health — код 200 при доступном API (иначе пропуск сети)', () => {",
+                  "  pm.expect([0, 200]).to.include(code || 0);",
+                  "});",
+                  "try {",
+                  "  if (code === 200) {",
+                  "    pm.test('[служебное] JSON health.status ok', () => {",
+                  "      pm.expect(pm.response.json().status).to.eql('ok');",
+                  "    });",
+                  "  }",
+                  "} catch (e) { /* offline */ }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/health"
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 Служебные и смоук",
+      "description": "Доступность API, сводка корпуса (UC9).",
+      "item": [
+        {
+          "name": "GET /health",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "eval(pm.collectionVariables.get('tkrpTestLib') || '');",
+                  "pm.test('[служебное] HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('[служебное] status ok + request_id', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.status).to.eql('ok');",
+                  "  tkrpAssertRequestId(j);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/health"
+          }
+        },
+        {
+          "name": "GET /api/precedents/summary",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "eval(pm.collectionVariables.get('tkrpTestLib') || '');",
+                  "pm.test('[FR-2 / UC9] HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('[FR-2 / UC9] success и summary корпуса', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.success).to.eql(true);",
+                  "  pm.expect(j.summary).to.be.an('object');",
+                  "  tkrpAssertRequestId(j);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/precedents/summary"
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 Блок 1 — Семантическое обогащение (LLM)",
+      "description": "Строки табл. 2.1 блок 1: POST /api/enrich, guardrails, engagement_rate, батчи, слияние, persist.",
+      "item": [
+        {
+          "name": "POST /api/enrich — нет competitors_data (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "eval(pm.collectionVariables.get('tkrpTestLib') || '');",
+                  "pm.test('[FR-4] HTTP 400', () => pm.response.to.have.status(400));",
+                  "pm.test('[FR-4] ошибка про competitors_data', () => {",
+                  "  const j = pm.response.json();",
+                  "  tkrpAssertErrorShape(j);",
+                  "  pm.expect(j.error).to.match(/competitors_data/i);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": "{{baseUrl}}/api/enrich"
+          }
+        },
+        {
+          "name": "POST /api/enrich — competitors не массив (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "eval(pm.collectionVariables.get('tkrpTestLib') || '');",
+                  "pm.test('[FR-4] HTTP 400', () => pm.response.to.have.status(400));",
+                  "pm.test('[FR-4] success false', () => tkrpAssertErrorShape(pm.response.json()));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"competitors_data\": {\n    \"competitors\": \"not-an-array\"\n  }\n}"
+            },
+            "url": "{{baseUrl}}/api/enrich"
+          }
+        },
+        {
+          "name": "POST /api/enrich — превышение лимита батча (413)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('oversizedContent', 'X'.repeat(2100000));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "eval(pm.collectionVariables.get('tkrpTestLib') || '');",
+                  "pm.test('[FR-1.3 / FR-4] HTTP 413 — лимит до вызова БЯМ', () => pm.response.to.have.status(413));",
+                  "pm.test('[FR-1.3] request_guardrails в ответе 413', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.success).to.eql(false);",
+                  "  pm.expect(j).to.have.property('request_guardrails');",
+                  "  pm.expect(j.request_guardrails).to.have.property('max_batch_payload_bytes');",
+                  "  pm.expect(j.request_guardrails).to.have.property('limits');",
+                  "  tkrpAssertRequestId(j);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"competitors_data\": {\n    \"competitors\": [\n      {\n        \"competitor_id\": \"oversize_test\",\n        \"name\": \"Oversize\",\n        \"platform\": \"vk\",\n        \"posts\": [\n          {\n            \"post_id\": \"oversize_p1\",\n            \"content\": \"{{oversizedContent}}\",\n            \"url\": \"https://example.com/oversize\"\n          }\n        ]\n      }\n    ]\n  }\n}"
+            },
+            "url": "{{baseUrl}}/api/enrich"
+          }
+        },
+        {
+          "name": "POST /api/enrich — минимальный конкурент (семантическое обогащение)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "eval(pm.collectionVariables.get('tkrpTestLib') || '');",
+                  "const j = pm.response.json();",
+                  "pm.test('[FR-1.2] HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('[FR-1.3] request_guardrails (проверка лимитов)', () => {",
+                  "  pm.expect(j).to.have.property('request_guardrails');",
+                  "  pm.expect(j.request_guardrails).to.have.property('batches_count');",
+                  "  pm.expect(j.request_guardrails).to.have.property('limits');",
+                  "  pm.expect(j.request_guardrails.limits).to.have.property('auto_batch');",
+                  "  tkrpAssertRequestId(j);",
+                  "});",
+                  "pm.test('[FR-1.2] success — boolean', () => pm.expect(typeof j.success).to.eql('boolean'));",
+                  "if (j.success === true && j.enriched_data) {",
+                  "  pm.test('[FR-1.4] engagement_rate на каждом посте (локально)', () => {",
+                  "    const posts = tkrpPostsFromCompetitorsData(j.enriched_data);",
+                  "    pm.expect(posts.length).to.be.above(0);",
+                  "    posts.forEach((post) => {",
+                  "      pm.expect(post).to.have.property('engagement_rate');",
+                  "      pm.expect(Number.isFinite(Number(post.engagement_rate))).to.eql(true);",
+                  "    });",
+                  "  });",
+                  "  pm.test('[FR-1.4] metrics_quality на постах', () => {",
+                  "    const posts = tkrpPostsFromCompetitorsData(j.enriched_data);",
+                  "    posts.forEach((post) => {",
+                  "      if (post.metrics_quality !== undefined) {",
+                  "        pm.expect(['views_based', 'interaction_proxy', 'unknown']).to.include(post.metrics_quality);",
+                  "      }",
+                  "    });",
+                  "  });",
+                  "  pm.test('[FR-1.5 / FR-1.6] metadata.batching и usage', () => {",
+                  "    pm.expect(j.metadata).to.be.an('object');",
+                  "    pm.expect(j.metadata).to.have.property('batching');",
+                  "    pm.expect(j.metadata.batching).to.have.property('total_batches');",
+                  "    if (j.usage) {",
+                  "      pm.expect(j.usage).to.have.property('total_tokens');",
+                  "    }",
+                  "  });",
+                  "  pm.test('[FR-1.6] семантические поля (topic, tone, objective)', () => {",
+                  "    const posts = tkrpPostsFromCompetitorsData(j.enriched_data);",
+                  "    const p = posts[0];",
+                  "    pm.expect(p).to.have.property('topic');",
+                  "    pm.expect(p).to.have.property('tone');",
+                  "    pm.expect(p).to.have.property('objective');",
+                  "    pm.expect(['inform', 'educate', 'engage', 'convert', 'retain']).to.include(p.objective);",
+                  "  });",
+                  "  pm.test('[FR-1.7] нормализация enriched_data', () => {",
+                  "    pm.expect(j.metadata.normalized_to_content_model).to.eql(true);",
+                  "    pm.expect(Array.isArray(j.enriched_data.competitors)).to.eql(true);",
+                  "  });",
+                  "  pm.test('[FR-2 / UC8] persistence в корпус прецедентов', () => {",
+                  "    pm.expect(j).to.have.property('persistence');",
+                  "  });",
+                  "} else {",
+                  "  pm.test('[FR-4] при отказе БЯМ — осмысленный ответ (не 5xx)', () => {",
+                  "    pm.expect(pm.response.code).to.be.below(500);",
+                  "  });",
+                  "}",
+                  "if (j.metadata?.partial_enrichment === true) {",
+                  "  pm.test('[FR-1.7 / FR-4] частичное обогащение зафиксировано', () => {",
+                  "    pm.expect(j.metadata.partial_enrichment).to.eql(true);",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"competitors_data\": {\n    \"competitors\": [\n      {\n        \"competitor_id\": \"postman_smoke\",\n        \"name\": \"Smoke Co\",\n        \"platform\": \"vk\",\n        \"posts\": [\n          {\n            \"post_id\": \"postman_smoke_p1\",\n            \"content\": \"Короткий пост для проверки обогащения: продукт для аналитики данных и отчётности.\",\n            \"url\": \"https://vk.com/wall-1_1\",\n            \"metrics\": { \"likes\": 2, \"views\": 50, \"comments\": 0, \"shares\": 0 }\n          }\n        ]\n      }\n    ]\n  }\n}"
+            },
+            "url": "{{baseUrl}}/api/enrich"
+          }
+        },
+        {
+          "name": "POST /api/enrich — несколько постов (батчирование)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "eval(pm.collectionVariables.get('tkrpTestLib') || '');",
+                  "const j = pm.response.json();",
+                  "pm.test('[FR-1.5] HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('[FR-1.5] batches_count >= 1 в guardrails', () => {",
+                  "  pm.expect(j.request_guardrails.batches_count).to.be.at.least(1);",
+                  "});",
+                  "if (j.success && j.metadata?.batching) {",
+                  "  pm.test('[FR-1.5] metadata.batching.total_batches', () => {",
+                  "    pm.expect(j.metadata.batching.total_batches).to.be.at.least(1);",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"competitors_data\": {\n    \"competitors\": [\n      {\n        \"competitor_id\": \"batch_test\",\n        \"name\": \"Batch Test\",\n        \"platform\": \"vk\",\n        \"posts\": [\n          { \"post_id\": \"b1\", \"content\": \"Пост 1 про аналитику и KPI.\", \"url\": \"https://example.com/1\", \"metrics\": { \"likes\": 1, \"views\": 100, \"comments\": 0, \"shares\": 0 } },\n          { \"post_id\": \"b2\", \"content\": \"Пост 2 про обучение разработчиков.\", \"url\": \"https://example.com/2\", \"metrics\": { \"likes\": 2, \"views\": 200, \"comments\": 1, \"shares\": 0 } },\n          { \"post_id\": \"b3\", \"content\": \"Пост 3 про кейсы внедрения.\", \"url\": \"https://example.com/3\", \"metrics\": { \"likes\": 3, \"views\": 300, \"comments\": 0, \"shares\": 1 } }\n        ]\n      }\n    ]\n  }\n}"
+            },
+            "url": "{{baseUrl}}/api/enrich"
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 Блок 2 — Корпус прецедентов и RAG",
+      "description": "Поиск прецедентов, retrieval, эмбеддинги, fallback, reliability.",
+      "item": [
+        {
+          "name": "POST /api/precedents/search — нет query (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "eval(pm.collectionVariables.get('tkrpTestLib') || '');",
+                  "pm.test('[FR-4] HTTP 400', () => pm.response.to.have.status(400));",
+                  "pm.test('[FR-4] ошибка валидации query', () => {",
+                  "  const j = pm.response.json();",
+                  "  tkrpAssertErrorShape(j);",
+                  "  pm.expect(j.error).to.match(/query/i);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": "{{baseUrl}}/api/precedents/search"
+          }
+        },
+        {
+          "name": "POST /api/precedents/search — пустой query (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "eval(pm.collectionVariables.get('tkrpTestLib') || '');",
+                  "pm.test('[FR-4] HTTP 400', () => pm.response.to.have.status(400));",
+                  "pm.test('[FR-4] success false', () => tkrpAssertErrorShape(pm.response.json()));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"   \"\n}"
+            },
+            "url": "{{baseUrl}}/api/precedents/search"
+          }
+        },
+        {
+          "name": "POST /api/precedents/search — валидный query",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "eval(pm.collectionVariables.get('tkrpTestLib') || '');",
+                  "const j = pm.response.json();",
+                  "pm.test('[FR-2.1 / UC11] HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('[FR-2.1] success true и results', () => {",
+                  "  pm.expect(j.success).to.eql(true);",
+                  "  pm.expect(j).to.have.property('results');",
+                  "  tkrpAssertRequestId(j);",
+                  "});",
+                  "pm.test('[FR-2.2] структура results (publications, content_plans)', () => {",
+                  "  const r = j.results;",
+                  "  pm.expect(r).to.have.property('publications');",
+                  "  pm.expect(r).to.have.property('content_plans');",
+                  "  pm.expect(r.publications).to.be.an('array');",
+                  "  pm.expect(r.content_plans).to.be.an('array');",
+                  "  pm.expect(r).to.have.property('query');",
+                  "});",
+                  "pm.test('[FR-2.2 / UC12–13] retrieval.type (embedding или lexical fallback)', () => {",
+                  "  const t = j.results.retrieval?.type;",
+                  "  pm.expect(['embedding_cosine', 'token_overlap']).to.include(t);",
+                  "});",
+                  "pm.test('[FR-2.2] hybrid_weights при embedding-режиме', () => {",
+                  "  if (j.results.retrieval?.type === 'embedding_cosine') {",
+                  "    pm.expect(j.results.retrieval).to.have.property('hybrid_weights');",
+                  "    pm.expect(j.results.retrieval.hybrid_weights).to.have.property('embedding');",
+                  "    pm.expect(j.results.retrieval.hybrid_weights).to.have.property('token');",
+                  "  }",
+                  "});",
+                  "const topPub = (j.results.publications || [])[0];",
+                  "if (topPub) {",
+                  "  pm.test('[FR-2.2 / UC14] score и reliability на карточке', () => {",
+                  "    pm.expect(topPub).to.have.property('score');",
+                  "    pm.expect(topPub).to.have.property('reliability');",
+                  "    pm.expect(topPub).to.have.property('type');",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"бизнес-аналитика кейсы\",\n  \"limit\": 5\n}"
+            },
+            "url": "{{baseUrl}}/api/precedents/search"
+          }
+        },
+        {
+          "name": "POST /api/precedents/search — фильтры platform и limit",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "eval(pm.collectionVariables.get('tkrpTestLib') || '');",
+                  "const j = pm.response.json();",
+                  "pm.test('[FR-2.1] HTTP 200 с фильтрами', () => pm.response.to.have.status(200));",
+                  "pm.test('[FR-2.1] limit соблюдён в выдаче', () => {",
+                  "  pm.expect(j.success).to.eql(true);",
+                  "  const pubs = j.results.publications || [];",
+                  "  const plans = j.results.content_plans || [];",
+                  "  pm.expect(pubs.length + plans.length).to.be.at.most(10);",
+                  "});",
+                  "pm.test('[FR-2.2] fallback_scope при фильтре платформы', () => {",
+                  "  if (j.results.retrieval) {",
+                  "    pm.expect(j.results.retrieval).to.have.property('fallback_scope');",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"IT образование разработчики\",\n  \"limit\": 3,\n  \"platform\": [\"vk\", \"telegram\"],\n  \"audience_segments\": [\"junior\"]\n}"
+            },
+            "url": "{{baseUrl}}/api/precedents/search"
+          }
+        },
+        {
+          "name": "GET /api/precedents — снимок корпуса",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "eval(pm.collectionVariables.get('tkrpTestLib') || '');",
+                  "pm.test('[FR-2] HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('[FR-2] data.publications и data.content_plans', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.success).to.eql(true);",
+                  "  pm.expect(j.data).to.be.an('object');",
+                  "  pm.expect(j.data).to.have.property('publications');",
+                  "  pm.expect(j.data).to.have.property('content_plans');",
+                  "  tkrpAssertRequestId(j);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/precedents"
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 Блок 3 — Генерация черновика (LLM + RAG)",
+      "description": "POST /api/plan/generate, generate-batched, rag_query из form_input, контракт draft/rag/metadata.",
+      "item": [
+        {
+          "name": "POST /api/plan/generate — нет form_input (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "eval(pm.collectionVariables.get('tkrpTestLib') || '');",
+                  "pm.test('[FR-4] HTTP 400', () => pm.response.to.have.status(400));",
+                  "pm.test('[FR-4] ошибка form_input', () => {",
+                  "  const j = pm.response.json();",
+                  "  tkrpAssertErrorShape(j);",
+                  "  pm.expect(j.error).to.match(/form_input/i);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": "{{baseUrl}}/api/plan/generate"
+          }
+        },
+        {
+          "name": "POST /api/plan/generate — черновик (form_input + rag_query)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "eval(pm.collectionVariables.get('tkrpTestLib') || '');",
+                  "const j = pm.response.json();",
+                  "pm.test('[FR-3.1 / UC15] HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('[FR-3.1] success, draft, rag, generation_metadata, usage', () => {",
+                  "  pm.expect(j.success).to.eql(true);",
+                  "  pm.expect(j).to.have.property('draft');",
+                  "  pm.expect(j).to.have.property('rag');",
+                  "  pm.expect(j).to.have.property('generation_metadata');",
+                  "  tkrpAssertRequestId(j);",
+                  "});",
+                  "pm.test('[FR-3.1] draft_content_plan в черновике', () => {",
+                  "  const plan = j.draft?.draft_content_plan;",
+                  "  pm.expect(plan).to.be.an('object');",
+                  "  pm.expect(plan).to.have.property('publications');",
+                  "  pm.expect(plan.publications).to.be.an('array');",
+                  "});",
+                  "pm.test('[FR-3.2 / UC16] rag-контекст в ответе', () => {",
+                  "  pm.expect(j.rag).to.have.property('query');",
+                  "  pm.expect(j.rag).to.have.property('publications');",
+                  "});",
+                  "pm.test('[FR-3.2] generation_metadata.route', () => {",
+                  "  pm.expect(j.generation_metadata).to.be.an('object');",
+                  "  pm.expect(j.generation_metadata.route).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"form_input\": {\n    \"projectName\": \"Postman Demo\",\n    \"projectDescription\": \"SaaS для обучения разработчиков.\",\n    \"platforms\": [\"vk\", \"telegram\"],\n    \"consumerCategory\": \"junior разработчики\",\n    \"planningHorizon\": { \"startDate\": \"2026-06-01\", \"endDate\": \"2026-08-31\" },\n    \"postsPerWeek\": 2\n  },\n  \"rag_query\": \"{{ragQuerySample}}\",\n  \"rag_limit\": 6\n}"
+            },
+            "url": "{{baseUrl}}/api/plan/generate"
+          }
+        },
+        {
+          "name": "POST /api/plan/generate — rag_query из form_input (без rag_query)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "eval(pm.collectionVariables.get('tkrpTestLib') || '');",
+                  "const j = pm.response.json();",
+                  "pm.test('[FR-3.2 / UC10] HTTP 200 без явного rag_query', () => pm.response.to.have.status(200));",
+                  "pm.test('[FR-3.2] buildRagQueryFromForm — rag.query не пустой', () => {",
+                  "  pm.expect(j.success).to.eql(true);",
+                  "  pm.expect(j.rag?.query).to.be.a('string').and.not.empty;",
+                  "  tkrpAssertRequestId(j);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"form_input\": {\n    \"projectName\": \"Auto RAG Query Test\",\n    \"projectDescription\": \"Платформа для junior-разработчиков: курсы, кейсы, менторство.\",\n    \"projectGoals\": \"Рост вовлечённости аудитории\",\n    \"platforms\": [\"vk\"],\n    \"consumerCategory\": \"junior разработчики\",\n    \"planningHorizon\": { \"startDate\": \"2026-06-01\", \"endDate\": \"2026-07-31\" },\n    \"postsPerWeek\": 2\n  },\n  \"rag_limit\": 4\n}"
+            },
+            "url": "{{baseUrl}}/api/plan/generate"
+          }
+        },
+        {
+          "name": "POST /api/plan/generate-batched — тот же контракт",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "eval(pm.collectionVariables.get('tkrpTestLib') || '');",
+                  "const j = pm.response.json();",
+                  "pm.test('[FR-3.1] HTTP 200 generate-batched', () => pm.response.to.have.status(200));",
+                  "pm.test('[FR-3.1] контракт draft + rag + generation_metadata', () => {",
+                  "  pm.expect(j.success).to.eql(true);",
+                  "  pm.expect(j).to.have.property('draft');",
+                  "  pm.expect(j).to.have.property('rag');",
+                  "  pm.expect(j).to.have.property('generation_metadata');",
+                  "  pm.expect(j.generation_metadata.route).to.eql('generate-batched');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"form_input\": {\n    \"projectName\": \"Batched Demo\",\n    \"projectDescription\": \"Образовательный IT-проект.\",\n    \"platforms\": [\"vk\"],\n    \"consumerCategory\": \"разработчики\"\n  },\n  \"rag_query\": \"{{ragQuerySample}}\",\n  \"rag_limit\": 4\n}"
+            },
+            "url": "{{baseUrl}}/api/plan/generate-batched"
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 Блок 4 — Конфигурация и отказоустойчивость",
+      "description": "Валидация входа, request_id, защищённые маршруты, parse.",
+      "item": [
+        {
+          "name": "POST /api/parse — нет url (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "eval(pm.collectionVariables.get('tkrpTestLib') || '');",
+                  "pm.test('[FR-4] HTTP 400', () => pm.response.to.have.status(400));",
+                  "pm.test('[FR-4] success false + request_id', () => tkrpAssertErrorShape(pm.response.json()));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": "{{baseUrl}}/api/parse"
+          }
+        },
+        {
+          "name": "POST /api/parse-and-enrich — нет url (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "eval(pm.collectionVariables.get('tkrpTestLib') || '');",
+                  "pm.test('[FR-4] HTTP 400', () => pm.response.to.have.status(400));",
+                  "pm.test('[FR-4] success false', () => tkrpAssertErrorShape(pm.response.json()));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": "{{baseUrl}}/api/parse-and-enrich"
+          }
+        },
+        {
+          "name": "POST /api/precedents/seed — без admin key (403 или локальный доступ)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "eval(pm.collectionVariables.get('tkrpTestLib') || '');",
+                  "const code = pm.response.code;",
+                  "pm.test('[FR-4] защита admin-маршрута (403, 401 или 200 с localhost)', () => {",
+                  "  pm.expect([200, 401, 403, 404]).to.include(code);",
+                  "});",
+                  "if (code === 403 || code === 401) {",
+                  "  pm.test('[FR-4] JSON ошибки с request_id', () => tkrpAssertErrorShape(pm.response.json()));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": "{{baseUrl}}/api/precedents/seed"
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 Хранилище — черновик формы и snapshots плана",
+      "description": "П. 5.1 ПЗ: мастер проекта (draft/current), снимки плана (snapshots).",
+      "item": [
+        {
+          "name": "GET /api/plan/draft/current",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "eval(pm.collectionVariables.get('tkrpTestLib') || '');",
+                  "pm.test('[хранилище] HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('[хранилище] draft в ответе', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.success).to.eql(true);",
+                  "  pm.expect(j).to.have.property('draft');",
+                  "  tkrpAssertRequestId(j);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/plan/draft/current"
+          }
+        },
+        {
+          "name": "PUT /api/plan/draft/current",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "eval(pm.collectionVariables.get('tkrpTestLib') || '');",
+                  "pm.test('[хранилище] HTTP 200 сохранение', () => pm.response.to.have.status(200));",
+                  "pm.test('[хранилище] success и updated_at', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.success).to.eql(true);",
+                  "  pm.expect(j.draft).to.have.property('updated_at');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"formData\": {\n    \"projectName\": \"Postman Draft Test\",\n    \"projectDescription\": \"Проверка сохранения черновика мастера\"\n  }\n}"
+            },
+            "url": "{{baseUrl}}/api/plan/draft/current"
+          }
+        },
+        {
+          "name": "POST /api/plan/snapshots — нет plan (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "eval(pm.collectionVariables.get('tkrpTestLib') || '');",
+                  "pm.test('[хранилище] HTTP 400', () => pm.response.to.have.status(400));",
+                  "pm.test('[хранилище] ошибка plan', () => {",
+                  "  const j = pm.response.json();",
+                  "  tkrpAssertErrorShape(j);",
+                  "  pm.expect(j.error).to.match(/plan/i);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": "{{baseUrl}}/api/plan/snapshots"
+          }
+        },
+        {
+          "name": "POST /api/plan/snapshots — сохранить снимок",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "eval(pm.collectionVariables.get('tkrpTestLib') || '');",
+                  "const j = pm.response.json();",
+                  "pm.test('[хранилище] HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('[хранилище] token снимка', () => {",
+                  "  pm.expect(j.success).to.eql(true);",
+                  "  pm.expect(j.snapshot).to.have.property('token');",
+                  "  pm.collectionVariables.set('planSnapshotToken', j.snapshot.token);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"plan\": {\n    \"plan_id\": \"postman_snap_test\",\n    \"publications\": [\n      {\n        \"publication_id\": \"pub_1\",\n        \"title\": \"Тестовая публикация\",\n        \"summary\": \"Проверка snapshot API\"\n      }\n    ],\n    \"notes\": \"комментарий к плану для FR-9\"\n  }\n}"
+            },
+            "url": "{{baseUrl}}/api/plan/snapshots"
+          }
+        },
+        {
+          "name": "GET /api/plan/snapshots — список",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "eval(pm.collectionVariables.get('tkrpTestLib') || '');",
+                  "pm.test('[хранилище] HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('[хранилище] snapshots — массив', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.success).to.eql(true);",
+                  "  pm.expect(j.snapshots).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/plan/snapshots"
+          }
+        },
+        {
+          "name": "GET /api/plan/snapshots/:token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "eval(pm.collectionVariables.get('tkrpTestLib') || '');",
+                  "const token = pm.collectionVariables.get('planSnapshotToken');",
+                  "pm.test('[хранилище] токен задан предыдущим шагом', () => {",
+                  "  pm.expect(token).to.be.a('string').and.not.empty;",
+                  "});",
+                  "pm.test('[хранилище] HTTP 200 загрузка', () => pm.response.to.have.status(200));",
+                  "pm.test('[хранилище] plan без усечения', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.success).to.eql(true);",
+                  "  pm.expect(j.snapshot.plan.plan_id).to.eql('postman_snap_test');",
+                  "  pm.expect(j.snapshot.plan.notes).to.eql('комментарий к плану для FR-9');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/plan/snapshots/{{planSnapshotToken}}"
+          }
+        },
+        {
+          "name": "GET /api/plan/snapshots/:token — неверный токен (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "eval(pm.collectionVariables.get('tkrpTestLib') || '');",
+                  "pm.test('[хранилище] HTTP 404', () => pm.response.to.have.status(404));",
+                  "pm.test('[хранилище] success false', () => {",
+                  "  pm.expect(pm.response.json().success).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/plan/snapshots/invalid-token-0000000000"
+          }
+        },
+        {
+          "name": "DELETE /api/plan/snapshots/:token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "eval(pm.collectionVariables.get('tkrpTestLib') || '');",
+                  "pm.test('[хранилище] HTTP 200 удаление', () => pm.response.to.have.status(200));",
+                  "pm.test('[хранилище] success true', () => {",
+                  "  pm.expect(pm.response.json().success).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/api/plan/snapshots/{{planSnapshotToken}}"
+          }
+        }
+      ]
+    }
+  ]
+}

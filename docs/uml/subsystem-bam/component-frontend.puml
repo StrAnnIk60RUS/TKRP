@@ -1,0 +1,48 @@
+@startuml subsystem-bam-component-frontend
+' UML-диаграмма компонентов: фронтенд и граница REST API
+
+!theme plain
+skinparam shadowing false
+skinparam roundcorner 8
+skinparam componentStyle rectangle
+skinparam component {
+  BackgroundColor #FFFFFF
+  BorderColor #334155
+  FontSize 11
+}
+skinparam interface {
+  BackgroundColor #E2E8F0
+  BorderColor #475569
+}
+skinparam package {
+  BackgroundColor #F8FAFC
+  BorderColor #64748B
+}
+
+title Рисунок — Диаграмма компонентов подсистемы (фронтенд)
+
+package "Фронтенд" <<frontend>> #E8F4FC {
+  component [ProjectForm\nоркестрация интерфейса] as PF
+  component [useCompetitorsPipeline\nсценарий обогащения] as UCP
+  component [enrichmentService\nклиент REST API] as ES
+}
+
+package "Граница программного интерфейса" <<api>> #F1F5F9 {
+  interface "POST /api/enrich" as IEnrich
+  interface "POST /api/precedents/search" as ISearch
+  interface "GET /api/precedents/summary" as ISummary
+  interface "POST /api/plan/generate" as IPlan
+  interface "POST /api/plan/generate-batched" as IPlanB
+}
+
+PF -down-> UCP : шаг конкурентов
+PF -down-> ES : поиск прецедентов и генерация черновика
+UCP -down-> ES : инициация обогащения
+
+ES -down-> IEnrich : запрос семантического обогащения
+ES -down-> ISearch : семантический поиск прецедентов
+ES -down-> ISummary : сводка корпуса
+ES -down-> IPlan : генерация чернового плана
+ES -down-> IPlanB : генерация черновика пакетами
+
+@enduml

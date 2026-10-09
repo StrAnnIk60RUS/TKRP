@@ -20,22 +20,74 @@
     "topic_recurrence",
     "timeline_density"
   ],
+  "feature_set_version": "v2",
+  "ontology_features_enabled": false,
   "n_features": 12,
+  "feature_stats": {
+    "unique_topics": {
+      "mean": 28.571428571428573,
+      "std": 28.89648426229545
+    },
+    "unique_tones": {
+      "mean": 3.9047619047619047,
+      "std": 1.5707069049972038
+    },
+    "avg_creativity": {
+      "mean": 0.26146744202371375,
+      "std": 0.16053234073115044
+    },
+    "cta_share": {
+      "mean": 0.10432077020927195,
+      "std": 0.11555933428106674
+    },
+    "posts_count": {
+      "mean": 29.761904761904763,
+      "std": 29.706348146169127
+    },
+    "duration_days": {
+      "mean": 30.38095238095238,
+      "std": 29.380064816415565
+    },
+    "format_entropy": {
+      "mean": 0.47743709467800055,
+      "std": 0.39047942914917777
+    },
+    "objective_entropy": {
+      "mean": 0.7507114148767079,
+      "std": 0.3143195227222472
+    },
+    "audience_coverage": {
+      "mean": 0.9047619047619048,
+      "std": 0.29354352395090366
+    },
+    "platform_coverage": {
+      "mean": 0.4682539682539682,
+      "std": 0.2603368169342338
+    },
+    "topic_recurrence": {
+      "mean": 0.025774293457220286,
+      "std": 0.043391240404264515
+    },
+    "timeline_density": {
+      "mean": 0.018140589569160998,
+      "std": 0.08112718285713523
+    }
+  },
   "target_summary": {
     "total_likes": {
       "min": 0.0,
       "max": 2048.0,
-      "mean": 464.3076923076923
+      "mean": 357.2857142857143
     },
     "total_shares": {
-      "min": 1.0,
+      "min": 0.0,
       "max": 334.0,
-      "mean": 65.3076923076923
+      "mean": 49.666666666666664
     },
     "total_views": {
-      "min": 162.0,
+      "min": 0.0,
       "max": 257041.0,
-      "mean": 43173.53846153846
+      "mean": 33087.333333333336
     }
   }
 }

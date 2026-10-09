@@ -16,6 +16,40 @@ MODEL_DIR.mkdir(parents=True, exist_ok=True)
 POST_TARGET_NAMES = ['likes', 'shares', 'views']
 PLAN_TARGET_NAMES = ['total_likes', 'total_shares', 'total_views']
 
+# Feature set versioning: artifacts stamped with a version are validated hard;
+# legacy artifacts (no version metadata) are treated as LEGACY_FEATURE_SET_VERSION
+# and only produce a warning.
+EXPECTED_FEATURE_SET_VERSION = os.environ.get('EXPECTED_FEATURE_SET_VERSION', 'v2')
+LEGACY_FEATURE_SET_VERSION = 'v1'
+
+
+def check_feature_set_version(metadata_path, model_key):
+    """Verifies feature_set_version of a saved model against EXPECTED_FEATURE_SET_VERSION.
+
+    - Missing version (legacy artifact): warn only, treated as LEGACY_FEATURE_SET_VERSION.
+    - Present but mismatched: raise (hard error per spec).
+    """
+    try:
+        with open(metadata_path) as f:
+            metadata = json.load(f)
+    except FileNotFoundError:
+        return
+
+    model_version = metadata.get('feature_set_version')
+    if model_version is None:
+        print(
+            f"[ML] Warning: {model_key} model has no feature_set_version metadata "
+            f"(legacy, assumed {LEGACY_FEATURE_SET_VERSION}); expected {EXPECTED_FEATURE_SET_VERSION}. "
+            "Retrain or run tools/ml/migrate_model_versions.py.",
+            file=sys.stderr
+        )
+        return
+    if model_version != EXPECTED_FEATURE_SET_VERSION:
+        raise ValueError(
+            f"Feature set version mismatch for {model_key}: model={model_version}, "
+            f"expected={EXPECTED_FEATURE_SET_VERSION}. Retrain with current feature set."
+        )
+
 
 def log_transform(values):
     """log1p трансформация для неотрицательных данных"""
@@ -101,14 +135,16 @@ class MultiMetricPredictor:
 
         return y_result
 
-    def save(self, model_path, metadata_path):
+    def save(self, model_path, metadata_path, extra_metadata=None):
         """Сохраняет модель и метаданные"""
         joblib.dump({
             'model': self.model,
             'scaler_X': self.scaler_X,
             'scaler_y': self.scaler_y,
             'target_names': self.target_names,
-            'is_fitted': self._is_fitted
+            'is_fitted': self._is_fitted,
+            'feature_set_version': (extra_metadata or {}).get('feature_set_version'),
+            'ontology_features_enabled': (extra_metadata or {}).get('ontology_features_enabled')
         }, model_path)
 
         metadata = {
@@ -117,6 +153,8 @@ class MultiMetricPredictor:
             'model_type': 'MultiOutputRegressor(MLPRegressor)',
             'feature_names': None
         }
+        if extra_metadata:
+            metadata.update(extra_metadata)
         with open(metadata_path, 'w') as f:
             json.dump(metadata, f, indent=2)
 
@@ -132,7 +170,7 @@ class MultiMetricPredictor:
         return instance
 
 
-def train_post_model(features, targets, feature_names=None):
+def train_post_model(features, targets, feature_names=None, version_info=None):
     """Обучение модели для постов"""
     X = np.array(features)
     y = np.array(targets)
@@ -144,15 +182,28 @@ def train_post_model(features, targets, feature_names=None):
 
     model_path = MODEL_DIR / 'post_metrics_model.joblib'
     metadata_path = MODEL_DIR / 'post_metrics_model_metadata.json'
-    model.save(model_path, metadata_path)
+    extra = {'feature_set_version': EXPECTED_FEATURE_SET_VERSION}
+    if version_info:
+        if version_info.get('feature_set_version'):
+            extra['feature_set_version'] = version_info['feature_set_version']
+        if 'ontology_features_enabled' in version_info:
+            extra['ontology_features_enabled'] = bool(version_info['ontology_features_enabled'])
+    model.save(model_path, metadata_path, extra_metadata=extra)
 
     if feature_names:
         with open(metadata_path, 'r') as f:
             metadata = json.load(f)
         metadata['feature_names'] = feature_names
         metadata['n_features'] = len(feature_names)
+        metadata['feature_stats'] = {
+            name: {
+                'mean': float(np.mean(X[:, i])),
+                'std': float(np.std(X[:, i]))
+            }
+            for i, name in enumerate(feature_names)
+        }
 
-        # Добавляем статистику по таргетам
+        # Добавляем statisticу по таргетам
         target_summary = {}
         for i, name in enumerate(POST_TARGET_NAMES):
             target_summary[name] = {
@@ -173,7 +224,7 @@ def train_post_model(features, targets, feature_names=None):
     }
 
 
-def train_plan_model(features, targets, feature_names=None):
+def train_plan_model(features, targets, feature_names=None, version_info=None):
     """Обучение модели для планов"""
     X = np.array(features)
     y = np.array(targets)
@@ -185,14 +236,28 @@ def train_plan_model(features, targets, feature_names=None):
 
     model_path = MODEL_DIR / 'plan_metrics_model.joblib'
     metadata_path = MODEL_DIR / 'plan_metrics_model_metadata.json'
-    model.save(model_path, metadata_path)
+    extra = {'feature_set_version': EXPECTED_FEATURE_SET_VERSION}
+    if version_info:
+        if version_info.get('feature_set_version'):
+            extra['feature_set_version'] = version_info['feature_set_version']
+        if 'ontology_features_enabled' in version_info:
+            extra['ontology_features_enabled'] = bool(version_info['ontology_features_enabled'])
+    model.save(model_path, metadata_path, extra_metadata=extra)
 
     if feature_names:
         with open(metadata_path, 'r') as f:
             metadata = json.load(f)
         metadata['feature_names'] = feature_names
         metadata['n_features'] = len(feature_names)
+        metadata['feature_stats'] = {
+            name: {
+                'mean': float(np.mean(X[:, i])),
+                'std': float(np.std(X[:, i]))
+            }
+            for i, name in enumerate(feature_names)
+        }
 
+        # Добавляем statisticу по таргетам
         target_summary = {}
         for i, name in enumerate(PLAN_TARGET_NAMES):
             target_summary[name] = {
@@ -220,6 +285,7 @@ def predict_post_metrics(features):
     if not model_path.exists():
         raise FileNotFoundError(f"Model not found: {model_path}")
 
+    check_feature_set_version(MODEL_DIR / 'post_metrics_model_metadata.json', 'post')
     model = MultiMetricPredictor.load(model_path)
     X = np.array(features, dtype=np.float64)
     # Defensive sanitization: JS side should already sanitize, but keep model robust.
@@ -240,6 +306,7 @@ def predict_plan_metrics(features):
     if not model_path.exists():
         raise FileNotFoundError(f"Model not found: {model_path}")
 
+    check_feature_set_version(MODEL_DIR / 'plan_metrics_model_metadata.json', 'content_plan')
     model = MultiMetricPredictor.load(model_path)
     X = np.array(features, dtype=np.float64)
     X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
@@ -273,11 +340,15 @@ def main():
                     features = payload.get('features', [])
                     targets = payload.get('targets', [])
                     feature_names = payload.get('feature_names', [])
+                    version_info = {
+                        'feature_set_version': payload.get('feature_set_version'),
+                        'ontology_features_enabled': payload.get('ontology_features_enabled')
+                    }
 
                     if model_key == 'post':
-                        result = train_post_model(features, targets, feature_names)
+                        result = train_post_model(features, targets, feature_names, version_info)
                     elif model_key == 'content_plan':
-                        result = train_plan_model(features, targets, feature_names)
+                        result = train_plan_model(features, targets, feature_names, version_info)
                     else:
                         result = {'error': f'Unknown model_key: {model_key}'}
 
@@ -321,11 +392,15 @@ def main():
             features = input_data.get('features', [])
             targets = input_data.get('targets', [])
             feature_names = input_data.get('feature_names', [])
+            version_info = {
+                'feature_set_version': input_data.get('feature_set_version'),
+                'ontology_features_enabled': input_data.get('ontology_features_enabled')
+            }
 
             if model_key == 'post':
-                result = train_post_model(features, targets, feature_names)
+                result = train_post_model(features, targets, feature_names, version_info)
             elif model_key == 'content_plan':
-                result = train_plan_model(features, targets, feature_names)
+                result = train_plan_model(features, targets, feature_names, version_info)
             else:
                 result = {'error': f'Unknown model_key: {model_key}'}
 

@@ -582,3 +582,71 @@ Training происходит отдельно (lazy train или auto train п�
 Если размерность поменялась и модель старая — есть обработка размерности в python `adapt_feature_dim(...)`.
 Тем не менее корректнее всегда переобучать модели при изменении `PLAN_FEATURE_NAMES`/`POST_FEATURE_NAMES`.
 
+## 15. Уникация фитнес и наведенные хикс (consolidated fixes)
+
+В `evolutionary/fitnessUtils.js` собрал едином фитнес для both stages:
+
+- `kpiScore(predictedMetrics, metadata, { keyPrefix })` — weighted normalized KPI (0..1);
+  `keyPrefix: 'total_'` для план-level metadata (`total_likes.max`), `''` для пост-level (`likes.max`).
+- `normalizeAgainstTarget` — log1p-scaling (soft cap near 10x historical max) вместо hard clipping.
+- `combineFitness` — convex blend: optimization = KPI + diversity + draft + ontology − penalty;
+  display = pure KPI. Both stages rank by `optimization`, UI показывает `display`.
+
+Fixes applied across the pipeline:
+
+1. **Bridge null bug**: `hierarchicalGa.js` previously set `has_cta: null`/`targetToneIndex: null`
+   into stage2 lockedFields, which froze gene dimensions in `repairGenome`. Now
+   `buildStage2LockedFields` omits null/undefined keys entirely.
+2. **CTA alignment at post-level**: `scorePopulation` penalizes deviation of gene CTA from
+   `targetCtaShare` (plan-level cta_share propagated via config), weight `ctaAlignmentWeight`.
+3. **Tone diversity preservation in fill**: `fillPlanWithBestPublication` tracks `toneUsage`
+   and penalizes reusing already-used tones while `targetUniqueTones` (from plan feature map
+   `unique_tones`) is not yet reached.
+4. **Repair loop**: `repairPlanConstraints` clamps publication dates into horizon, snaps
+   unknown platforms to plan platform list; `min_publications` shortfall reported as
+   unfixable (throws). Result reported in `constraints_check.repairs`/`unfixable`.
+5. **LLM rewrite fitness guard**: the guard now lives inside `planDiversityLlmPass.js`
+    (`applyFitnessRollbackGuard`, invoked by `applyPlanDiversityLlmRewrite` via
+    `options.fitnessGuard`); `hierarchicalGa.js` passes `fitnessFn` (`kpiScore` via
+    `predictContentPlanMetrics`). If post-rewrite fitness decreased beyond epsilon,
+    rewrite reverted with `reason: 'rollback'` and `fitness_before`/`fitness_after` in meta.
+6. **Seeded RNG everywhere**: `planEvolution.js` fallback individual now uses
+   `GA_UTILS.makeRng(ga.seed)` instead of `Math.random`; `applyLockedFieldsToGene` receives
+   the seeded `rng`. `asyncGaCore.js` documents seed reproducibility (mulberry32).
+
+## 16. Feature-set versioning и ontology-огистрап (ML ↔ ontology sync)
+
+Feature vectors carry a version so training and inference can never silently disagree:
+
+- `FEATURE_SET_VERSION = "v2"` (current), `LEGACY_FEATURE_SET_VERSION = "v1"` — defined in
+  `ontologyFeatureEngineering.js`. Old artifacts without version metadata are treated as `"v1"`.
+- Version + `ontologyFeaturesEnabled` flag are stored with every model artifact: inside the
+  joblib payload and in the `data/ml/*_metadata.json` sidecar (written by `engagement_model.py`).
+- Ontology-derived features are used only when `isOntologyEnrichmentEnabled()` (gated by
+  `ONTOLOGY_LLM_ENRICHMENT_MODE`, default `off`) — the same gate applies at training and
+  inference, so the feature set is consistent by construction.
+- `relevancePredictionService.js` calls `checkModelFeatureSetVersion(modelKey)` after training:
+  warns (does not crash) on version mismatch or ontology-flag mismatch between the loaded
+  artifact and the current build.
+- Python side (`engagement_model.py`) hard-errors on explicit mismatch against
+  `EXPECTED_FEATURE_SET_VERSION` (env, default `v2`); legacy artifacts only warn.
+- `buildMlTrainingDatasets(snapshot, optimizedPlans)` additionally trains on GA-optimized
+  plans from `planSnapshotStore` (`listSnapshots` + `loadSnapshot`, limit
+  `ML_PLAN_SNAPSHOT_TRAINING_LIMIT`, default 20; `0` disables). Samples are tagged in
+  `sampleMeta` with `source: 'ga_optimized' | 'precedent' | 'precedent_fallback'` and
+  `finalFitness` (best of stage1/stage2 `ga.best_meta`).
+
+Tools:
+
+- `tools/ml/migrate_model_versions.py` — stamps legacy artifacts with a version
+  (`--version`, default `v1`) in both joblib payload and metadata JSON.
+- `tools/ml/feature_drift_monitor.py` — compares current feature distributions against
+  `feature_stats` (per-feature mean/std stored in training metadata); relative threshold
+  via `DRIFT_THRESHOLD` (default 0.5); exit codes 0 = no drift, 1 = drift, 2 = error.
+- Semantic enrichment (`openrouter.js`): `SEMANTIC_ENRICHMENT_ENABLED` (default ON in dev,
+  OFF in prod), sha256-keyed LLM response cache (`SEMANTIC_ENRICHMENT_CACHE_FILE`,
+  `SEMANTIC_ENRICHMENT_CACHE_MAX_ENTRIES`), rate limiter (`SEMANTIC_ENRICH_RATE_LIMIT_PER_MIN`).
+
+All new flags are documented in `.env.example`.
+
+

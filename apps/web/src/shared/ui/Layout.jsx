@@ -1,11 +1,14 @@
 import React, { useEffect, useState } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useUserRole } from '../../app/providers/UserRoleContext'
 import { ROLES, ROLE_MODE_LABELS } from '../../app/providers/UserRoleContext'
+import { isUserAuthenticated } from './AuthGate'
+import { logoutUser } from '../api/authService'
 import './Layout.css'
 
 const Layout = ({ children }) => {
   const location = useLocation()
+  const navigate = useNavigate()
   const { role, setRole } = useUserRole()
   const [theme, setTheme] = useState('dark')
 
@@ -30,6 +33,11 @@ const Layout = ({ children }) => {
     setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'))
   }
 
+  const handleLogout = async () => {
+    await logoutUser()
+    navigate('/login')
+  }
+
   return (
     <div className="app">
       <div className="app-container">
@@ -42,22 +50,33 @@ const Layout = ({ children }) => {
               </p>
             </div>
             <div className="header-controls">
-              <div className="role-selector-block">
-                <select
-                  className="role-select"
-                  value={role}
-                  onChange={(e) => setRole(e.target.value)}
-                  title="Роль: разный уровень детализации и число шагов"
-                  aria-describedby="role-mode-hint"
-                >
-                  <option value={ROLES.SMM}>Маркетолог (SMM) — быстрый, 4 шага</option>
-                  <option value={ROLES.ANALYST}>Аналитик — расширенный, 5 шагов + GA/ML</option>
-                  <option value={ROLES.DEVELOPER}>Разработчик — полный, обход чеклиста</option>
-                </select>
-                <div id="role-mode-hint" className="role-mode-hint">
-                  {ROLE_MODE_LABELS[role]?.short}: {ROLE_MODE_LABELS[role]?.detail}
-                </div>
-              </div>
+              {isUserAuthenticated() ? (
+                <>
+                  <div className="role-selector-block">
+                    <select
+                      className="role-select"
+                      value={role}
+                      onChange={(e) => setRole(e.target.value)}
+                      title="Роль: разный уровень детализации и число шагов"
+                      aria-describedby="role-mode-hint"
+                    >
+                      <option value={ROLES.SMM}>Маркетолог (SMM) — быстрый, 4 шага</option>
+                      <option value={ROLES.ANALYST}>Аналитик — расширенный, 5 шагов + GA/ML</option>
+                      <option value={ROLES.DEVELOPER}>Разработчик — полный, обход чеклиста</option>
+                    </select>
+                    <div id="role-mode-hint" className="role-mode-hint">
+                      {ROLE_MODE_LABELS[role]?.short}: {ROLE_MODE_LABELS[role]?.detail}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="logout-btn"
+                    onClick={handleLogout}
+                  >
+                    Log out
+                  </button>
+                </>
+              ) : null}
               <button
                 type="button"
                 className="theme-toggle-btn"
@@ -68,18 +87,22 @@ const Layout = ({ children }) => {
             </div>
           </div>
           <nav className="main-nav">
-            <Link 
-              to="/" 
-              className={`nav-link ${location.pathname === '/' ? 'active' : ''}`}
-            >
-              Создать контент-план
-            </Link>
-            <Link 
-              to="/content-plan" 
-              className={`nav-link ${location.pathname === '/content-plan' ? 'active' : ''}`}
-            >
-              Просмотр контент-плана
-            </Link>
+            {isUserAuthenticated() ? (
+              <>
+                <Link 
+                  to="/" 
+                  className={`nav-link ${location.pathname === '/' ? 'active' : ''}`}
+                >
+                  Создать контент-план
+                </Link>
+                <Link 
+                  to="/content-plan" 
+                  className={`nav-link ${location.pathname === '/content-plan' ? 'active' : ''}`}
+                >
+                  Просмотр контент-плана
+                </Link>
+              </>
+            ) : null}
           </nav>
         </header>
         <main className="app-main">

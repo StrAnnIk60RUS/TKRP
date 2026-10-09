@@ -17,8 +17,24 @@ const buildFetchErrorMessage = async (response) => {
   return errorMessage
 }
 
+import { authHeaders } from './authService.js';
+
+// Network/CORS-level fetch failures (TypeError: "Failed to fetch") are opaque for users;
+// convert them into an actionable message. HTTP errors keep their own handling.
+const safeFetch = async (endpoint, options = {}) => {
+  try {
+    return await fetch(endpoint, options);
+  } catch (error) {
+    if (error?.name === 'TypeError') {
+      throw new Error(`Cannot connect to server at ${API_URL}: check that the backend is running and that the page address is allowed by CORS.`);
+    }
+    throw error;
+  }
+};
+
 const fetchJsonOrThrow = async (endpoint, options = {}) => {
-  const response = await fetch(endpoint, options)
+  const headers = { ...(options.headers || {}), ...authHeaders() };
+  const response = await safeFetch(endpoint, { ...options, headers });
   if (!response.ok) {
     throw new Error(await buildFetchErrorMessage(response))
   }
@@ -193,7 +209,7 @@ export async function getAggregatedOntology(requestOptions = {}) {
  * @returns {Promise<void>}
  */
 export async function exportOntologyToExcel(requestOptions = {}) {
-  const response = await fetch(`${API_URL}/api/precedents/ontology/export`, {
+  const response = await safeFetch(`${API_URL}/api/precedents/ontology/export`, {
     method: 'GET',
     signal: requestOptions.signal
   })
@@ -217,7 +233,7 @@ export async function exportOntologyToExcel(requestOptions = {}) {
  * @returns {Promise<void>}
  */
 export async function exportOntologyToTurtle(requestOptions = {}) {
-  const response = await fetch(`${API_URL}/api/precedents/ontology/export/turtle`, {
+  const response = await safeFetch(`${API_URL}/api/precedents/ontology/export/turtle`, {
     method: 'GET',
     signal: requestOptions.signal
   })

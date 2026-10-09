@@ -125,6 +125,37 @@ body.theme-light .theme-toggle-btn:hover {
   color: #1a1a2e;
 }
 
+.logout-btn {
+  padding: 10px 16px;
+  border: 2px solid #ff6b9d;
+  background: transparent;
+  color: #ffffff;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: all 0.15s;
+  border-radius: 0;
+  white-space: normal;
+}
+
+.logout-btn:hover {
+  background: #ff6b9d;
+  color: #1a1a2e;
+}
+
+body.theme-light .logout-btn {
+  color: #111827;
+  border-color: #ec4899;
+}
+
+body.theme-light .logout-btn:hover {
+  background: #ff6b9d;
+  border-color: #ff6b9d;
+  color: #1a1a2e;
+}
+
 .main-nav {
   display: flex;
   gap: 8px;
@@ -292,7 +323,8 @@ body.theme-light .app-footer {
   }
 
   .role-select,
-  .theme-toggle-btn {
+  .theme-toggle-btn,
+  .logout-btn {
     width: 100%;
     min-width: 0;
   }

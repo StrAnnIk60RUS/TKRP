@@ -22,6 +22,8 @@ import {
 } from '../../../features/content-plan/model/planStorage'
 import { exportToExcel, exportToPdf } from '../../../shared/lib/contentPlanExport'
 import { platformOptions } from '../../../features/project-form/ui/projectForm/formConfig'
+import AuthGate from '../../../shared/ui/AuthGate'
+import { isUserAuthenticated } from '../../../shared/ui/AuthGate'
 import './ContentPlanPage.css'
 
 const DEFAULT_FILTERS = {
@@ -274,6 +276,7 @@ const ContentPlanPage = () => {
   )
 
   useEffect(() => {
+    if (!isUserAuthenticated()) return
     const loadCurrentPlan = async () => {
       const state = await getCurrentPlanState()
       if (state?.plan) setContentPlan(ensureUniquePublicationIds(state.plan))
@@ -319,23 +322,26 @@ const ContentPlanPage = () => {
     const reachValues = filteredPublications
       .map((item) => clamp01(item?.expected_kpi?.reach_potential))
       .filter((value) => Number.isFinite(value))
+    const resolveMlMetric = (expectedKpi, metricName) =>
+      toFiniteNumberOrNull(expectedKpi?.[`ml_predicted_${metricName}`]) ??
+      toFiniteNumberOrNull(expectedKpi?.[`predicted_${metricName}`])
     const totalPredictedLikes = filteredPublications.reduce(
-      (sum, item) => sum + (toFiniteNumberOrNull(item?.expected_kpi?.ml_predicted_likes) ?? 0),
+      (sum, item) => sum + (resolveMlMetric(item?.expected_kpi, 'likes') ?? 0),
       0
     )
     const totalPredictedShares = filteredPublications.reduce(
-      (sum, item) => sum + (toFiniteNumberOrNull(item?.expected_kpi?.ml_predicted_shares) ?? 0),
+      (sum, item) => sum + (resolveMlMetric(item?.expected_kpi, 'shares') ?? 0),
       0
     )
     const totalPredictedViews = filteredPublications.reduce(
-      (sum, item) => sum + (toFiniteNumberOrNull(item?.expected_kpi?.ml_predicted_views) ?? 0),
+      (sum, item) => sum + (resolveMlMetric(item?.expected_kpi, 'views') ?? 0),
       0
     )
     const postsWithMlMetricsCount = filteredPublications.filter(
       (item) =>
-        toFiniteNumberOrNull(item?.expected_kpi?.ml_predicted_likes) != null ||
-        toFiniteNumberOrNull(item?.expected_kpi?.ml_predicted_shares) != null ||
-        toFiniteNumberOrNull(item?.expected_kpi?.ml_predicted_views) != null
+        resolveMlMetric(item?.expected_kpi, 'likes') != null ||
+        resolveMlMetric(item?.expected_kpi, 'shares') != null ||
+        resolveMlMetric(item?.expected_kpi, 'views') != null
     ).length
     const allSaturated =
       engagementValues.length >= 3 && engagementValues.every((value) => value >= 0.999)
@@ -595,6 +601,10 @@ const ContentPlanPage = () => {
       console.error('Ошибка экспорта PDF:', e)
     }
     setDownloadMenuOpen(false)
+  }
+
+  if (!isUserAuthenticated()) {
+    return <AuthGate />
   }
 
   if (loading) {

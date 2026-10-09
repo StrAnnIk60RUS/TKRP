@@ -1,3 +1,15 @@
+/**
+ * Long-lived Python JSON worker (stdin/stdout line protocol) with resilience:
+ * - per-request timeout (requestTimeoutMs);
+ * - retry with exponential backoff on failure (maxRetries, backoffBaseMs) —
+ *   a failed request restarts the worker before the next attempt;
+ * - circuit breaker: after breakerMaxConsecutiveFailures consecutive failures
+ *   the worker refuses new requests for breakerCooldownMs (prevents hammering
+ *   a broken Python process).
+ *
+ * Env overrides: PYWORKER_REQUEST_TIMEOUT_MS, PYWORKER_MAX_RETRIES,
+ * PYWORKER_BACKOFF_BASE_MS, PYWORKER_BREAKER_MAX_FAILURES, PYWORKER_BREAKER_COOLDOWN_MS.
+ */
 import { spawn } from 'child_process';
 import readline from 'readline';
 
@@ -8,13 +20,28 @@ function toError(error, fallbackMessage) {
   return new Error(fallbackMessage || String(error));
 }
 
+function readPositiveIntEnv(name, fallback) {
+  const raw = Number(process.env[name]);
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : fallback;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export function createPythonJsonWorker({
   scriptPath,
   args = [],
   cwd,
   env = {},
   description = 'python json worker',
-  startupTimeoutMs = 10000
+  startupTimeoutMs = 10000,
+  requestTimeoutMs = readPositiveIntEnv('PYWORKER_REQUEST_TIMEOUT_MS', 30000),
+  maxRetries = readPositiveIntEnv('PYWORKER_MAX_RETRIES', 2),
+  backoffBaseMs = readPositiveIntEnv('PYWORKER_BACKOFF_BASE_MS', 250),
+  breakerMaxFailures = readPositiveIntEnv('PYWORKER_BREAKER_MAX_FAILURES', 3),
+  breakerCooldownMs = readPositiveIntEnv('PYWORKER_BREAKER_COOLDOWN_MS', 30000),
+  spawnArgs = ['-u', scriptPath, ...args]
 }) {
   let child = null;
   let nextRequestId = 1;
@@ -23,6 +50,17 @@ export function createPythonJsonWorker({
   let startupPromise = null;
   let startupResolve = null;
   let startupReject = null;
+
+  let consecutiveFailures = 0;
+  let breakerOpenedAt = 0;
+
+  function breakerOpen() {
+    return (
+      breakerMaxFailures > 0 &&
+      consecutiveFailures >= breakerMaxFailures &&
+      Date.now() - breakerOpenedAt < breakerCooldownMs
+    );
+  }
 
   function rejectAllPending(error) {
     for (const [, handlers] of pending) {
@@ -53,7 +91,7 @@ export function createPythonJsonWorker({
     });
 
     const pythonBin = process.env.PYTHON_BIN || DEFAULT_PYTHON_BIN;
-    child = spawn(pythonBin, ['-u', scriptPath, ...args], {
+    child = spawn(pythonBin, spawnArgs, {
       cwd,
       env: {
         ...process.env,
@@ -137,7 +175,7 @@ export function createPythonJsonWorker({
     return startupPromise;
   }
 
-  async function request(payload) {
+  async function requestOnce(payload) {
     await ensureStarted();
     if (!child || !running) {
       throw new Error(`${description} is not running`);
@@ -145,15 +183,65 @@ export function createPythonJsonWorker({
 
     const id = String(nextRequestId++);
     const envelope = { id, ...payload };
-    return new Promise((resolve, reject) => {
+    const response = new Promise((resolve, reject) => {
       pending.set(id, { resolve, reject });
-      child.stdin.write(`${JSON.stringify(envelope)}\n`, 'utf-8', (error) => {
-        if (error) {
-          pending.delete(id);
-          reject(toError(error, `${description} failed to write request`));
-        }
-      });
+      try {
+        child.stdin.write(`${JSON.stringify(envelope)}\n`);
+      } catch (error) {
+        pending.delete(id);
+        reject(toError(error, `${description} failed to write request`));
+      }
     });
+
+    if (!Number.isFinite(requestTimeoutMs) || requestTimeoutMs <= 0) {
+      return await response;
+    }
+
+    const timeoutError = new Error(`${description} request timed out after ${requestTimeoutMs} ms`);
+    const timer = setTimeout(() => {
+      const handlers = pending.get(id);
+      if (handlers) {
+        pending.delete(id);
+        handlers.reject(timeoutError);
+      }
+      // Stream state is unknown after a timeout — restart the worker.
+      stopWorker(timeoutError);
+    }, requestTimeoutMs);
+    try {
+      return await response;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  async function requestWithRetry(payload) {
+    if (breakerOpen()) {
+      throw new Error(
+        `${description} circuit breaker is open (${consecutiveFailures} consecutive failures; retry in ${breakerCooldownMs} ms)`
+      );
+    }
+
+    const attempts = (Number.isFinite(maxRetries) && maxRetries >= 0 ? Math.floor(maxRetries) : 0) + 1;
+    let lastError = null;
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      try {
+        const result = await requestOnce(payload);
+        consecutiveFailures = 0;
+        return result;
+      } catch (error) {
+        lastError = toError(error, `${description} request failed`);
+        consecutiveFailures += 1;
+        if (consecutiveFailures >= breakerMaxFailures && breakerMaxFailures > 0) {
+          breakerOpenedAt = Date.now();
+        }
+        if (breakerOpen()) break;
+        if (attempt < attempts - 1) {
+          const delayMs = backoffBaseMs * 2 ** attempt;
+          if (delayMs > 0) await sleep(delayMs);
+        }
+      }
+    }
+    throw lastError;
   }
 
   function dispose() {
@@ -161,8 +249,7 @@ export function createPythonJsonWorker({
   }
 
   return {
-    request,
+    request: requestWithRetry,
     dispose
   };
 }
-

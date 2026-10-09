@@ -107,24 +107,27 @@ const PostCard = ({ post, showPlatformField, onEdit }) => {
 
           <div className="post-metrics-section">
             <div className="post-metrics-section-title">Прогноз результата (абсолютные значения)</div>
-            <ul className="post-metrics-list post-metrics-list-absolute">
-              <li>
-                <strong>Лайки:</strong> {mlLikesRaw != null ? Number(mlLikesRaw).toFixed(0) : 'не получены из API'}
-              </li>
-              <li>
-                <strong>Репосты:</strong> {mlSharesRaw != null ? Number(mlSharesRaw).toFixed(0) : 'не получены из API'}
-              </li>
-              <li>
-                <strong>Просмотры:</strong> {mlViewsRaw != null ? Number(mlViewsRaw).toFixed(0) : 'не получены из API'}
-              </li>
-            </ul>
-            <p className="post-metrics-source">Источник: {absoluteSourceLabel}.</p>
+            {hasAnyMlAbsoluteMetric ? (
+              <>
+                <ul className="post-metrics-list post-metrics-list-absolute">
+                  <li>
+                    <strong>Лайки:</strong> {mlLikesRaw != null ? Number(mlLikesRaw).toFixed(0) : 'не получены из API'}
+                  </li>
+                  <li>
+                    <strong>Репосты:</strong> {mlSharesRaw != null ? Number(mlSharesRaw).toFixed(0) : 'не получены из API'}
+                  </li>
+                  <li>
+                    <strong>Просмотры:</strong> {mlViewsRaw != null ? Number(mlViewsRaw).toFixed(0) : 'не получены из API'}
+                  </li>
+                </ul>
+                <p className="post-metrics-source">Источник: {absoluteSourceLabel}.</p>
+              </>
+            ) : (
+              <span className="post-metrics-ml-counts">
+                По этому посту абсолютный ML-прогноз не пришёл. Можно ориентироваться на относительные оценки выше.
+              </span>
+            )}
           </div>
-          {!hasAnyMlAbsoluteMetric && (
-            <span className="post-metrics-ml-counts">
-              По этому посту абсолютный ML-прогноз не пришёл. Можно ориентироваться на относительные оценки выше.
-            </span>
-          )}
         </div>
       )}
 

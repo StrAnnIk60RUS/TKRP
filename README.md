@@ -85,6 +85,14 @@ Optional planning context fields that can improve cross-vertical quality:
 - **Stage 1 (plan evolution):** optimize slot-level structure (`topic`, `format`, `objective`, `tone`, `cta`, `creativity`) for whole-plan fitness.
 - **Stage 2 (post evolution):** optimize per-post feature vectors for better predicted likes while preserving realism and slot intent.
 
+Long-running optimization can be run asynchronously without blocking the HTTP request:
+- `POST /api/plan/optimize:async` — enqueues the job, returns `202` with `{ job_id, status, status_url }`;
+- `GET /api/plan/jobs/:jobId` — job status/result (`queued|running|done|failed`);
+- `GET /api/plan/jobs` — job list + queue stats.
+
+The synchronous `POST /api/plan/optimize` remains unchanged (frontend depends on it).
+Queue settings: `JOB_QUEUE_MAX_CONCURRENCY`, `JOB_RESULT_TTL_MS`, `JOB_QUEUE_MAX_RETAINED`.
+
 ## 4.4 Prediction and Scoring
 - Post-level and plan-level predictions are produced by local surrogate ML models.
 - Fitness combines predicted likes with ontology/reliability consistency bonuses and structural penalties.
@@ -225,6 +233,11 @@ Typical required env values include:
 - controlled scoring rollout flags:
   - `ONTOLOGY_SCORING_ROLLOUT_PERCENT` (default `0`)
   - `ONTOLOGY_SCORING_MAX_ENRICH_ERRORS` (default `0`, auto-disable threshold)
+- async job queue flags: `JOB_QUEUE_MAX_CONCURRENCY`, `JOB_RESULT_TTL_MS`, `JOB_QUEUE_MAX_RETAINED`
+- plan snapshot flags: `PLAN_SNAPSHOT_MAX_PAYLOAD_BYTES`, `PLAN_SNAPSHOT_TTL_MS`
+- python worker resilience flags: `PYWORKER_REQUEST_TIMEOUT_MS`, `PYWORKER_MAX_RETRIES`,
+  `PYWORKER_BACKOFF_BASE_MS`, `PYWORKER_BREAKER_MAX_FAILURES`, `PYWORKER_BREAKER_COOLDOWN_MS`
+- `/health` reports `job_queue` stats and `storage_metrics` (storage operation latencies).
 
 ---
 

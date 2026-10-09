@@ -1,6 +1,23 @@
 # Local full stack (dev): needs .env in repo root (copy from .env.example).
 # Host node_modules are hidden so Linux deps match the container (important on Windows/macOS).
 services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: tkrp-db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-tkrp}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    ports:
+      - '5432:5432'
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-tkrp}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   dev:
     build:
       context: .
@@ -24,5 +41,6 @@ services:
     tty: true
 
 volumes:
+  db_data:
   root_node_modules:
   api_node_modules:

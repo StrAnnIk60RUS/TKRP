@@ -1,3 +1,5 @@
+import { assertValidAgainstJsonSchema } from '../../../../shared/utils/jsonSchemaValidator.js';
+
 const PLAN_FORMAT_ALIASES = {
   text_post: 'text',
   image_post: 'image',
@@ -126,8 +128,41 @@ function addDaysIso(startDate, daysToAdd) {
   return date.toISOString().slice(0, 10);
 }
 
+// Contract schema для raw draft из LLM-пipeline: envelope + базовая types.
+// Strict (throw + raw_value), потому что pipeline уже validated repairedPlan;
+// здесь мы guard route contract (e.g. /generate_llm direct path).
+const DRAFT_PLAN_ENVELOPE_SCHEMA = {
+  type: 'object',
+  required: ['draft_content_plan'],
+  properties: {
+    draft_content_plan: {
+      type: 'object',
+      required: ['publications'],
+      properties: {
+        publications: {
+          type: 'array',
+          items: {
+            type: 'object',
+            required: ['platform', 'topic'],
+            properties: {
+              publication_id: { type: 'string' },
+              platform: { type: 'string', minLength: 1 },
+              planned_date: { type: 'string' },
+              topic: { type: 'string', minLength: 1 },
+              format: { type: 'string' },
+              objective: { type: 'string' }
+            }
+          }
+        }
+      }
+    }
+  }
+};
+
 export function normalizeDraftPlanResponse(parsedDraft, formInput) {
   if (!parsedDraft || typeof parsedDraft !== 'object') return parsedDraft;
+
+  assertValidAgainstJsonSchema(parsedDraft, DRAFT_PLAN_ENVELOPE_SCHEMA, 'draft plan envelope');
   const plan = parsedDraft?.draft_content_plan;
   if (!plan || typeof plan !== 'object') return parsedDraft;
 

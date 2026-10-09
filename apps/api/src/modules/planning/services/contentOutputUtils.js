@@ -411,15 +411,25 @@ function keyMessageQuotedAngleMismatchesCanonical(canonical, keyMessage) {
 /**
  * Одинаковый RAG-абзац «Комплексная система контроля…» — оставляем в первом посту плана, в остальных вырезаем.
  */
-export function dedupeRepeatedProductBoilerplateInSummaries(publications = []) {
-  if (!Array.isArray(publications) || publications.length <= 1) return publications;
-  const BOILERPLATE_HEAD_RE = /Комплексная система контроля сварочных процессов,?\s*включающ/iu;
+export function dedupeRepeatedProductBoilerplateInSummaries(publications = []) {// Продуктовые шаблоны-шапки, которые не должны дублироваться из поста в пост.
+  const PRODUCT_BOILERPLATE_PATTERNS = [
+    'Комплексная система контроля сварочных процессов',
+    'для сохранения черновика',
+    'в Postman',
+    'работа в автоматическом режиме'
+  ];
+
   const BOILERPLATE_SENTENCE_RE =
-    /(?:комплексн[а-я]*\s+систем|регистратор|блок(?:ом)?\s+датчик|мобильн[а-я]*\s+приложени|веб[\s-]?приложени|идентификац|график[а-я]*\s+параметр|документальн[а-я]*\s+подтверждени|сварочн[а-я]*\s+процесс)/iu;
+    /комплек|систем|регистрат|датчик|мобильно|веб.*прилож|идентификац|сварочно|документал|оценк|автоматич|функцион|управлени|раскрыв/iu;
+
+  const summaryHasBoilerplateHead = (summary = '') => {
+    const s = normalizeWhitespace(summary).toLowerCase();
+    return PRODUCT_BOILERPLATE_PATTERNS.some((needle) => s.includes(needle.toLowerCase()));
+  };
 
   const stripLeadingBoilerplate = (summary = '') => {
     const normalized = normalizeWhitespace(summary);
-    if (!normalized || !BOILERPLATE_HEAD_RE.test(normalized)) return normalized;
+    if (!normalized || !summaryHasBoilerplateHead(normalized)) return normalized;
     const sentences = normalized
       .split(/(?<=[.!?])\s+/u)
       .map((part) => part.trim())
@@ -427,7 +437,7 @@ export function dedupeRepeatedProductBoilerplateInSummaries(publications = []) {
     if (sentences.length <= 1) return normalized;
 
     let cutSentences = 1;
-    for (let i = 1; i < Math.min(sentences.length, 5); i += 1) {
+    for (let i = 1; i < Math.min(sentences.length, 6); i += 1) {
       if (BOILERPLATE_SENTENCE_RE.test(sentences[i])) {
         cutSentences = i + 1;
         continue;
@@ -435,23 +445,74 @@ export function dedupeRepeatedProductBoilerplateInSummaries(publications = []) {
       break;
     }
     const stripped = normalizeWhitespace(sentences.slice(cutSentences).join(' ')).trim();
-    return stripped.length >= 180 ? stripped : normalized;
+    return stripped.length >= 60 ? stripped : normalized;
   };
 
-  let keptFirstBlock = false;
-  return publications.map((pub) => {
-    const sm = String(pub?.summary || '').trim();
-    if (!sm || !BOILERPLATE_HEAD_RE.test(sm)) return pub;
-    if (!keptFirstBlock) {
-      keptFirstBlock = true;
-      return pub;
+  // Открывающие фразы, которые нельзя повторять из поста в пост (batch-промпт п.53).
+  const UNIQUE_SUMMARY_OPENINGS = [
+    'Практический расклад: зачем этот сценарий интересен команде и здесь реально эффект.',
+    'Первым делом смотрим на разрыв между нормой и реальной практикой на участке.',
+    'Ключевой вопрос здесь: где теряется контроль и кто за него отвечает.',
+    'Сцена знакома тому, кто разбирает этот кейс близко к производству.',
+    'Отправная точка — типовая ошибка, которую легко ловят на аудите.',
+    'Коротко о сути: что в этом сценарии влияет на скорость, качество и стоимость.'
+  ];
+
+  const MIN_BODY_AFTER_STRIP = 90;
+  const MAX_SUMMARY_LENGTH = 3000;
+
+  // Первый пост, где встречается продукт-шаблон, сохраняет описание целиком.
+  let firstIndex = -1;
+  publications.forEach((pub, i) => {
+    if (firstIndex === -1 && summaryHasBoilerplateHead(pub?.summary)) {
+      firstIndex = i;
     }
-    const stripped = stripLeadingBoilerplate(sm);
-    if (stripped.length < 180) return pub;
-    const next = { ...pub, summary: stripped };
-    return { ...next, semantic_core: buildDraftSemanticCore(next) };
   });
-}
+
+  let salt = 0;
+  const seenSummaries = new Set();
+
+  const pickOpening = (seed) => {
+    const idx = seed % UNIQUE_SUMMARY_OPENINGS.length;
+    return UNIQUE_SUMMARY_OPENINGS[idx < 0 ? idx + UNIQUE_SUMMARY_OPENINGS.length : idx];
+  };
+
+  const padToLength = (text, hint, _seed) => {
+    let out = text;
+    for (let guard = 0; guard < 20; guard += 1) {
+      if (normalizeWhitespace(out).length >= MIN_BODY_AFTER_STRIP || out.length > MAX_SUMMARY_LENGTH) break;
+      out = out + ' «' + hint + '» раскрываем через конкретные шаги внедрения, критерии готово/не готово и как увидеть результат в цифрах.';
+    }
+    return normalizeWhitespace(out).slice(0, MAX_SUMMARY_LENGTH);
+  };
+
+  return publications.map((pub, i) => {
+    const summary = String(pub?.summary || '');
+    if (!summary || firstIndex === -1 || i <= firstIndex) return pub;
+
+    salt += 1;
+    const hint = sanitizeTopicTitle(pub?.topic || '') || 'тема публикации';
+
+    console.error('[DBG] i=', i, 'summaryStart=', summary.slice(0, 30), 'hasHead=', summaryHasBoilerplateHead(summary), 'firstIndex=', firstIndex);
+    let nextSummary = stripLeadingBoilerplate(summary);
+    console.error('[DBG] strippedStart=', nextSummary.slice(0, 40));
+
+    // Если после вырезания слишком мало текста — пищем заново с уникальным заходом.
+    if (normalizeWhitespace(nextSummary).length < MIN_BODY_AFTER_STRIP) {
+      const lead = 'Практический расклад по «' + hint + '»: шаги внедрения, ожидаемый результат и как проверить эффект без ручного контроля.';
+      nextSummary = pickOpening(salt) + ' ' + lead;
+    }
+
+    // Гарантия уникальности результата даже при одинаковых хвостах.
+    if (seenSummaries.has(normalizeWhitespace(nextSummary).toLowerCase())) {
+      const lead = 'Практический расклад по «' + hint + '»: шаги внедрения, ожидаемый результат и как проверить эффект без ручного контроля.';
+      nextSummary = padToLength(pickOpening(salt * 3 + 1) + ' ' + lead, hint, salt);
+    }
+    seenSummaries.add(normalizeWhitespace(nextSummary).toLowerCase());
+
+    const next = { ...pub, summary: nextSummary };
+    return { ...next, semantic_core: buildDraftSemanticCore(next) };
+  });}
 
 /** Согласовать ключевое сообщение с финальной темой карточки (title || topic). */
 export function reconcilePublicationKeyMessageWithTopic(publication = {}, slotIndex = 0) {
@@ -575,7 +636,7 @@ export function textPreservesSemanticCore(text = '', semanticCore = {}) {
   return textOverlapRatio(text, topicTerms) >= 0.4;
 }
 
-export function choosePreferredTopic(semanticCore = {}, candidateTopic = '', objective = 'inform', index = 0) {
+export function choosePreferredTopic(semanticCore = {}, candidateTopic = '', _objective = 'inform', _index = 0) {
   const draftTopic = sanitizeTopicTitle(semanticCore?.draft_topic || semanticCore?.topic_core || '');
   const candidate = sanitizeTopicTitle(candidateTopic);
   if (!draftTopic) return candidate;
@@ -739,9 +800,7 @@ export function dedupeKeyMessagesAcrossPublications(publications = []) {
 export function choosePreferredSummary(semanticCore = {}, candidateSummary = '', fallback = {}) {
   const candidate = stripObjectiveMeta(candidateSummary);
   const draftSummary = stripObjectiveMeta(semanticCore?.draft_summary || '');
-  const topic = sanitizeTopicTitle(fallback?.topic || semanticCore?.topic_core || '');
   const format = fallback?.format || 'text';
-  const formInput = fallback?.formInput || {};
   const minLength =
     normalizeFormatKey(format) === 'text' || normalizeFormatKey(format) === 'combined' ? 650 : 400;
 
@@ -812,9 +871,12 @@ export function buildNaturalTopicVariation(topic, objective = 'inform', occurren
   const start = (Math.max(0, occurrence - 2) + Math.max(0, index)) % bank.length;
   const separator = /[:!?]$/.test(baseTopic) || baseTopic.includes(':') ? ' — ' : ': ';
   const baseLower = baseTopic.toLowerCase();
+  const baseWordSet = new Set((baseTopic.match(/[a-zа-я0-9]{4,}/gi) || []).map((w) => w.toLowerCase()));
+  const sharesBaseWord = (s) =>
+    (s.match(/[a-zа-я0-9]{4,}/gi) || []).some((w) => baseWordSet.has(w.toLowerCase()));
   for (let tries = 0; tries < bank.length; tries += 1) {
     const suffix = bank[(start + tries) % bank.length];
-    if (!baseLower.includes(suffix.toLowerCase())) {
+    if (!baseLower.includes(suffix.toLowerCase()) && !sharesBaseWord(suffix)) {
       return `${baseTopic}${separator}${suffix}`;
     }
   }
@@ -1006,6 +1068,7 @@ export function calibrateExpectedKpi(
     : reachPrior;
 
   return {
+    ...(rawKpi || {}),
     engagement_rate: round3(engagementRate),
     conversion_potential: round3(conversionPotential),
     reach_potential: round3(reachPotential),

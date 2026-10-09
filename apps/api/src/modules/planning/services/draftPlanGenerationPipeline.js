@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import { callOpenRouterChat } from '../../../../openrouter.js';
 import { predictEngagementRatesForGeneratedPublications } from '../../ml/services/relevancePredictionService.js';
 import { parseJsonObjectFromLlmContent } from '../../../shared/utils/llmJsonParsing.js';
+import { runPipelineStage } from '../../../shared/utils/pipelineErrorHandler.js';
 import { normalizePublicationFormatValue, normalizePublicationToneValue } from '../routes/shared/planUtils.js';
 import {
   alignToneToObjective,
@@ -377,7 +378,6 @@ function buildDiversifiedSummaryForSlot(slot, formInput, variantSeed = 0) {
     sanitizeTopicTitle(slot?.topic) || buildFallbackTopic(slot, formInput, (idx % 17) + 1);
   const format = slot?.format || 'text';
   const objective = normalizeObjective(slot?.objective, 'inform');
-  const minLength = getMinSummaryLengthByFormat(format);
   const pd =
     typeof formInput.projectDescription === 'string' && formInput.projectDescription.trim()
       ? formInput.projectDescription.trim()
@@ -488,11 +488,6 @@ function mergeUsageStats(usageItems = []) {
       total_tokens: 0
     }
   );
-}
-
-function estimatePublicationCountFromFrequency(formInput = {}) {
-  const range = getPublicationCountRangeByFrequency(formInput);
-  return range.recommended;
 }
 
 function getPublicationCountRangeByFrequency(formInput = {}) {
@@ -657,7 +652,7 @@ function averagePrecedentKpi(compactRagContext = {}) {
   };
 }
 
-function buildRequestedConstraints(formInput = {}, targetPublicationCount) {
+function buildRequestedConstraints(_formInput = {}, targetPublicationCount) {
   return {
     min_publications: targetPublicationCount
   };
@@ -1344,10 +1339,14 @@ ${targetPublicationCount}
 `;
 
   // Низкая температура — стабильная структура JSON-скелета плана.
-  const llmResponse = await callOpenRouterChat(systemPrompt, userPrompt, {
-    temperature: 0.2,
-    responseFormat: 'json'
-  });
+  const llmResponse = await runPipelineStage(
+    'draft_skeleton',
+    async () =>
+      callOpenRouterChat(systemPrompt, userPrompt, {
+        temperature: 0.2,
+        responseFormat: 'json'
+      })
+  );
   const parsed = extractJsonFromLlmContent(llmResponse.content || '');
   const skeleton = parsed?.draft_content_plan_skeleton || parsed || {};
 
@@ -1414,10 +1413,14 @@ ${JSON.stringify(slots, null, 2)}
 `;
 
   // Чуть выше, чем у скелета — больше лексического разнообразия в текстах постов при том же JSON-режиме.
-  const llmResponse = await callOpenRouterChat(systemPrompt, userPrompt, {
-    temperature: 0.28,
-    responseFormat: 'json'
-  });
+  const llmResponse = await runPipelineStage(
+    `draft_month_batch:${monthKey}`,
+    async () =>
+      callOpenRouterChat(systemPrompt, userPrompt, {
+        temperature: 0.28,
+        responseFormat: 'json'
+      })
+  );
   const parsed = extractJsonFromLlmContent(llmResponse.content || '');
   const rawPubs = toArray(parsed?.publications || parsed?.batch_publications || parsed);
   const publications = applyDraftBatchSummaryDeduplication(rawPubs, slots, formInput, monthIndex);

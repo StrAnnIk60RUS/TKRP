@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef, useReducer, useCallback } from 'react'
+import React, { useMemo, useEffect, useRef, useReducer, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ToastContainer } from '../../../shared/ui/Toast'
 import CompetitorsStep from './competitors/CompetitorsStep'
@@ -29,7 +29,6 @@ import { useUserRole } from '../../../app/providers/UserRoleContext'
 import {
   consumerCategoryOptions,
   contentFormatOptions,
-  demoExampleFormData,
   demoHorizonExampleOptions,
   frequencyOptions,
   getWizardSteps,
@@ -278,7 +277,6 @@ const ProjectForm = () => {
     handleRemoveCompetitorUrl,
     handlePostsLimitChange,
     handleParseCompetitorsFromUrls,
-    clearCompetitors,
     canEnrich
   } = useCompetitorsPipeline(addToast, { isDeveloper })
 
@@ -464,7 +462,7 @@ const ProjectForm = () => {
 
       try {
         const draft = JSON.parse(savedDraft)
-        setFormData({ ...initialFormData, ...draft })
+        dispatch({ type: 'SET_FORM_DATA', payload: { ...initialFormData, ...draft } })
       } catch (e) {
         console.error('Ошибка загрузки локального черновика:', e)
       }
@@ -486,7 +484,7 @@ const ProjectForm = () => {
         const serverDraft = serverDraftResponse?.draft?.formData
         if (serverDraft && typeof serverDraft === 'object') {
           hasRestoredDraftRef.current = true
-          setFormData({ ...initialFormData, ...serverDraft })
+          dispatch({ type: 'SET_FORM_DATA', payload: { ...initialFormData, ...serverDraft } })
           return
         }
       } catch (error) {
@@ -497,7 +495,7 @@ const ProjectForm = () => {
     }
 
     restoreDraft()
-  }, [isEnrichmentServerAvailable])
+  }, [isEnrichmentServerAvailable, dispatch])
 
   useEffect(() => {
     if (isEnrichmentServerAvailable !== true) return
@@ -515,8 +513,8 @@ const ProjectForm = () => {
   }, [isEnrichmentServerAvailable])
 
   useEffect(() => {
-    setCurrentStep((prev) => Math.min(prev, wizardSteps.length))
-  }, [wizardSteps.length])
+    dispatch({ type: 'SET_CURRENT_STEP', payload: Math.min(currentStep, wizardSteps.length) })
+  }, [currentStep, wizardSteps.length])
 
   useEffect(() => {
     const firstPost = competitorsData?.competitors?.[0]?.posts?.[0]
@@ -727,20 +725,6 @@ const ProjectForm = () => {
     }
   }
 
-  const handleReset = () => {
-    if (window.confirm('Вы уверены, что хотите очистить все поля формы?')) {
-      setFormData(initialFormData)
-      setErrors({})
-      setTouched({})
-      clearCompetitors()
-      localStorage.removeItem('projectFormDraft')
-      saveServerDraft({ formData: initialFormData }).catch((error) => {
-        console.error('Ошибка очистки server-side черновика:', error)
-      })
-      addToast('Форма очищена', 'info')
-    }
-  }
-
   const handleLoadHorizonExample = async (exampleName) => {
     if (!exampleName) return
     if (exampleName === demoHorizonExample) return
@@ -750,16 +734,6 @@ const ProjectForm = () => {
 
     setDemoHorizonExample(exampleName)
     await loadExample(exampleName)
-  }
-
-  const handleLoadExample = () => {
-    if (window.confirm('Загрузить пример данных? Текущие данные будут заменены.')) {
-      // Пример данных из project_data_example.json
-      setFormData(demoExampleFormData)
-      setErrors({})
-      setTouched({})
-      addToast('Пример данных загружен', 'success')
-    }
   }
 
   const handleGenerateDraftPlan = async () => {

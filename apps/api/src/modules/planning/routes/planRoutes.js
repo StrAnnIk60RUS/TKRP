@@ -7,9 +7,25 @@ import { buildRagQueryFromForm, normalizeDraftPlanResponse } from './shared/plan
 import { sendRouteError } from '../../../shared/http/routeUtils.js';
 import { loadDraft, saveDraft } from '../services/draftStore.js';
 import { deleteSnapshot, loadSnapshot, saveSnapshot } from '../services/planSnapshotStore.js';
+import { resolveSession } from '../../auth/services/authStore.js';
+import { requireSessionOrAdminApiKey } from '../../auth/services/sessionGate.js';
+import { enqueueJob, getJobStatus, listJobs, getJobQueueStats } from '../../../shared/runtime/jobQueue.js';
 
 const router = Router();
-let currentWizardDraft = null;
+const wizardDraftsByUser = new Map();
+
+function readBearerToken(req) {
+  const header = req.headers?.authorization;
+  if (typeof header !== 'string') return null;
+  const match = /^Bearer\s+(.+)$/i.exec(header.trim());
+  return match ? match[1].trim() : null;
+}
+
+async function resolveUserId(req) {
+  const token = readBearerToken(req);
+  if (!token) return null;
+  return await resolveSession(token);
+}
 
 function buildAudienceSegmentsFromForm(formInput = {}) {
   return Array.from(
@@ -27,9 +43,10 @@ function buildAudienceSegmentsFromForm(formInput = {}) {
   ).slice(0, 8);
 }
 
-async function initDraftFromDisk() {
-  if (currentWizardDraft) return;
-  currentWizardDraft = await loadDraft();
+async function initDraftFromDisk(userId) {
+  const key = userId ?? '__anonymous__';
+  if (wizardDraftsByUser.has(key)) return;
+  wizardDraftsByUser.set(key, await loadDraft(userId));
 }
 
 async function handleGeneratePlan(req, res, routeName) {
@@ -79,7 +96,7 @@ async function handleGeneratePlan(req, res, routeName) {
   });
 }
 
-router.post('/generate', async (req, res) => {
+router.post('/generate', requireSessionOrAdminApiKey, async (req, res) => {
   try {
     return await handleGeneratePlan(req, res, 'generate');
   } catch (error) {
@@ -87,7 +104,7 @@ router.post('/generate', async (req, res) => {
   }
 });
 
-router.post('/generate-batched', async (req, res) => {
+router.post('/generate-batched', requireSessionOrAdminApiKey, async (req, res) => {
   try {
     return await handleGeneratePlan(req, res, 'generate-batched');
   } catch (error) {
@@ -95,7 +112,7 @@ router.post('/generate-batched', async (req, res) => {
   }
 });
 
-router.post('/optimize', async (req, res) => {
+router.post('/optimize', requireSessionOrAdminApiKey, async (req, res) => {
   try {
     const result = await runHierarchicalOptimization(req.body || {});
     return res.json({
@@ -108,30 +125,78 @@ router.post('/optimize', async (req, res) => {
   }
 });
 
-router.get('/draft/current', async (req, res) => {
-  await initDraftFromDisk();
+// Async (job-queue) variants: POST returns 202 + job_id; poll GET /api/plan/jobs/:id.
+// POST /api/plan/optimize stays synchronous for backward compatibility (frontend depends on it).
+router.post('/optimize:async', requireSessionOrAdminApiKey, async (req, res) => {
+  try {
+    const payload = req.body || {};
+    const jobId = enqueueJob('plan_optimize', (body) => runHierarchicalOptimization(body), payload);
+    return res.status(202).json({
+      success: true,
+      job_id: jobId,
+      status: 'queued',
+      status_url: `/api/plan/jobs/${jobId}`,
+      request_id: req.requestId
+    });
+  } catch (error) {
+    return sendRouteError(res, req, 500, 'Некорректный запрос в /api/plan/optimize:async', error);
+  }
+});
+
+router.get('/jobs/:jobId', requireSessionOrAdminApiKey, async (req, res) => {
+  const job = getJobStatus(req.params?.jobId);
+  if (!job) {
+    return res.status(404).json({
+      success: false,
+      error: 'Job не найден или уже expiring (TTL cleanup)',
+      request_id: req.requestId
+    });
+  }
   return res.json({
     success: true,
-    draft: currentWizardDraft,
+    job,
     request_id: req.requestId
   });
 });
 
-router.put('/draft/current', async (req, res) => {
+router.get('/jobs', requireSessionOrAdminApiKey, async (req, res) => {
+  const limit = Number(req.query?.limit);
+  return res.json({
+    success: true,
+    jobs: listJobs(Number.isFinite(limit) && limit > 0 ? limit : 50),
+    stats: getJobQueueStats(),
+    request_id: req.requestId
+  });
+});
+
+router.get('/draft/current', requireSessionOrAdminApiKey, async (req, res) => {
+  const userId = await resolveUserId(req);
+  await initDraftFromDisk(userId);
+  const key = userId ?? '__anonymous__';
+  return res.json({
+    success: true,
+    draft: wizardDraftsByUser.get(key),
+    request_id: req.requestId
+  });
+});
+
+router.put('/draft/current', requireSessionOrAdminApiKey, async (req, res) => {
+  const userId = await resolveUserId(req);
   const payload = req.body || {};
-  currentWizardDraft = {
+  const draft = {
     formData: payload.formData || null,
     updated_at: new Date().toISOString()
   };
-  await saveDraft(currentWizardDraft);
+  wizardDraftsByUser.set(userId ?? '__anonymous__', draft);
+  await saveDraft(draft, userId);
   return res.json({
     success: true,
-    draft: currentWizardDraft,
+    draft,
     request_id: req.requestId
   });
 });
 
-router.post('/snapshots', async (req, res) => {
+router.post('/snapshots', requireSessionOrAdminApiKey, async (req, res) => {
   try {
     const payload = req.body || {};
     const plan = payload.plan;
@@ -144,7 +209,19 @@ router.post('/snapshots', async (req, res) => {
       });
     }
 
-    const saved = await saveSnapshot(plan, optimization, payload.token || null);
+    const userId = await resolveUserId(req);
+    const requestedToken = payload.token || null;
+    if (requestedToken) {
+      const existing = await loadSnapshot(requestedToken);
+      if (existing && existing.owner !== userId) {
+        return res.status(404).json({
+          success: false,
+          error: 'Snapshot не найден',
+          request_id: req.requestId
+        });
+      }
+    }
+    const saved = await saveSnapshot(plan, optimization, requestedToken, userId);
     return res.json({
       success: true,
       snapshot: saved,
@@ -155,11 +232,19 @@ router.post('/snapshots', async (req, res) => {
   }
 });
 
-router.get('/snapshots/:token', async (req, res) => {
+router.get('/snapshots/:token', requireSessionOrAdminApiKey, async (req, res) => {
   try {
     const token = req.params?.token;
+    const userId = await resolveUserId(req);
     const snapshot = await loadSnapshot(token);
     if (!snapshot) {
+      return res.status(404).json({
+        success: false,
+        error: 'Snapshot не найден',
+        request_id: req.requestId
+      });
+    }
+    if (snapshot.owner !== userId) {
       return res.status(404).json({
         success: false,
         error: 'Snapshot не найден',
@@ -176,9 +261,18 @@ router.get('/snapshots/:token', async (req, res) => {
   }
 });
 
-router.delete('/snapshots/:token', async (req, res) => {
+router.delete('/snapshots/:token', requireSessionOrAdminApiKey, async (req, res) => {
   try {
     const token = req.params?.token;
+    const userId = await resolveUserId(req);
+    const snapshot = await loadSnapshot(token);
+    if (snapshot && snapshot.owner !== userId) {
+      return res.status(404).json({
+        success: false,
+        error: 'Snapshot не найден',
+        request_id: req.requestId
+      });
+    }
     const result = await deleteSnapshot(token);
     if (!result.ok && result.reason === 'invalid_token') {
       return res.status(400).json({

@@ -1,4 +1,5 @@
 import { parseJsonObjectFromLlmContent } from '../../../shared/utils/llmJsonParsing.js';
+import { validateAgainstJsonSchema } from '../../../shared/utils/jsonSchemaValidator.js';
 
 const ALLOWED_PLATFORMS = ['vk', 'linkedin'];
 export const ALLOWED_ENRICHMENT_OBJECTIVES = [
@@ -383,8 +384,58 @@ function clamp01(value) {
   return numeric >= 0 && numeric <= 1;
 }
 
+// Structural contract для normalized enrichment result (types + required keys);
+// semantic checks (objective enum, 0..1 ranges) stay ниже в validateNormalizedEnrichmentResult.
+const ENRICHMENT_RESULT_SCHEMA = {
+  type: 'object',
+  required: ['competitors'],
+  properties: {
+    competitors: {
+      type: 'array',
+      items: {
+        type: 'object',
+        required: ['posts'],
+        properties: {
+          posts: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['publication_model'],
+              properties: {
+                topic: { type: 'string' },
+                tone: { type: 'string' },
+                publication_model: {
+                  type: 'object',
+                  required: ['objective'],
+                  properties: {
+                    objective: { type: 'string' },
+                    spcj: {
+                      type: 'object',
+                      properties: {
+                        dimensions: { type: 'object' },
+                        vector: { type: 'array', items: { type: 'number' } }
+                      }
+                    },
+                    kpi_estimate: { type: 'object' }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+};
+
 export function validateNormalizedEnrichmentResult(enrichedData) {
   const errors = [];
+
+  const structural = validateAgainstJsonSchema(enrichedData, ENRICHMENT_RESULT_SCHEMA);
+  if (!structural.valid) {
+    errors.push(...structural.errors);
+  }
+
   const competitors = Array.isArray(enrichedData?.competitors) ? enrichedData.competitors : [];
 
   competitors.forEach((competitor) => {

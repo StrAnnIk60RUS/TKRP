@@ -61,6 +61,7 @@ venv/
 # ------------------------------
 data/runtime/
 apps/api/.data/
+apps/api/test-results/junit.xml
 
 # ------------------------------
 # Temporary files
