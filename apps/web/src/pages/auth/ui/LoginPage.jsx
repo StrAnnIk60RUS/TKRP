@@ -12,19 +12,19 @@ const LoginPage = () => {
 
   const submit = async () => {
     if (!username || !password) {
-      setMessage('Please enter username and password')
+      setMessage('Введите имя пользователя и пароль')
       setMessageKind('error')
       return
     }
     try {
       const result = await loginUser(username, password)
-      setMessage(`Welcome back, ${result.user.username}!`)
+      setMessage(`С возвращением, ${result.user.username}!`)
       setMessageKind('success')
       setUsername('')
       setPassword('')
       navigate('/')
     } catch (error) {
-      setMessage(error.message || 'Вход failed')
+      setMessage(error.message || 'Не удалось войти')
       setMessageKind('error')
     }
   }
@@ -34,13 +34,13 @@ const LoginPage = () => {
       <div className="page-header">
         <h1>Вход</h1>
         <p className="page-subtitle">
-          Входить чтобы open your drafts and plan snapshots
+          Войдите, чтобы открыть ваши черновики и снимки планов
         </p>
       </div>
       <div className="page-content">
         <form className="auth-form" onSubmit={(e) => e.preventDefault()}>
           <label className="auth-field-label" htmlFor="auth-username">
-            Username
+            Имя пользователя
           </label>
           <input
             className="auth-username-input"
@@ -48,10 +48,10 @@ const LoginPage = () => {
             name="auth-username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            placeholder="Your username"
+            placeholder="Ваше имя пользователя"
           />
           <label className="auth-field-label" htmlFor="auth-password">
-            Password
+            Пароль
           </label>
           <input
             className="auth-password-input"
@@ -59,21 +59,21 @@ const LoginPage = () => {
             name="auth-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="Your password"
+            placeholder="Ваш пароль"
           />
           <button
             type="button"
             className="auth-submit-btn"
             onClick={submit}
           >
-            Enter
+            Войти
           </button>
         </form>
         {message ? (
           <div className={`auth-message auth-message-${messageKind}`}>{message}</div>
         ) : null}
         <Link to="/register" className="auth-switch-link">
-          No account? Registration →
+          Нет аккаунта? Регистрация →
         </Link>
       </div>
     </div>

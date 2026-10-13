@@ -83,4 +83,5 @@ test('missing migration file would be picked up (negative: unknown name not reco
   process.env.USE_DATABASE = 'true';
   const res = await query('SELECT name FROM schema_migrations WHERE name = $1', ['999_nonexistent.sql']);
   assert.equal(res.rows.length, 0);
+  await closePool();
 });

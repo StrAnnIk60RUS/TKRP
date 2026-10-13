@@ -12,19 +12,19 @@ const RegisterPage = () => {
 
   const submit = async () => {
     if (!username || !password) {
-      setMessage('Fill in username and password')
+      setMessage('Заполните имя пользователя и пароль')
       setMessageKind('error')
       return
     }
     try {
       const result = await registerUser(username, password)
-      setMessage(`Registration successful. Welcome, ${result.user.username}!`)
+      setMessage(`Регистрация прошла успешно. Добро пожаловать, ${result.user.username}!`)
       setMessageKind('success')
       setUsername('')
       setPassword('')
       navigate('/')
     } catch (error) {
-      setMessage(error.message || 'Registration failed')
+      setMessage(error.message || 'Не удалось зарегистрироваться')
       setMessageKind('error')
     }
   }
@@ -32,15 +32,15 @@ const RegisterPage = () => {
   return (
     <div className="auth-page">
       <div className="page-header">
-        <h1>Registration</h1>
+        <h1>Регистрация</h1>
         <p className="page-subtitle">
-          Create an account to keep your drafts and plan snapshots private
+          Создайте аккаунт, чтобы ваши черновики и снимки планов оставались приватными
         </p>
       </div>
       <div className="page-content">
         <form className="auth-form" onSubmit={(e) => e.preventDefault()}>
           <label className="auth-field-label" htmlFor="auth-username">
-            Username
+            Имя пользователя
           </label>
           <input
             className="auth-username-input"
@@ -48,10 +48,10 @@ const RegisterPage = () => {
             name="auth-username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            placeholder="Letters, digits, _ . @ - (3-64)"
+            placeholder="Буквы, цифры, _ . @ - (3–64)"
           />
           <label className="auth-field-label" htmlFor="auth-password">
-            Password
+            Пароль
           </label>
           <input
             className="auth-password-input"
@@ -59,21 +59,21 @@ const RegisterPage = () => {
             name="auth-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="At least 6 characters"
+            placeholder="Минимум 6 символов"
           />
           <button
             type="button"
             className="auth-submit-btn"
             onClick={submit}
           >
-            Register
+            Зарегистрироваться
           </button>
         </form>
         {message ? (
           <div className={`auth-message auth-message-${messageKind}`}>{message}</div>
         ) : null}
         <Link to="/login" className="auth-switch-link">
-          Already have an account? Login →
+          Уже есть аккаунт? Вход →
         </Link>
       </div>
     </div>

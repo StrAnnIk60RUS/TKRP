@@ -11,23 +11,22 @@ const NotFoundPage = () => {
       <div className="page-header">
         <h1>404</h1>
         <p className="page-subtitle">
-          The page you requested does not exist or has been moved. Please check
-          the address or go to one of the pages below.
+          Страница, которую вы ищете, не существует или была перемещена. Проверьте адрес или перейдите на одну из страниц ниже.
         </p>
       </div>
       <div className="page-content">
         <div className="not-found-links">
           {loggedIn ? (
             <Link to="/" className="not-found-link">
-              ← To home
+              ← На главную
             </Link>
           ) : (
             <>
               <Link to="/login" className="not-found-link">
-                Login
+                Вход
               </Link>
               <Link to="/register" className="not-found-link">
-                Registration
+                Регистрация
               </Link>
             </>
           )}

@@ -49,12 +49,6 @@ function syntheticCompetitor(postHasModel) {
   };
 }
 
-async function cleanup() {
-  await query('DELETE FROM publications WHERE publication_id = $1', [pubId]);
-  await query('DELETE FROM content_plans WHERE plan_id = $1', [planId]);
-  await closePool();
-}
-
 test('live persist inserts synthetic publication and plan', async () => {
   const before = await getPrecedentsSummary();
   await persistPrecedents(syntheticCompetitor(true));
@@ -107,9 +101,11 @@ test('live search with empty query returns empty result (negative)', async () =>
 });
 
 test('cleanup removes synthetic records', async () => {
-  await cleanup();
+  await query('DELETE FROM publications WHERE publication_id = $1', [pubId]);
+  await query('DELETE FROM content_plans WHERE plan_id = $1', [planId]);
   const pubRes = await query('SELECT COUNT(1) FROM publications WHERE publication_id = $1', [pubId]);
   const planRes = await query('SELECT COUNT(1) FROM content_plans WHERE plan_id = $1', [planId]);
   assert.equal(Number(pubRes.rows[0].count), 0);
   assert.equal(Number(planRes.rows[0].count), 0);
+  await closePool();
 });

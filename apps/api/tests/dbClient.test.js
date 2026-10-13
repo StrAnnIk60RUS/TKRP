@@ -116,4 +116,5 @@ test('live withTransaction rolls back on throw (negative)', async () => {
   }
   const res = await query('SELECT COUNT(1) FROM precedents_metadata WHERE key = $1', [marker]);
   assert.equal(Number(res.rows[0].count), 0);
+  await closePool();
 });
