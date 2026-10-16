@@ -1,4 +1,8 @@
-import { optimizeContentPlanEvolution, sanitizePlanPublicationsBodies } from './planEvolution.js';
+import {
+  optimizeContentPlanEvolution,
+  sanitizePlanPublicationsBodies,
+  scorePlanBodyLexicalDiversity
+} from './planEvolution.js';
 import { fillPlanWithBestPublication, optimizePublicationsEvolution } from './postEvolution.js';
 import { buildPlanFeatureMap } from '../../../ml/services/ml/ontologyFeatureEngineering.js';
 import { predictContentPlanMetrics } from '../../../ml/services/relevancePredictionService.js';
@@ -8,6 +12,7 @@ import {
   shouldRunPlanDiversityLlmRewrite
 } from '../planDiversityLlmPass.js';
 import { kpiScore } from './fitnessUtils.js';
+import { mergePinnedPublications } from '../../routes/shared/planUtils.js';
 
 function asNumber(value, fallback = 0) {
   const numeric = Number(value);
@@ -144,9 +149,20 @@ export function repairPlanConstraints(plan, constraints = {}) {
   const minRequired =
     pickPositiveInt(constraints.min_publications) ?? pickPositiveInt(plan?.constraints?.min_publications);
   if (minRequired != null && publications.length < minRequired) {
-    unfixable.push(
-      `min_publications: ${publications.length} < ${minRequired}`
-    );
+    if (publications.length === 0) {
+      unfixable.push(`min_publications: 0 < ${minRequired}`);
+    } else {
+      const seedCount = publications.length;
+      while (publications.length < minRequired) {
+        const source = publications[publications.length % seedCount] || {};
+        const nextIndex = publications.length + 1;
+        publications.push({
+          ...source,
+          publication_id: `${source.publication_id || 'pub'}_pad_${nextIndex}`
+        });
+        repairs.push(`publication padded to meet min_publications (${nextIndex}/${minRequired})`);
+      }
+    }
   }
 
   const horizonStart = isoDateSlice(constraints.date_min ?? plan?.planning_horizon?.start_date);
@@ -206,9 +222,15 @@ export async function runHierarchicalOptimization(payload = {}) {
   const stage1Config = payload?.stage1 || {};
   const stage2Config = payload?.stage2 || {};
   const stage3Config = payload?.stage3 && typeof payload.stage3 === 'object' ? payload.stage3 : {};
-  const lockedFields = payload?.locked_fields || {};
-  
-  validateOptimizationInputs(draft, stage1Config);
+   const lockedFields = payload?.locked_fields || {};
+   const formInput = payload?.form_input || payload?.formInput || null;
+   const ragResults = mergePinnedPublications(
+     payload?.ragResults || {},
+     payload?.pinned_publications,
+     8
+   );
+
+   validateOptimizationInputs(draft, stage1Config);
   
   // Stage 1: эволюция структуры плана
   const contentPlanResult = await optimizeContentPlanEvolution(draft, {
@@ -219,8 +241,22 @@ export async function runHierarchicalOptimization(payload = {}) {
   // Подготовка lockedFields для stage2 на основе результатов stage1
   const planFeatureMap = contentPlanResult.planFeatureMap;
   const stage2LockedFields = buildStage2LockedFields(lockedFields, planFeatureMap);
+  const stage1Repaired = repairPlanConstraints(
+    contentPlanResult.optimizedPlan,
+    stage1Config.constraints || {}
+  );
+  if (stage1Repaired.unfixable.length > 0) {
+    throw new Error(
+      'Черновик не содержит публикаций, из которых можно набрать минимум плана: ' +
+      stage1Repaired.unfixable.join('; ')
+    );
+  }
+  contentPlanResult.optimizedPlan = {
+    ...contentPlanResult.optimizedPlan,
+    publications: stage1Repaired.publications
+  };
   
-  // Stage 2: эволюция признаков каждого поста
+  // Stage 2: поиск писательских решений каждого поста (тон, крючок, длина, списки, CTA)
   const postResult = await optimizePublicationsEvolution(
     contentPlanResult.optimizedPlan.publications,
     contentPlanResult.planFeatureMap,
@@ -231,17 +267,21 @@ export async function runHierarchicalOptimization(payload = {}) {
     }
   );
   
-  // Заполнение плана лучшими постами с распределением CTA по приоритету
-  const filledPlanResult = await fillPlanWithBestPublication(
-    contentPlanResult.optimizedPlan.publications,
-    postResult.publicationResults,
-    contentPlanResult.planFeatureMap,
-    {
-      ...(stage2Config.ga || stage2Config),
-      targetCtaShare: planFeatureMap.cta_share,
-      targetUniqueTones: planFeatureMap.unique_tones
-    }
-  );
+   // Заполнение плана лучшими постами с распределением CTA по приоритету
+   const filledPlanResult = await fillPlanWithBestPublication(
+     contentPlanResult.optimizedPlan.publications,
+     postResult.publicationResults,
+     contentPlanResult.planFeatureMap,
+     {
+       ...(stage2Config.ga || stage2Config),
+       targetCtaShare: planFeatureMap.cta_share,
+       targetUniqueTones: planFeatureMap.unique_tones,
+       llmContext: {
+         form_input: formInput,
+         ragResults
+       }
+     }
+   );
 
   let publicationsAfterRewrite = filledPlanResult.publications;
   let stage3LlmMeta = {
@@ -263,7 +303,12 @@ export async function runHierarchicalOptimization(payload = {}) {
           // Fitness rollback guard теперь вовнут pass (reason 'rollback');
           // guard не должен блоки pipeline — fitnessFn падрял log-only внутри.
           fitnessGuard: {
-            fitnessFn: (pubs) => scorePlanFitness(contentPlanResult.optimizedPlan, pubs)
+            epsilon: 0.03,
+            fitnessFn: async (pubs) => {
+              const kpi = await scorePlanFitness(contentPlanResult.optimizedPlan, pubs);
+              const textSpread = scorePlanBodyLexicalDiversity(pubs);
+              return kpi * 0.5 + textSpread * 0.5;
+            }
           }
         }
       );

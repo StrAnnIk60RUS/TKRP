@@ -8,9 +8,12 @@ import {
 import { parseAndEnrichByUrl, parseOnlyByUrl } from '../services/parserPipeline.js';
 import { persistPrecedents } from '../../precedents/repositories/precedentRepository.js';
 import { requireSessionOrAdminApiKey } from '../../auth/services/sessionGate.js';
+import { rejectInstagramIfForbidden } from '../../auth/services/instagramAccess.js';
 import { sendRouteError } from '../../../shared/http/routeUtils.js';
 
 const router = Router();
+
+router.use(rejectInstagramIfForbidden);
 
 router.post('/parse', requireSessionOrAdminApiKey, async (req, res) => {
   try {

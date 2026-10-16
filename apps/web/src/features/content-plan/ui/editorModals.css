@@ -2,6 +2,10 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-inline-size: 0;
 }
 
 .editor-error {
@@ -56,11 +60,34 @@
   font-weight: 600;
   color: #1a1a2e;
   outline: none;
-  resize: vertical;
+  resize: none;
+  min-height: 4.5rem;
+  max-height: min(22rem, 55vh);
+  overflow-x: hidden;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
 }
 
 .editor-textarea:focus {
   border-color: #ff6b9d;
+}
+
+.editor-hint {
+  margin: 0;
+  font-weight: 500;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: #4a5568;
+}
+
+.editor-generate-btn {
+  align-self: flex-start;
+}
+
+.editor-generate-btn:disabled,
+.modal-footer button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 @media (max-width: 560px) {

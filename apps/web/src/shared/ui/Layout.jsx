@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useUserRole } from '../../app/providers/UserRoleContext'
 import { ROLES, ROLE_MODE_LABELS } from '../../app/providers/UserRoleContext'
-import { isUserAuthenticated } from './AuthGate'
+import { useIsAuthenticated } from './AuthGate'
 import { logoutUser } from '../api/authService'
 import './Layout.css'
 
@@ -10,6 +10,7 @@ const Layout = ({ children }) => {
   const location = useLocation()
   const navigate = useNavigate()
   const { role, setRole } = useUserRole()
+  const isAuthenticated = useIsAuthenticated()
   const [theme, setTheme] = useState('dark')
 
   useEffect(() => {
@@ -50,7 +51,7 @@ const Layout = ({ children }) => {
               </p>
             </div>
             <div className="header-controls">
-              {isUserAuthenticated() ? (
+              {isAuthenticated ? (
                 <>
                   <div className="role-selector-block">
                     <select
@@ -60,8 +61,8 @@ const Layout = ({ children }) => {
                       title="Роль: разный уровень детализации и число шагов"
                       aria-describedby="role-mode-hint"
                     >
-                      <option value={ROLES.SMM}>Маркетолог (SMM) — быстрый, 4 шага</option>
-                      <option value={ROLES.ANALYST}>Аналитик — расширенный, 5 шагов + GA/ML</option>
+                      <option value={ROLES.SMM}>Маркетолог (SMM) — быстрый, 5 шагов</option>
+                      <option value={ROLES.ANALYST}>Аналитик — расширенный, 6 шагов</option>
                       <option value={ROLES.DEVELOPER}>Разработчик — полный, обход чеклиста</option>
                     </select>
                     <div id="role-mode-hint" className="role-mode-hint">
@@ -73,7 +74,7 @@ const Layout = ({ children }) => {
                     className="logout-btn"
                     onClick={handleLogout}
                   >
-                    Log out
+                    Выйти
                   </button>
                 </>
               ) : null}
@@ -87,7 +88,7 @@ const Layout = ({ children }) => {
             </div>
           </div>
           <nav className="main-nav">
-            {isUserAuthenticated() ? (
+            {isAuthenticated ? (
               <>
                 <Link 
                   to="/" 

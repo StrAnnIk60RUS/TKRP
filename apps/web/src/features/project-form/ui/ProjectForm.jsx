@@ -2,6 +2,8 @@ import React, { useMemo, useEffect, useRef, useReducer, useCallback } from 'reac
 import { useNavigate } from 'react-router-dom'
 import { ToastContainer } from '../../../shared/ui/Toast'
 import CompetitorsStep from './competitors/CompetitorsStep'
+import AutoResizeTextarea from '../../../shared/ui/AutoResizeTextarea'
+import KeyDatesEditor from './projectForm/KeyDatesEditor'
 import WizardHeader from '../../../shared/ui/WizardHeader'
 import WizardNavActions from '../../../shared/ui/WizardNavActions'
 import WorkflowSummaryPanel from './projectForm/WorkflowSummaryPanel'
@@ -26,15 +28,18 @@ import {
 import { savePlanSnapshot } from '../../content-plan/model/planStorage'
 import PrecedentDetailsModal from './precedents/PrecedentDetailsModal'
 import { useUserRole } from '../../../app/providers/UserRoleContext'
+import { useInstagramAccess } from '../../../shared/lib/useInstagramAccess'
 import {
   consumerCategoryOptions,
   contentFormatOptions,
   demoHorizonExampleOptions,
   frequencyOptions,
+  getWizardStepIds,
   getWizardSteps,
   initialFormData,
   publicationDayModeOptions,
   platformOptions,
+  instagramPlatformOption,
   requiredFields
 } from './projectForm/formConfig'
 import {
@@ -90,12 +95,49 @@ const hasEnrichedCompetitorsData = (competitorsData) => {
   return Boolean(firstPost?.publication_model)
 }
 
+function buildPinnedPublications(competitorsData) {
+  const competitors = Array.isArray(competitorsData?.competitors) ? competitorsData.competitors : []
+  const pinned = []
+  for (const competitor of competitors) {
+    const posts = Array.isArray(competitor?.posts) ? competitor.posts : []
+    for (const post of posts) {
+      const topic = String(post?.topic || post?.publication_model?.topic || '').trim()
+      const content = String(post?.content || post?.summary || post?.publication_model?.summary || '').trim()
+      if (topic.toLowerCase() === 'unspecified') continue
+      if (!topic && content.length < 40) continue
+      pinned.push({
+        publication_id: post?.publication_model?.publication_id || null,
+        platform: competitor.platform || null,
+        competitor_name: competitor.name || null,
+        url: post?.url || null,
+        content: post?.content || null,
+        metrics: post?.metrics || null,
+        engagement_rate: post?.engagement_rate ?? null,
+        topic,
+        summary: post?.summary || post?.publication_model?.summary || content.slice(0, 500),
+        objective: post?.objective || post?.publication_model?.objective || null,
+        format: post?.format || post?.publication_model?.format || null,
+        tone: post?.tone || post?.publication_model?.tone || null,
+        publication_model: post?.publication_model || null
+      })
+      if (pinned.length >= 8) return pinned
+    }
+  }
+  return pinned
+}
+
 const ProjectForm = () => {
   const navigate = useNavigate()
   const { isDeveloper, isAnalyst, isExtendedMode } = useUserRole()
+  const allowInstagram = useInstagramAccess()
+  const visiblePlatformOptions = useMemo(
+    () => (allowInstagram ? [...platformOptions, instagramPlatformOption] : platformOptions),
+    [allowInstagram]
+  )
   const isSmm = !isDeveloper && !isAnalyst
   const [wizardState, dispatch] = useReducer(wizardReducer, initialWizardState)
 
+  const wizardStepIds = getWizardStepIds(isDeveloper, isAnalyst)
   const wizardSteps = getWizardSteps(isDeveloper, isAnalyst)
 
   const {
@@ -116,6 +158,7 @@ const ProjectForm = () => {
     operations,
     operationTelemetry
   } = wizardState
+  const currentStepId = wizardStepIds[currentStep - 1] || wizardStepIds[0]
   const isLoadingOntology = operations.loadingOntology?.status === 'running'
   const isSearchingPrecedents = operations.searchingPrecedents?.status === 'running'
   const isSeedingPrecedents = operations.seedingPrecedents?.status === 'running'
@@ -138,15 +181,15 @@ const ProjectForm = () => {
     if (type === 'embedding_cosine') {
       return isDeveloper
         ? {
-            label: 'Semantic retrieval',
-            hint: precedentRetrieval?.embedding_model ? `${precedentRetrieval.embedding_model}` : 'embeddings',
+            label: 'Поиск по смыслу',
+            hint: precedentRetrieval?.embedding_model ? `${precedentRetrieval.embedding_model}` : 'эмбеддинги',
             tone: 'success'
           }
         : { label: 'Поиск по смыслу', hint: '', tone: 'success' }
     }
     if (type === 'token_overlap_fallback') {
       return isDeveloper
-        ? { label: 'Token overlap', hint: 'fallback', tone: 'neutral' }
+        ? { label: 'Поиск по ключевым словам', hint: 'запасной режим', tone: 'neutral' }
         : { label: 'Поиск по ключевым словам', hint: '', tone: 'neutral' }
     }
     if (!type) return null
@@ -162,7 +205,7 @@ const ProjectForm = () => {
 
   const progress = (filledRequired / requiredFields.length) * 100
   const consumerCategoryLabelMap = useMemo(() => toOptionLabelMap(consumerCategoryOptions), [])
-  const platformLabelMap = useMemo(() => toOptionLabelMap(platformOptions), [])
+  const platformLabelMap = useMemo(() => toOptionLabelMap(visiblePlatformOptions), [visiblePlatformOptions])
   const contentFormatLabelMap = useMemo(() => toOptionLabelMap(contentFormatOptions), [])
 
   const riskSummary = useMemo(
@@ -345,7 +388,7 @@ const ProjectForm = () => {
       const backendOk = isEnrichmentServerAvailable === true
 
       const reasonsForSearch = []
-      if (!backendOk) reasonsForSearch.push('Backend недоступен')
+      if (!backendOk) reasonsForSearch.push('Сервер недоступен')
       if (!requiredFieldsDone) reasonsForSearch.push('Обязательные поля формы не заполнены')
       if (!competitorsDone) {
         reasonsForSearch.push('Нет данных конкурентов в форме и база прецедентов пуста')
@@ -393,51 +436,68 @@ const ProjectForm = () => {
       formData.platforms.length > 0
     const hasDraftPlan = Boolean(draftPlanResult?.draft?.draft_content_plan)
     const hasOptimizedPlan = Boolean(optimizationResult?.optimized_content_plan)
-    const isOnResultsStep = isExtendedMode ? currentStep === 5 : currentStep === 4
-
-    const evolutionStatus =
-      hasDraftPlan || hasOptimizedPlan ? 'completed' : currentStep === 4 ? 'in_progress' : 'pending'
-    const resultsStatus =
-      isSearchingPrecedents || isSeedingPrecedents || isGeneratingDraftPlan || isOptimizingPlan
-        ? 'in_progress'
-        : hasOptimizedPlan || hasDraftPlan
+    const precedentsReady = Boolean(
+      precedentSearchResults ||
+      (precedentsSummary?.publications_count || 0) + (precedentsSummary?.content_plans_count || 0) > 0
+    )
+    const statusById = {
+      competitors:
+        isParsingFromUrls || isEnriching
+          ? 'in_progress'
+          : competitorsStepDone
+            ? 'completed'
+            : hasCompetitorUrls
+              ? 'in_progress'
+              : 'pending',
+      project: projectCompleted
         ? 'completed'
-        : isOnResultsStep && filledRequired < requiredFields.length
-        ? 'attention'
-        : isOnResultsStep
-        ? 'in_progress'
-        : 'pending'
-
-    const base = [
-      isParsingFromUrls || isEnriching
-        ? 'in_progress'
-        : competitorsStepDone
-        ? 'completed'
-        : hasCompetitorUrls
-        ? 'in_progress'
-        : 'pending',
-      projectCompleted ? 'completed' : projectStarted ? (currentStep > 2 ? 'attention' : 'in_progress') : 'pending',
-      audienceCompleted
+        : projectStarted
+          ? currentStep > 2
+            ? 'attention'
+            : 'in_progress'
+          : 'pending',
+      audience: audienceCompleted
         ? 'completed'
         : audienceStarted
-        ? currentStep > 3
-          ? 'attention'
-          : 'in_progress'
-        : 'pending'
-    ]
-    if (isExtendedMode) {
-      base.push(evolutionStatus, resultsStatus)
-    } else {
-      base.push(resultsStatus)
+          ? currentStep > 3
+            ? 'attention'
+            : 'in_progress'
+          : 'pending',
+      precedents:
+        isSearchingPrecedents || isSeedingPrecedents
+          ? 'in_progress'
+          : precedentsReady
+            ? 'completed'
+            : currentStepId === 'precedents'
+              ? 'in_progress'
+              : 'pending',
+      draft: isGeneratingDraftPlan
+        ? 'in_progress'
+        : hasDraftPlan
+          ? 'completed'
+          : currentStepId === 'draft' && filledRequired < requiredFields.length
+            ? 'attention'
+            : currentStepId === 'draft'
+              ? 'in_progress'
+              : 'pending',
+      optimize: isOptimizingPlan
+        ? 'in_progress'
+        : hasOptimizedPlan
+          ? 'completed'
+          : currentStepId === 'optimize'
+            ? 'in_progress'
+            : 'pending'
     }
-    return base
+    return wizardStepIds.map((stepId) => statusById[stepId] || 'pending')
   }, [
     competitorUrls,
     competitorsData,
     precedentsSummary,
+    precedentSearchResults,
     currentStep,
+    currentStepId,
+    wizardStepIds,
     draftPlanResult,
-    isExtendedMode,
     filledRequired,
     formData,
     isEnriching,
@@ -666,7 +726,7 @@ const ProjectForm = () => {
 
   const handleSeedDemoPrecedents = async () => {
     if (isEnrichmentServerAvailable === false) {
-      addToast('Сервер недоступен. Убедитесь, что backend запущен и доступен по VITE_ENRICHMENT_API_URL.', 'error')
+      addToast('Сервер недоступен. Убедитесь, что он запущен.', 'error')
       return
     }
     setOperationTelemetry({ backend: 'running', python: 'idle', llm: 'idle' })
@@ -688,7 +748,7 @@ const ProjectForm = () => {
 
   const handleExportOntologyToExcel = async () => {
     if (isEnrichmentServerAvailable === false) {
-      addToast('Сервер недоступен. Убедитесь, что backend запущен и доступен по VITE_ENRICHMENT_API_URL.', 'error')
+      addToast('Сервер недоступен. Убедитесь, что он запущен.', 'error')
       return
     }
     setOperationTelemetry({ backend: 'running', python: 'idle', llm: 'idle' })
@@ -707,7 +767,7 @@ const ProjectForm = () => {
 
   const handleLoadOntology = async () => {
     if (isEnrichmentServerAvailable === false) {
-      addToast('Сервер недоступен. Убедитесь, что backend запущен и доступен по VITE_ENRICHMENT_API_URL.', 'error')
+      addToast('Сервер недоступен. Убедитесь, что он запущен.', 'error')
       return
     }
     setOperationTelemetry({ backend: 'running', python: 'idle', llm: 'idle' })
@@ -789,7 +849,8 @@ const ProjectForm = () => {
           {
             form_input: safeFormInput,
             rag_query: precedentSearchQuery || undefined,
-            rag_limit: 8
+            rag_limit: 8,
+            pinned_publications: buildPinnedPublications(competitorsData)
           },
           { signal }
         )
@@ -822,7 +883,7 @@ const ProjectForm = () => {
   const handleOptimizeDraftPlan = async () => {
     const draft = draftPlanResult?.draft?.draft_content_plan
     if (!draft) {
-      addToast('Сначала сформируйте черновой контент-план (RAG → LLM)', 'error')
+      addToast('Сначала сформируйте черновой контент-план', 'error')
       return
     }
 
@@ -883,6 +944,9 @@ const ProjectForm = () => {
 
     const payload = {
       draft_content_plan: draft,
+      form_input: buildSafeFormInputForGeneration(formData),
+      ragResults: precedentSearchResults || null,
+      pinned_publications: buildPinnedPublications(competitorsData),
       locked_fields: lockedFields,
       stage1: {
         precedentPublications: precedentPubs,
@@ -907,8 +971,8 @@ const ProjectForm = () => {
       }
     }
 
-    addToast('Запуск эволюционной оптимизации (2 уровня ГА)...', 'info')
-    setOperationTelemetry({ backend: 'running', python: 'running', llm: 'idle' })
+    addToast('Запуск эволюционной оптимизации...', 'info')
+    setOperationTelemetry({ backend: 'running', python: 'running', llm: 'running' })
     try {
       await runTrackedOperation('optimizingPlan', async (signal) => {
         const response = await optimizeDraftContentPlan(payload, { signal })
@@ -930,11 +994,11 @@ const ProjectForm = () => {
         }
       })
       addToast('Оптимизация завершена: план обновлён', 'success')
-      setOperationTelemetry({ backend: 'success', python: 'success', llm: 'idle' })
+      setOperationTelemetry({ backend: 'success', python: 'success', llm: 'success' })
     } catch (error) {
       console.error('Ошибка оптимизации:', error)
       addToast(`Ошибка оптимизации: ${error.message}`, 'error')
-      setOperationTelemetry({ backend: 'error', python: 'error', llm: 'idle' })
+      setOperationTelemetry({ backend: 'error', python: 'error', llm: 'error' })
     }
   }
 
@@ -1016,6 +1080,7 @@ const ProjectForm = () => {
               canEnrich={canEnrich}
               showEnrichButton={isDeveloper}
               precedentsAlreadyInDb={hasPersistedPrecedentsInDb(precedentsSummary)}
+              allowInstagram={allowInstagram}
               onUrlChange={handleCompetitorUrlChange}
               onAddUrl={handleAddCompetitorUrl}
               onRemoveUrl={handleRemoveCompetitorUrl}
@@ -1054,7 +1119,7 @@ const ProjectForm = () => {
             <label htmlFor="producerActivitySpecification" className="form-label">
               Специфика деятельности <span className="required">*</span>
             </label>
-            <textarea
+            <AutoResizeTextarea
               id="producerActivitySpecification"
               name="producerActivitySpecification"
               value={formData.producerActivitySpecification}
@@ -1095,7 +1160,7 @@ const ProjectForm = () => {
             <label htmlFor="projectDescription" className="form-label">
               Описание IT-проекта <span className="required">*</span>
             </label>
-            <textarea
+            <AutoResizeTextarea
               id="projectDescription"
               name="projectDescription"
               value={formData.projectDescription}
@@ -1113,7 +1178,7 @@ const ProjectForm = () => {
             <label htmlFor="projectGoals" className="form-label">
               Цели проекта
             </label>
-            <textarea
+            <AutoResizeTextarea
               id="projectGoals"
               name="projectGoals"
               value={formData.projectGoals}
@@ -1130,7 +1195,7 @@ const ProjectForm = () => {
             <label htmlFor="projectFeatures" className="form-label">
               Особенности проекта
             </label>
-            <textarea
+            <AutoResizeTextarea
               id="projectFeatures"
               name="projectFeatures"
               value={formData.projectFeatures}
@@ -1147,7 +1212,7 @@ const ProjectForm = () => {
             <label htmlFor="projectBenefits" className="form-label">
               Преимущества проекта
             </label>
-            <textarea
+            <AutoResizeTextarea
               id="projectBenefits"
               name="projectBenefits"
               value={formData.projectBenefits}
@@ -1190,7 +1255,7 @@ const ProjectForm = () => {
             <label htmlFor="consumerDemographics" className="form-label">
               Социально-демографические характеристики
             </label>
-            <textarea
+            <AutoResizeTextarea
               id="consumerDemographics"
               name="consumerDemographics"
               value={formData.consumerDemographics}
@@ -1207,7 +1272,7 @@ const ProjectForm = () => {
             <label htmlFor="consumerPurchaseGoal" className="form-label">
               Цель приобретения
             </label>
-            <textarea
+            <AutoResizeTextarea
               id="consumerPurchaseGoal"
               name="consumerPurchaseGoal"
               value={formData.consumerPurchaseGoal}
@@ -1224,7 +1289,7 @@ const ProjectForm = () => {
             <label htmlFor="consumerLifestyle" className="form-label">
               Стиль жизни и другие характеристики
             </label>
-            <textarea
+            <AutoResizeTextarea
               id="consumerLifestyle"
               name="consumerLifestyle"
               value={formData.consumerLifestyle}
@@ -1298,7 +1363,7 @@ const ProjectForm = () => {
             </select>
             {hasError('publicationFrequency') && <span className="error-message">{errors.publicationFrequency}</span>}
             <small className="form-hint">
-              Одно значение для чернового плана и для эволюции (GA): средняя интенсивность задаётся выбранным вариантом.
+              Одно значение для чернового плана и для эволюции: средняя интенсивность задаётся выбранным вариантом.
             </small>
           </div>
 
@@ -1333,19 +1398,14 @@ const ProjectForm = () => {
           </div>
 
           <div className="form-group">
-            <label htmlFor="keyDates" className="form-label">
-              Ключевые даты
-            </label>
-            <textarea
+            <div className="form-label">Ключевые даты</div>
+            <KeyDatesEditor
               id="keyDates"
-              name="keyDates"
               value={formData.keyDates}
-              onChange={handleChange}
-              onBlur={handleBlur}
-              className="form-textarea"
-              placeholder="Важные даты, события, праздники (по одной на строку)"
-              rows="3"
+              startDate={formData.contentPlanStartDate}
+              endDate={formData.contentPlanEndDate}
               disabled={!isEditMode}
+              onChange={(keyDates) => setFormData((prev) => ({ ...prev, keyDates }))}
             />
           </div>
 
@@ -1372,32 +1432,12 @@ const ProjectForm = () => {
             {hasError('contentFormats') && <span className="error-message">{errors.contentFormats}</span>}
           </div>
 
-          {formData.contentFormats.includes('video') && (
-            <div className="form-group">
-              <label htmlFor="videoDescription" className="form-label">
-                Требования к ролику <span className="required">*</span>
-              </label>
-              <textarea
-                id="videoDescription"
-                name="videoDescription"
-                value={formData.videoDescription}
-                onChange={handleChange}
-                onBlur={handleBlur}
-                className={`form-textarea ${hasError('videoDescription') ? 'error' : ''}`}
-                placeholder="Опишите требования к ролику"
-                rows="3"
-                disabled={!isEditMode}
-              />
-              {hasError('videoDescription') && <span className="error-message">{errors.videoDescription}</span>}
-            </div>
-          )}
-
           <div className="form-group">
             <label className="form-label">
               Платформы <span className="required">*</span>
             </label>
             <div className="checkbox-group">
-              {platformOptions.map(option => (
+              {visiblePlatformOptions.map(option => (
                 <label key={option.value} className="checkbox-label">
                   <input
                     type="checkbox"
@@ -1416,11 +1456,12 @@ const ProjectForm = () => {
           </div>
         </section>}
 
-        {/* Параметры эволюционного моделирования (опционально) — для разработчика и аналитика */}
-        {currentStep === 4 && isExtendedMode && <section className="form-section evolution-settings-section">
-          <h2 className="section-title">Параметры эволюционного моделирования (опционально)</h2>
+        {currentStepId === 'optimize' && isExtendedMode && <section className="form-section evolution-settings-section">
+          <details className="ui-details">
+            <summary className="ui-details-summary">Параметры оптимизации (необязательно)</summary>
+            <div className="ui-details-body">
           <p className="evolution-settings-lead">
-            Сначала эволюционирует структура контент-плана, затем — набор признаков каждой публикации. Ниже параметры разделены по этим этапам.
+            Эти значения используются только при улучшении плана: сначала структура плана, затем признаки каждой публикации.
           </p>
 
           <div className="evolution-settings-subblock">
@@ -1645,7 +1686,7 @@ const ProjectForm = () => {
                   onChange={handleChange}
                   onBlur={handleBlur}
                   className="form-input"
-                  placeholder="0.12"
+                  placeholder="0.2"
                   min="0"
                   max="1"
                   step="0.001"
@@ -1658,7 +1699,7 @@ const ProjectForm = () => {
           <div className="evolution-settings-subblock">
             <h3 className="section-subtitle evolution-settings-subtitle">Посты (этап 2)</h3>
             <p className="evolution-settings-lead evolution-settings-lead_compact">
-              Настройки генетического поиска по признакам каждой публикации после фиксации структуры плана.
+              Поиск тона, креативности, призыва, крючка, длины и списков для каждого поста после фиксации структуры плана.
             </p>
 
             <div className="form-row">
@@ -1855,7 +1896,7 @@ const ProjectForm = () => {
                   onChange={handleChange}
                   onBlur={handleBlur}
                   className="form-input"
-                  placeholder="0.12"
+                  placeholder="0.2"
                   min="0"
                   max="1"
                   step="0.001"
@@ -1866,11 +1907,13 @@ const ProjectForm = () => {
           </div>
 
           <small className="form-hint">
-            Если вы не уверены в настройках, оставьте значения по умолчанию — они подобраны для баланса качества и скорости.
+            Если параметры не менять, останутся значения по умолчанию.
           </small>
+            </div>
+          </details>
         </section>}
 
-        {((isExtendedMode && currentStep === 5) || (!isExtendedMode && currentStep === 4)) && (
+        {currentStepId === 'precedents' && (
           <>
             <WorkflowSummaryPanel
               filledRequired={filledRequired}
@@ -1885,114 +1928,93 @@ const ProjectForm = () => {
               explainabilitySignals={explainabilitySignals}
               riskSummary={riskSummary}
             />
+            <PrecedentSearchPanel
+              precedentsSummary={precedentsSummary}
+              precedentSearchQuery={precedentSearchQuery}
+              precedentSearchResults={precedentSearchResults}
+              aggregatedOntology={aggregatedOntology}
+              demoHorizonExample={demoHorizonExample}
+              onLoadHorizonExample={handleLoadHorizonExample}
+              onSeedDemoPrecedents={handleSeedDemoPrecedents}
+              showDemoButtons={isDeveloper}
+              onExportOntologyToExcel={handleExportOntologyToExcel}
+              onLoadOntology={handleLoadOntology}
+              onSearchPrecedents={handleSearchPrecedents}
+              isProcessing={isProcessing}
+              isLoadingOntology={isLoadingOntology}
+              isExportingOntology={isExportingOntology}
+              isGeneratingDraftPlan={isGeneratingDraftPlan}
+              isSeedingPrecedents={isSeedingPrecedents}
+              isSearchingPrecedents={isSearchingPrecedents}
+              isEnrichmentServerAvailable={isEnrichmentServerAvailable}
+              canSearchPrecedents={canSearchPrecedents}
+              smmBlockedReasons={smmBlockedReasonsForSearch}
+              retrievalBadge={retrievalBadge}
+              precedentRetrieval={precedentRetrieval}
+              onSelectPrecedent={setSelectedPrecedentItem}
+            />
+          </>
+        )}
 
-            {isSmm ? (
-              <section className="form-section smm-unified-workflow smm-unified-workflow-flat">
-                <div className="smm-unified-workflow-header">
-                  <h2 className="section-title">Генерация плана</h2>
-                  <p className="workflow-section-subtitle">
-                    Сформируйте черновой план в один клик и при необходимости улучшите результат.
-                  </p>
-                </div>
-                <PrecedentSearchPanel
-                  precedentsSummary={precedentsSummary}
-                  precedentSearchQuery={precedentSearchQuery}
-                  precedentSearchResults={precedentSearchResults}
-                  aggregatedOntology={aggregatedOntology}
-                  demoHorizonExample={demoHorizonExample}
-                  onLoadHorizonExample={handleLoadHorizonExample}
-                  onSeedDemoPrecedents={handleSeedDemoPrecedents}
-                  showDemoButtons={isDeveloper}
-                  onExportOntologyToExcel={handleExportOntologyToExcel}
-                  onLoadOntology={handleLoadOntology}
-                  onSearchPrecedents={handleSearchPrecedents}
-                  isProcessing={isProcessing}
-                  isLoadingOntology={isLoadingOntology}
-                  isExportingOntology={isExportingOntology}
-                  isGeneratingDraftPlan={isGeneratingDraftPlan}
-                  isSeedingPrecedents={isSeedingPrecedents}
-                  isSearchingPrecedents={isSearchingPrecedents}
-                  isEnrichmentServerAvailable={isEnrichmentServerAvailable}
-                  canSearchPrecedents={canSearchPrecedents}
-                  smmBlockedReasons={smmBlockedReasonsForSearch}
-                  retrievalBadge={retrievalBadge}
-                  precedentRetrieval={precedentRetrieval}
-                  onSelectPrecedent={setSelectedPrecedentItem}
-                  isCompactSmm
-                  isEmbedded
-                  hideSearchAction
-                  isFlatSmmFlow
-                />
-
-                <DraftPlanWorkflowPanel
-                  draftPlanResult={draftPlanResult}
-                  optimizationResult={optimizationResult}
-                  onGenerateDraftPlan={handleGenerateDraftPlan}
-                  onGenerateWithPrecedents={handleSearchAndGenerateDraftPlan}
-                  onOptimizeDraftPlan={handleOptimizeDraftPlan}
-                  onOpenPlan={() => navigate('/content-plan')}
-                  isGeneratingDraftPlan={isGeneratingDraftPlan}
-                  isOptimizingPlan={isOptimizingPlan}
-                  isProcessing={isProcessing}
-                  isEnrichmentServerAvailable={isEnrichmentServerAvailable}
-                  canGenerateDraft={canGenerateDraft}
-                  smmBlockedReasons={smmBlockedReasonsForGenerate}
-                  canSearchPrecedents={canSearchPrecedents}
-                  smmSearchBlockedReasons={smmBlockedReasonsForSearch}
-                  publicationDayMode={formData.publicationDayMode}
-                  isDeveloper={isDeveloper}
-                  isEmbedded
-                  combineSearchAndDraft
-                  isFlatSmmFlow
-                />
-              </section>
-            ) : (
-              <>
-                <PrecedentSearchPanel
-                  precedentsSummary={precedentsSummary}
-                  precedentSearchQuery={precedentSearchQuery}
-                  precedentSearchResults={precedentSearchResults}
-                  aggregatedOntology={aggregatedOntology}
-                  demoHorizonExample={demoHorizonExample}
-                  onLoadHorizonExample={handleLoadHorizonExample}
-                  onSeedDemoPrecedents={handleSeedDemoPrecedents}
-                  showDemoButtons={isDeveloper}
-                  onExportOntologyToExcel={handleExportOntologyToExcel}
-                  onLoadOntology={handleLoadOntology}
-                  onSearchPrecedents={handleSearchPrecedents}
-                  isProcessing={isProcessing}
-                  isLoadingOntology={isLoadingOntology}
-                  isExportingOntology={isExportingOntology}
-                  isGeneratingDraftPlan={isGeneratingDraftPlan}
-                  isSeedingPrecedents={isSeedingPrecedents}
-                  isSearchingPrecedents={isSearchingPrecedents}
-                  isEnrichmentServerAvailable={isEnrichmentServerAvailable}
-                  canSearchPrecedents={canSearchPrecedents}
-                  smmBlockedReasons={smmBlockedReasonsForSearch}
-                  retrievalBadge={retrievalBadge}
-                  precedentRetrieval={precedentRetrieval}
-                  onSelectPrecedent={setSelectedPrecedentItem}
-                />
-
-                <DraftPlanWorkflowPanel
-                  draftPlanResult={draftPlanResult}
-                  optimizationResult={optimizationResult}
-                  onGenerateDraftPlan={handleGenerateDraftPlan}
-                  onOptimizeDraftPlan={handleOptimizeDraftPlan}
-                  onOpenPlan={() => navigate('/content-plan')}
-                  isGeneratingDraftPlan={isGeneratingDraftPlan}
-                  isOptimizingPlan={isOptimizingPlan}
-                  isProcessing={isProcessing}
-                  isEnrichmentServerAvailable={isEnrichmentServerAvailable}
-                  canGenerateDraft={canGenerateDraft}
-                  smmBlockedReasons={smmBlockedReasonsForGenerate}
-                  publicationDayMode={formData.publicationDayMode}
-                  isDeveloper={isDeveloper}
-                />
-              </>
+        {currentStepId === 'draft' && (
+          <>
+            {isSmm && (
+              <WorkflowSummaryPanel
+                filledRequired={filledRequired}
+                requiredCount={requiredFields.length}
+                progress={progress}
+                competitorsCount={competitorsData?.competitors?.length || 0}
+                precedentsSummary={precedentsSummary}
+                isEnrichmentServerAvailable={isEnrichmentServerAvailable}
+                hasDraftPlan={Boolean(draftPlanResult?.draft?.draft_content_plan)}
+                hasOptimizedPlan={Boolean(optimizationResult?.optimized_content_plan)}
+                publicationDayMode={formData.publicationDayMode}
+                explainabilitySignals={explainabilitySignals}
+                riskSummary={riskSummary}
+              />
             )}
+            <DraftPlanWorkflowPanel
+              phase="draft"
+              draftPlanResult={draftPlanResult}
+              optimizationResult={optimizationResult}
+              onGenerateDraftPlan={handleGenerateDraftPlan}
+              onGenerateWithPrecedents={handleSearchAndGenerateDraftPlan}
+              onOptimizeDraftPlan={handleOptimizeDraftPlan}
+              onOpenPlan={() => navigate('/content-plan')}
+              isGeneratingDraftPlan={isGeneratingDraftPlan}
+              isOptimizingPlan={isOptimizingPlan}
+              isProcessing={isProcessing}
+              isEnrichmentServerAvailable={isEnrichmentServerAvailable}
+              canGenerateDraft={canGenerateDraft}
+              smmBlockedReasons={smmBlockedReasonsForGenerate}
+              canSearchPrecedents={canSearchPrecedents}
+              smmSearchBlockedReasons={smmBlockedReasonsForSearch}
+              publicationDayMode={formData.publicationDayMode}
+              isDeveloper={isDeveloper}
+              combineSearchAndDraft={isSmm}
+            />
+          </>
+        )}
 
-            {isExtendedMode && isDeveloper && (
+        {currentStepId === 'optimize' && (
+          <>
+            <DraftPlanWorkflowPanel
+              phase="optimize"
+              draftPlanResult={draftPlanResult}
+              optimizationResult={optimizationResult}
+              onGenerateDraftPlan={handleGenerateDraftPlan}
+              onOptimizeDraftPlan={handleOptimizeDraftPlan}
+              onOpenPlan={() => navigate('/content-plan')}
+              isGeneratingDraftPlan={isGeneratingDraftPlan}
+              isOptimizingPlan={isOptimizingPlan}
+              isProcessing={isProcessing}
+              isEnrichmentServerAvailable={isEnrichmentServerAvailable}
+              canGenerateDraft={canGenerateDraft}
+              smmBlockedReasons={smmBlockedReasonsForGenerate}
+              publicationDayMode={formData.publicationDayMode}
+              isDeveloper={isDeveloper}
+            />
+            {isDeveloper && (
               <TechnicalDetailsPanel
                 precedentSearchQuery={precedentSearchQuery}
                 precedentSearchResults={precedentSearchResults}
@@ -2010,11 +2032,15 @@ const ProjectForm = () => {
           isLastStep={isLastStep}
           onLastStepNext={() => navigate('/content-plan')}
           canProceedFromLastStep={hasGeneratedPlan}
-          lastStepNextLabel="К ГОТОВОМУ ПЛАНУ"
+          lastStepNextLabel={
+            optimizationResult?.optimized_content_plan ? 'К ОПТИМИЗИРОВАННОМУ ПЛАНУ' : 'К ЧЕРНОВИКУ'
+          }
           lastStepNextTitle={
-            hasGeneratedPlan
-              ? 'Открыть страницу готового контент-плана'
-              : 'Сначала сформируйте черновой или оптимизированный план'
+            !hasGeneratedPlan
+              ? 'Сначала сформируйте черновик'
+              : optimizationResult?.optimized_content_plan
+                ? 'Открыть план после оптимизации'
+                : 'Открыть черновик без улучшения'
           }
           currentStep={currentStep}
           wizardSteps={wizardSteps}

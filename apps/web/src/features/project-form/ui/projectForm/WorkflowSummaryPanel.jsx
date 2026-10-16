@@ -31,7 +31,7 @@ const WorkflowSummaryPanel = ({
 
   const statusLabel =
     isEnrichmentServerAvailable === false
-      ? 'Backend недоступен'
+      ? 'Сервер недоступен'
       : isEnrichmentServerAvailable === true
       ? null
       : 'Проверка backend...'
@@ -42,8 +42,7 @@ const WorkflowSummaryPanel = ({
         <div>
           <h2 className="section-title">Проверка перед генерацией</h2>
           <p className="workflow-section-subtitle">
-            Сначала проверьте готовность данных, затем подберите прецеденты, сформируйте черновик и при
-            необходимости запустите оптимизацию.
+            Здесь только проверка готовности. Сборка черновика и улучшение плана — отдельные следующие шаги.
           </p>
         </div>
         {statusLabel && <span className={`ui-badge ui-badge-${statusTone}`}>{statusLabel}</span>}
@@ -68,8 +67,8 @@ const WorkflowSummaryPanel = ({
             {hasOptimizedPlan
               ? 'план готов'
               : hasDraftPlan
-              ? 'можно оптимизировать'
-              : 'поиск → генерация'}
+              ? 'можно перейти к оптимизации'
+              : 'черновик ещё не собран'}
             {' · '}
             {publicationDayModeCopy.label}
           </span>

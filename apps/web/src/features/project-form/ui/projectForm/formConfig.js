@@ -16,7 +16,6 @@ export const initialFormData = {
   publicationDayMode: 'spread',
   keyDates: '',
   contentFormats: [],
-  videoDescription: '',
   platforms: [],
   // GA параметры — оптимальные из бенчмарка
   evoPopulationSize: '32',           // было 64 → 32
@@ -25,7 +24,7 @@ export const initialFormData = {
   evoTournamentSize: '3',            // было 5 → 3
   evoEliteSize: '6',                 // было 4 → 6
   evoCrossoverProbability: '0.75',   // было 0.9 → 0.75
-  evoMutationProbability: '0.12',    // было 0.08 → 0.12
+  evoMutationProbability: '0.2',
   evoRandomSeed: '',
   // НОВЫЕ поля — выбор методов
   evoSelectionMethod: 'tournament',   // tournament | roulette | rank
@@ -38,27 +37,36 @@ export const initialFormData = {
   evoPostTournamentSize: '4',
   evoPostEliteSize: '3',
   evoPostCrossoverProbability: '0.9',
-  evoPostMutationProbability: '0.12',
+  evoPostMutationProbability: '0.2',
   evoPostSelectionMethod: 'tournament',
   evoPostCrossoverMethod: 'one_point',
   evoPostMutationMethod: 'random_replace'
 }
 
-export const wizardSteps = [
-  'Конкуренты',
-  'Проект',
-  'Аудитория и план',
-  'Настройки и запуск',
-  'Результаты'
+const STEP_LABELS = {
+  competitors: 'Конкуренты',
+  project: 'Проект',
+  audience: 'Аудитория и план',
+  precedents: 'Прецеденты',
+  draft: 'Черновик',
+  optimize: 'Оптимизация'
+}
+
+/** Аналитик и разработчик: поиск прецедентов отдельно, параметры оптимизации на последнем шаге. */
+export const wizardStepIdsExtended = [
+  'competitors',
+  'project',
+  'audience',
+  'precedents',
+  'draft',
+  'optimize'
 ]
 
-/** Шаги для быстрого режима (SMM) — без параметров эволюции. */
-export const wizardStepsSmm = [
-  'Конкуренты',
-  'Проект',
-  'Аудитория и план',
-  'Результаты'
-]
+/** SMM: подбор прецедентов встроен в сборку черновика. */
+export const wizardStepIdsSmm = ['competitors', 'project', 'audience', 'draft', 'optimize']
+
+export const wizardSteps = wizardStepIdsExtended.map((id) => STEP_LABELS[id])
+export const wizardStepsSmm = wizardStepIdsSmm.map((id) => STEP_LABELS[id])
 
 /** Быстрый vs расширенный режим онбординга. */
 export const ONBOARDING_MODES = {
@@ -66,8 +74,12 @@ export const ONBOARDING_MODES = {
   extended: { label: 'Расширенный режим', hint: 'Полная форма, параметры GA/ML', roleHint: 'dev' }
 }
 
+export function getWizardStepIds(isDeveloper, isAnalyst = false) {
+  return isDeveloper || isAnalyst ? wizardStepIdsExtended : wizardStepIdsSmm
+}
+
 export function getWizardSteps(isDeveloper, isAnalyst = false) {
-  return isDeveloper || isAnalyst ? wizardSteps : wizardStepsSmm
+  return getWizardStepIds(isDeveloper, isAnalyst).map((id) => STEP_LABELS[id])
 }
 
 export const requiredFields = [
@@ -120,6 +132,8 @@ export const platformOptions = [
   { value: 'linkedin', label: 'LinkedIn' }
 ]
 
+export const instagramPlatformOption = { value: 'instagram', label: 'Instagram' }
+
 export const demoHorizonExampleOptions = {
   example_month_plan: '1 месяц',
   example_three_month_plan: '3 месяца',
@@ -158,8 +172,6 @@ export const demoExampleFormData = {
   keyDates:
     '15 марта - запуск бета-версии, 1 апреля - вебинар по внедрению, 15 апреля - кейс-стади с первым клиентом, 1 мая - обновление функционала, 20 мая - итоговая презентация результатов.',
   contentFormats: ['text', 'image', 'video'],
-  videoDescription:
-    'Короткие ролики (1-3 минуты) с демонстрацией функционала платформы, интервью с клиентами, объяснение сложных концепций простым языком. Профессиональная съемка, субтитры, брендинг CloudTech Solutions.',
   platforms: ['linkedin', 'vk'],
   evoPopulationSize: '32',
   evoGenerations: '40',
@@ -167,7 +179,7 @@ export const demoExampleFormData = {
   evoTournamentSize: '3',
   evoEliteSize: '6',
   evoCrossoverProbability: '0.75',
-  evoMutationProbability: '0.12',
+  evoMutationProbability: '0.2',
   evoRandomSeed: '',
   evoPostPopulationSize: '48',
   evoPostGenerations: '50',
@@ -175,7 +187,7 @@ export const demoExampleFormData = {
   evoPostTournamentSize: '4',
   evoPostEliteSize: '3',
   evoPostCrossoverProbability: '0.9',
-  evoPostMutationProbability: '0.12',
+  evoPostMutationProbability: '0.2',
   evoPostSelectionMethod: 'tournament',
   evoPostCrossoverMethod: 'one_point',
   evoPostMutationMethod: 'random_replace'

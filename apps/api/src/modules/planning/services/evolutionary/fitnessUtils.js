@@ -27,6 +27,22 @@ export const DEFAULT_FITNESS_WEIGHTS = {
   views: 0.2
 };
 
+const COMMENT_AWARE_WEIGHTS = {
+  likes: 0.42,
+  shares: 0.24,
+  views: 0.16,
+  comments: 0.18
+};
+
+/** Scale predicted likes by the source post's comment yield. Null when comments were not observed. */
+export function estimateCommentsFromBase(predictedLikes, baseMetrics = null) {
+  const comments = Number(baseMetrics?.comments);
+  if (!Number.isFinite(comments) || comments <= 0) return null;
+  const likes = Number(baseMetrics?.likes) || 0;
+  const ratio = likes > 0 ? comments / likes : Math.min(1, comments / 20);
+  return Math.max(0, Number(predictedLikes) || 0) * ratio;
+}
+
 /**
  * Cap predicted metrics against historical maxima from model metadata.
  * keyPrefix: 'total_' for plan-level metadata (total_likes.max), '' for post-level (likes.max).
@@ -61,7 +77,13 @@ export function normalizeAgainstTarget(value, targetMax) {
 
 /** Weighted normalized KPI score (0..1). This is the display fitness component. */
 export function kpiScore(predictedMetrics, metadata = null, options = {}) {
-  const weights = { ...DEFAULT_FITNESS_WEIGHTS, ...(options.weights || {}) };
+  const rawComments = Array.isArray(predictedMetrics) && predictedMetrics.length > 3
+    ? Number(predictedMetrics[3])
+    : null;
+  const hasComments = Number.isFinite(rawComments) && rawComments > 0;
+  const weights = hasComments
+    ? { ...COMMENT_AWARE_WEIGHTS, ...(options.weights || {}) }
+    : { ...DEFAULT_FITNESS_WEIGHTS, ...(options.weights || {}) };
   const keyPrefix = options.keyPrefix ?? 'total_';
   const capped = capPredictedMetrics(predictedMetrics, metadata, keyPrefix);
   const summary = metadata?.target_summary || {};
@@ -69,11 +91,21 @@ export function kpiScore(predictedMetrics, metadata = null, options = {}) {
   const normLikes = normalizeAgainstTarget(capped.cappedLikes, asNumber(summary[`${keyPrefix}likes`]?.max, 0));
   const normShares = normalizeAgainstTarget(capped.cappedShares, asNumber(summary[`${keyPrefix}shares`]?.max, 0));
   const normViews = normalizeAgainstTarget(capped.cappedViews, asNumber(summary[`${keyPrefix}views`]?.max, 0));
+  if (!hasComments) {
+    return (
+      weights.likes * normLikes +
+      weights.shares * normShares +
+      weights.views * normViews
+    );
+  }
 
+  const maxComments = asNumber(summary[`${keyPrefix}comments`]?.max, 0) || asNumber(summary[`${keyPrefix}likes`]?.max, 0);
+  const normComments = normalizeAgainstTarget(rawComments, maxComments);
   return (
     weights.likes * normLikes +
     weights.shares * normShares +
-    weights.views * normViews
+    weights.views * normViews +
+    (weights.comments || 0) * normComments
   );
 }
 

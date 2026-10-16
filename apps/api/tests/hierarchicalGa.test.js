@@ -45,13 +45,21 @@ test('repairPlanConstraints clamps out-of-horizon dates and snaps unknown platfo
   assert.equal(repaired.unfixable.length, 0);
 });
 
-test('repairPlanConstraints reports min_publications shortfall as unfixable', () => {
+test('repairPlanConstraints pads publications up to min_publications', () => {
   const plan = {
     platforms: ['telegram'],
     publications: [{ publication_id: 'pub_001', platform: 'telegram' }]
   };
   const repaired = repairPlanConstraints(plan, { min_publications: 3 });
+  assert.equal(repaired.unfixable.length, 0);
+  assert.equal(repaired.publications.length, 3);
+  assert.equal(repaired.publications[0].publication_id, 'pub_001');
+  assert.match(repaired.publications[1].publication_id, /_pad_/);
+  assert.equal(repaired.repairs.length, 2);
+});
+
+test('repairPlanConstraints cannot pad an empty plan', () => {
+  const repaired = repairPlanConstraints({ publications: [] }, { min_publications: 2 });
   assert.equal(repaired.unfixable.length, 1);
-  assert.match(repaired.unfixable[0], /min_publications: 1 < 3/);
-  assert.equal(repaired.repairs.length, 0);
+  assert.match(repaired.unfixable[0], /min_publications: 0 < 2/);
 });

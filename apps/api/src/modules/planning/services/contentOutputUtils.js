@@ -2,32 +2,44 @@ const OBJECTIVE_CTA_BANK = {
   inform: [
     'Получить чек-лист по теме',
     'Запросить пример отчета',
-    'Задать вопрос по своему сценарию'
+    'Задать вопрос по своему сценарию',
+    'Посмотреть, как это устроено на одном кейсе',
+    'Забрать памятку с контрольными точками'
   ],
   educate: [
     'Скачать пошаговый чек-лист',
     'Получить рабочий регламент',
-    'Запросить демонстрацию процесса'
+    'Запросить демонстрацию процесса',
+    'Разобрать свой процесс по шагам',
+    'Открыть короткий разбор с примером'
   ],
   engage: [
     'Обсудить ваш кейс с экспертом',
     'Сравнить ваш сценарий с типовыми кейсами',
-    'Разобрать ситуацию на вашем участке'
+    'Разобрать ситуацию на вашем участке',
+    'Написать, какой вариант выбрали бы вы',
+    'Поделиться, где у вас это ломается'
   ],
   convert: [
     'Запросить демонстрацию решения',
     'Получить расчет окупаемости',
-    'Запустить пилот под ваш процесс'
+    'Запустить пилот под ваш процесс',
+    'Назначить разбор одной рабочей задачи',
+    'Получить оценку срока на ваш контур'
   ],
   retain: [
     'Заказать сервисный аудит',
     'Получить план поддержки команды',
-    'Проверить, где процесс теряет точность'
+    'Проверить, где процесс теряет точность',
+    'Согласовать регламент сопровождения',
+    'Показать, что мониторить после запуска'
   ],
   brand_building: [
     'Посмотреть пример проекта',
     'Запросить консультацию эксперта',
-    'Получить обзор решения под вашу задачу'
+    'Получить обзор решения под вашу задачу',
+    'Прочитать, как команда принимает такие решения',
+    'Запросить разбор подхода без коммерческого оффера'
   ]
 };
 
@@ -493,9 +505,7 @@ export function dedupeRepeatedProductBoilerplateInSummaries(publications = []) {
     salt += 1;
     const hint = sanitizeTopicTitle(pub?.topic || '') || 'тема публикации';
 
-    console.error('[DBG] i=', i, 'summaryStart=', summary.slice(0, 30), 'hasHead=', summaryHasBoilerplateHead(summary), 'firstIndex=', firstIndex);
     let nextSummary = stripLeadingBoilerplate(summary);
-    console.error('[DBG] strippedStart=', nextSummary.slice(0, 40));
 
     // Если после вырезания слишком мало текста — пищем заново с уникальным заходом.
     if (normalizeWhitespace(nextSummary).length < MIN_BODY_AFTER_STRIP) {
@@ -512,7 +522,38 @@ export function dedupeRepeatedProductBoilerplateInSummaries(publications = []) {
 
     const next = { ...pub, summary: nextSummary };
     return { ...next, semantic_core: buildDraftSemanticCore(next) };
-  });}
+  });
+}
+
+const SUMMARY_OPENING_LEADS = [
+  'Спор здесь не в лозунге, а в том, какой шаг команда готова убрать из регламента.',
+  'Если смотреть со стороны заказчика, вопрос обычно в сроке и в том, кто отвечает за результат.',
+  'Короткий ориентир: эффект виден там, где есть измерение до и после, а не общее описание продукта.',
+  'На одной смене это выглядит иначе, чем в презентации: важен конкретный сбой и одна проверка.',
+  'Развилка простая только на слайде. В работе расходятся риск, срок и цена ошибки.',
+  'Начните с возражения, которое слышите чаще всего, и ответьте на него одним фактом.'
+];
+
+/** Если первые 100 символов summary повторяются, меняет заход и оставляет хвост. */
+export function diversifyRepeatedSummaryOpenings(publications = []) {
+  if (!Array.isArray(publications) || publications.length <= 1) return publications;
+  const seen = new Set();
+  return publications.map((pub, index) => {
+    const summary = normalizeWhitespace(pub?.summary || '');
+    if (summary.length < 80) return pub;
+    const opening = summary.slice(0, 100).toLowerCase();
+    if (!seen.has(opening)) {
+      seen.add(opening);
+      return pub;
+    }
+    const topic = sanitizeTopicTitle(pub?.topic) || 'эта тема';
+    const lead = `${SUMMARY_OPENING_LEADS[index % SUMMARY_OPENING_LEADS.length]} Тема слота — «${topic}».`;
+    const rest = summary.slice(100).trim();
+    const next = { ...pub, summary: `${lead} ${rest}`.trim() };
+    seen.add(normalizeWhitespace(next.summary).slice(0, 100).toLowerCase());
+    return { ...next, semantic_core: buildDraftSemanticCore(next) };
+  });
+}
 
 /** Согласовать ключевое сообщение с финальной темой карточки (title || topic). */
 export function reconcilePublicationKeyMessageWithTopic(publication = {}, slotIndex = 0) {
@@ -821,9 +862,14 @@ export function choosePreferredSummary(semanticCore = {}, candidateSummary = '',
     return normalizedDraft || normalizedCandidate;
   }
   if (!textPreservesSemanticCore(normalizedCandidate, semanticCore)) {
-    return normalizedDraft || normalizedCandidate;
+    const topicTerms = Array.isArray(semanticCore?.topic_terms) ? semanticCore.topic_terms : [];
+    const sharesTopic = textOverlapRatio(normalizedCandidate, topicTerms) >= 0.2;
+    const concrete = countDomainSignals(normalizedCandidate) >= 2;
+    if (!sharesTopic && !concrete) {
+      return normalizedDraft || normalizedCandidate;
+    }
   }
-  if (countDomainSignals(normalizedCandidate) + 2 < countDomainSignals(normalizedDraft)) {
+  if (countDomainSignals(normalizedCandidate) + 5 < countDomainSignals(normalizedDraft)) {
     return normalizedDraft || normalizedCandidate;
   }
   if (normalizedDraft && normalizedCandidate.length < Math.min(220, normalizedDraft.length * 0.45)) {
@@ -898,6 +944,32 @@ export function buildObjectiveCta(objective = 'inform', projectName = '', topic 
     cta = `${cta} ${normalizedProject}`;
   }
   return cta;
+}
+
+/** Оставляет авторский CTA и заменяет только дословные повторы. */
+export function assignDistinctCtas(publications = [], projectName = '') {
+  if (!Array.isArray(publications)) return publications;
+  const used = new Set();
+  return publications.map((pub, index) => {
+    const raw = typeof pub?.cta === 'string' ? pub.cta.trim() : '';
+    if (!raw) return pub?.cta === '' ? pub : { ...pub, cta: '' };
+    const key = raw.toLowerCase();
+    if (!used.has(key)) {
+      used.add(key);
+      return pub.cta === raw ? pub : { ...pub, cta: raw };
+    }
+    let chosen = raw;
+    for (let salt = 1; salt <= 16; salt += 1) {
+      const next = buildObjectiveCta(pub?.objective, projectName, pub?.topic || '', index + salt * 5);
+      const nextKey = next.toLowerCase();
+      if (!used.has(nextKey)) {
+        chosen = next;
+        break;
+      }
+    }
+    used.add(chosen.toLowerCase());
+    return { ...pub, cta: chosen };
+  });
 }
 
 /** Согласовано с промптом articleDraftPlanBatchPrompt (п.17). */
@@ -1058,13 +1130,13 @@ export function calibrateExpectedKpi(
   const reachRaw = Number(rawKpi?.reach_potential);
 
   const engagementRate = Number.isFinite(engagementRaw)
-    ? Math.min(0.085, Math.max(0.008, engagementRaw * 0.55 + engagementPrior * 0.45))
+    ? Math.min(0.085, Math.max(0.008, engagementRaw * 0.75 + engagementPrior * 0.25))
     : engagementPrior;
   const conversionPotential = Number.isFinite(conversionRaw)
-    ? Math.min(0.14, Math.max(0.004, conversionRaw * 0.5 + conversionPrior * 0.5))
+    ? Math.min(0.14, Math.max(0.004, conversionRaw * 0.72 + conversionPrior * 0.28))
     : conversionPrior;
   const reachPotential = Number.isFinite(reachRaw)
-    ? Math.min(0.78, Math.max(0.12, reachRaw * 0.6 + reachPrior * 0.4))
+    ? Math.min(0.78, Math.max(0.12, reachRaw * 0.78 + reachPrior * 0.22))
     : reachPrior;
 
   return {

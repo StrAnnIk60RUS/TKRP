@@ -218,7 +218,7 @@ export function checkFr_2_1_09() {
   assertCheck(r.retrieval.type === 'embedding_cosine', 'retrieval type')
   assertCheck(r.publications[0].reliability > 0, 'reliability')
   const badge = buildRetrievalBadge(r.retrieval, { isDeveloper: true })
-  assertCheck(badge.label === 'Semantic retrieval', 'badge')
+  assertCheck(badge.label === 'Поиск по смыслу', 'badge')
 }
 
 export function checkFr_2_1_10() {
@@ -368,7 +368,7 @@ export function checkFr_ui_sc_01() {
   const rel = formatReliabilityLabel(0.8)
   assertCheck(rel.tone === 'success', 'reliability tone')
   const expl = renderMatchExplanation(['кейс'], { type: 'embedding_cosine' })
-  assertCheck(expl.includes('Semantic'), 'explanation')
+  assertCheck(expl.includes('Поиск по смыслу'), 'explanation')
 }
 
 export function checkFr_ui_sc_02() {

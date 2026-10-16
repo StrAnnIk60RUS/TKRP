@@ -38,37 +38,49 @@ const RegisterPage = () => {
         </p>
       </div>
       <div className="page-content">
-        <form className="auth-form" onSubmit={(e) => e.preventDefault()}>
-          <label className="auth-field-label" htmlFor="auth-username">
-            Имя пользователя
-          </label>
-          <input
-            className="auth-username-input"
-            type="text"
-            name="auth-username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            placeholder="Буквы, цифры, _ . @ - (3–64)"
-          />
-          <label className="auth-field-label" htmlFor="auth-password">
-            Пароль
-          </label>
-          <input
-            className="auth-password-input"
-            type="password"
-            name="auth-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Минимум 6 символов"
-          />
-          <button
-            type="button"
-            className="auth-submit-btn"
-            onClick={submit}
-          >
-            Зарегистрироваться
-          </button>
-        </form>
+<form
+  className="auth-form"
+  onSubmit={(e) => {
+    e.preventDefault()
+    submit()
+  }}
+>
+  <label className="auth-field-label" htmlFor="auth-username">
+    Имя пользователя
+  </label>
+  <input
+    id="auth-username"
+    className="auth-username-input"
+    type="text"
+    name="auth-username"
+    autoComplete="username"
+    value={username}
+    onChange={(e) => setUsername(e.target.value)}
+    placeholder="Буквы, цифры, _ . @ - (3–64)"
+  />
+  <div className="auth-requirements">
+    Требования: 3-64 символа, допускаются буквы, цифры, _ . @ -
+  </div>
+  <label className="auth-field-label" htmlFor="auth-password">
+    Пароль
+  </label>
+  <input
+    id="auth-password"
+    className="auth-password-input"
+    type="password"
+    name="auth-password"
+    autoComplete="new-password"
+    value={password}
+    onChange={(e) => setPassword(e.target.value)}
+    placeholder="Минимум 6 символов"
+  />
+  <div className="auth-requirements">
+    Требования: минимум 6 символов
+  </div>
+  <button type="submit" className="auth-submit-btn">
+    Зарегистрироваться
+  </button>
+</form>
         {message ? (
           <div className={`auth-message auth-message-${messageKind}`}>{message}</div>
         ) : null}

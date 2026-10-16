@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createHash } from 'crypto';
-import { enrichCompetitorsData } from '../../../../openrouter.js';
+import { computePostEngagementMetrics, enrichCompetitorsData } from '../../../../openrouter.js';
 import { runPythonProcess } from '../../../shared/runtime/pythonRuntime.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -14,18 +14,28 @@ const PYTHON_SCRIPT_PATH = path.join(PARSER_DIR, 'main.py');
 const PARSER_RUNTIME_DIR = path.join(PROJECT_ROOT, 'data', 'runtime', 'parser-jobs');
 const PARSER_TIMEOUT_MS = Number(process.env.PARSER_TIMEOUT_MS || 120000);
 
-// Parser writes to a single shared file in `tools/parser/posts.json`.
-// To avoid race conditions between concurrent requests, serialize executions in-process.
-let parserExecutionQueue = Promise.resolve();
+// Each job writes its own PARSER_OUTPUT_PATH, so parses can overlap.
+// The cap only limits how many Python processes run at once.
+const PARSER_MAX_CONCURRENCY = 2;
+let activeParserJobs = 0;
+const parserWaiters = [];
 
 function enqueueParserExecution(jobFn) {
-  const jobPromise = parserExecutionQueue.then(jobFn, jobFn);
-  // Ensure the queue keeps moving even if the job rejects.
-  parserExecutionQueue = jobPromise.then(
-    () => undefined,
-    () => undefined
-  );
-  return jobPromise;
+  return new Promise((resolve, reject) => {
+    const run = () => {
+      activeParserJobs += 1;
+      Promise.resolve()
+        .then(jobFn)
+        .then(resolve, reject)
+        .finally(() => {
+          activeParserJobs -= 1;
+          const next = parserWaiters.shift();
+          if (next) next();
+        });
+    };
+    if (activeParserJobs < PARSER_MAX_CONCURRENCY) run();
+    else parserWaiters.push(run);
+  });
 }
 
 function ensureParserRuntimeDir() {
@@ -35,8 +45,10 @@ function ensureParserRuntimeDir() {
 }
 
 function detectPlatform(url) {
-  if (url.includes('vk.com')) return 'vk';
-  if (url.includes('linkedin.com')) return 'linkedin';
+  const value = String(url || '').toLowerCase();
+  if (value.includes('vk.com')) return 'vk';
+  if (value.includes('linkedin.com')) return 'linkedin';
+  if (value.includes('instagram.com') || value.includes('instagr.am')) return 'instagram';
   return 'unknown';
 }
 
@@ -45,15 +57,16 @@ function detectPlatform(url) {
 // redact values from stdout/stderr so secrets never leak into API responses or logs.
 function missingCookieEnvName(url) {
   const platform = detectPlatform(url);
-  if (platform === 'vk' && !String(process.env.VK_COOKIE || '').trim()) return 'VK_COOKIE';
+  if (platform === 'vk' && !String(process.env.VK_API_TOKEN || '').trim()) return 'VK_API_TOKEN';
   if (platform === 'linkedin' && !String(process.env.LINKEDIN_COOKIE || '').trim()) return 'LINKEDIN_COOKIE';
+  if (platform === 'instagram' && !String(process.env.INSTAGRAM_COOKIE || '').trim()) return 'INSTAGRAM_COOKIE';
   return null;
 }
 
 function redactSecrets(text) {
   if (typeof text !== 'string') return text;
   let out = text;
-  for (const name of ['VK_COOKIE', 'LINKEDIN_COOKIE']) {
+  for (const name of ['VK_COOKIE', 'LINKEDIN_COOKIE', 'INSTAGRAM_COOKIE']) {
     const value = String(process.env[name] || '');
     if (value.length > 0) out = out.replaceAll(value, '[REDACTED]');
   }
@@ -66,11 +79,43 @@ function buildCompetitorId(sourceUrl, platform) {
   return `parser_${platform || 'unknown'}_${hash}`;
 }
 
+function interactionScore(post) {
+  const likes = Number(post?.likes ?? post?.metrics?.likes) || 0;
+  const comments = Number(post?.comments ?? post?.metrics?.comments) || 0;
+  const shares = Number(post?.reposts ?? post?.shares ?? post?.metrics?.shares) || 0;
+  return likes + comments * 1.5 + shares;
+}
+
+export function rankParsedPosts(posts = []) {
+  if (!Array.isArray(posts) || posts.length <= 1) return Array.isArray(posts) ? posts.slice() : [];
+  const stamps = posts.map((post) => {
+    const parsed = Date.parse(post?.datetime || '');
+    return Number.isFinite(parsed) ? parsed : 0;
+  });
+  const interactions = posts.map((post) => interactionScore(post));
+  const minStamp = Math.min(...stamps);
+  const maxStamp = Math.max(...stamps);
+  const span = Math.max(1, maxStamp - minStamp);
+  const maxInteractions = Math.max(1, ...interactions);
+  return posts
+    .map((post, index) => ({
+      post,
+      score:
+        ((stamps[index] - minStamp) / span) * 0.45 +
+        (Math.log1p(interactions[index]) / Math.log1p(maxInteractions)) * 0.55
+    }))
+    .sort((left, right) => right.score - left.score)
+    .map((item) => item.post);
+}
+
 function mapPostsToCompetitorsData(url, posts) {
   const firstPost = posts[0];
   const platform = detectPlatform(url);
   const competitorId = buildCompetitorId(url, platform);
   const accountName = firstPost?.account_name || 'Unknown';
+  const followerCount = posts
+    .map((post) => Number(post?.follower_count))
+    .find((value) => Number.isFinite(value) && value >= 0);
 
   const mapAttachmentsSummary = (attachments) => {
     if (!Array.isArray(attachments) || attachments.length === 0) {
@@ -113,22 +158,28 @@ function mapPostsToCompetitorsData(url, posts) {
         competitor_id: competitorId,
         name: accountName,
         platform,
-        follower_count: null,
-        posts: posts.map((p) => ({
-          // Python-parser отдаёт стабильный `url` поста (для VK это wall-...; для LinkedIn это post url).
-          // Используем его дальше, чтобы `publication_id` не сводился к fallback по индексу.
-          url: typeof p?.url === 'string' ? p.url : null,
-          source_post_id: p?.source_post_id || p?.post_id || null,
-          content: p.text || '',
-          datetime: p.datetime || null,
-          metrics: {
+        follower_count: followerCount ?? null,
+        posts: posts.map((p) => {
+          const metrics = {
             likes: p.likes ?? 0,
             comments: p.comments ?? 0,
             shares: p.reposts ?? 0,
             views: p.views ?? 0
-          },
-          attachments: mapAttachmentsSummary(p.attachments)
-        }))
+          };
+          const measured = computePostEngagementMetrics(metrics);
+          return {
+            // Python-parser отдаёт стабильный `url` поста (для VK это wall-...; для LinkedIn это post url).
+            // Используем его дальше, чтобы `publication_id` не сводился к fallback по индексу.
+            url: typeof p?.url === 'string' ? p.url : null,
+            source_post_id: p?.source_post_id || p?.post_id || null,
+            content: p.text || '',
+            datetime: p.datetime || null,
+            metrics,
+            engagement_rate: measured.metrics_quality === 'unknown' ? null : measured.rate,
+            metrics_quality: measured.metrics_quality,
+            attachments: mapAttachmentsSummary(p.attachments)
+          };
+        })
       }
     ]
   };
@@ -166,12 +217,12 @@ function cleanupParserOutput(outputPath) {
 }
 
 function applyPostsLimit(allPosts, limit) {
-  if (!Array.isArray(allPosts)) return [];
-  if (!allPosts.length) return [];
+  const ranked = rankParsedPosts(allPosts);
+  if (!ranked.length) return [];
   if (typeof limit !== 'number' || !Number.isFinite(limit) || limit <= 0) {
-    return allPosts;
+    return ranked;
   }
-  return allPosts.slice(0, limit);
+  return ranked.slice(0, limit);
 }
 
 export async function parseAndEnrichByUrl(url, limit) {
@@ -180,7 +231,7 @@ export async function parseAndEnrichByUrl(url, limit) {
     return {
       success: false,
       pipeline: 'parse_and_enrich',
-      error: `Cookie ${missingCookie} не настроен в .env. Парсер не запуска.`,
+      error: `${missingCookie} не настроен в .env. Парсер не запуска.`,
       missing_cookie_env: missingCookie
     };
   }
@@ -261,7 +312,7 @@ export async function parseOnlyByUrl(url, limit) {
     return {
       success: false,
       pipeline: 'parse_only',
-      error: `Cookie ${missingCookie} не настроен в .env. Парсер не запуска.`,
+      error: `${missingCookie} не настроен в .env. Парсер не запуска.`,
       missing_cookie_env: missingCookie
     };
   }

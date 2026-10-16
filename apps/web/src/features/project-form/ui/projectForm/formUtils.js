@@ -51,7 +51,6 @@ export const mapExamplePayloadToFormData = (data = {}) => ({
   publicationDayMode: data.content_plan_info?.publication_day_mode === 'shared' ? 'shared' : 'spread',
   keyDates: data.content_plan_info?.key_dates || '',
   contentFormats: data.content_plan_info?.content_formats || [],
-  videoDescription: data.content_plan_info?.video_requirements || '',
   platforms: data.content_plan_info?.platforms || []
 })
 
@@ -97,11 +96,6 @@ export function validateFieldValue(name, value, formData) {
       break
     case 'publicationFrequency':
       if (!value) error = 'Выберите частоту публикаций'
-      break
-    case 'videoDescription':
-      if (formData.contentFormats.includes('video') && !value.trim()) {
-        error = 'Опишите требования к ролику'
-      }
       break
     case 'evoPopulationSize':
     case 'evoGenerations':
@@ -162,9 +156,6 @@ export function validateFormData(formData) {
   }
   if (formData.platforms.length === 0) {
     nextErrors.platforms = 'Выберите хотя бы одну платформу'
-  }
-  if (formData.contentFormats.includes('video') && !formData.videoDescription.trim()) {
-    nextErrors.videoDescription = 'Опишите требования к ролику'
   }
 
   return {
@@ -335,16 +326,12 @@ export function buildReviewChecklist(
   const requiredFieldsFilled = requiredFields.every((field) => isFilled(formData?.[field]))
   const formatsFilled = isFilled(formData?.contentFormats)
   const platformsFilled = isFilled(formData?.platforms)
-  const videoRequirementFilled =
-    !Array.isArray(formData?.contentFormats) ||
-    !formData.contentFormats.includes('video') ||
-    isFilled(formData?.videoDescription)
 
   const base = [
     {
       id: 'required_fields',
       label: 'Обязательные поля формы заполнены',
-      done: requiredFieldsFilled && formatsFilled && platformsFilled && videoRequirementFilled
+      done: requiredFieldsFilled && formatsFilled && platformsFilled
     },
     {
       id: 'competitors',

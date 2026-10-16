@@ -1718,8 +1718,16 @@
   }
   
   .form-textarea {
-    resize: vertical;
+    resize: none;
     min-height: 100px;
+    max-height: min(22rem, 55vh);
+    overflow-x: hidden;
+    overflow-wrap: anywhere;
+    line-height: 1.45;
+  }
+
+  .form-textarea:focus {
+    transform: none;
   }
   
   /* Чекбоксы */
@@ -1976,6 +1984,293 @@
   font-size: 0.82rem;
   line-height: 1.5;
   color: #4a5568;
+}
+
+.key-dates-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.key-dates-lead {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: #4a5568;
+}
+
+.key-dates-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.key-dates-layout.is-single {
+  grid-template-columns: 1fr;
+}
+
+.key-dates-picker,
+.key-dates-descriptions {
+  border: 2px solid #1a1a2e;
+  background: #ffffff;
+  padding: 14px;
+}
+
+.key-dates-calendar-nav {
+  display: grid;
+  grid-template-columns: 36px 1fr 36px;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.key-dates-month {
+  text-align: center;
+  font-weight: 800;
+  color: #1a1a2e;
+  text-transform: capitalize;
+}
+
+.key-dates-nav-btn,
+.key-dates-add-btn,
+.key-dates-chip,
+.key-dates-remove-btn,
+.key-dates-day {
+  font: inherit;
+  cursor: pointer;
+}
+
+.key-dates-nav-btn,
+.key-dates-add-btn,
+.key-dates-remove-btn {
+  border: 2px solid #1a1a2e;
+  background: #ffffff;
+  color: #1a1a2e;
+  font-weight: 700;
+}
+
+.key-dates-nav-btn {
+  height: 36px;
+  font-size: 1.3rem;
+  line-height: 1;
+}
+
+.key-dates-nav-btn:hover:not(:disabled),
+.key-dates-add-btn:hover:not(:disabled),
+.key-dates-remove-btn:hover:not(:disabled),
+.key-dates-chip:hover:not(:disabled),
+.key-dates-day:hover:not(:disabled) {
+  border-color: #ff6b9d;
+  background: #fff5f8;
+}
+
+.key-dates-nav-btn:disabled,
+.key-dates-add-btn:disabled,
+.key-dates-remove-btn:disabled,
+.key-dates-chip:disabled,
+.key-dates-day:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.key-dates-weekdays,
+.key-dates-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.key-dates-weekdays {
+  margin-bottom: 4px;
+  color: #718096;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.key-dates-day {
+  position: relative;
+  min-height: 36px;
+  border: 2px solid transparent;
+  background: #fafbfc;
+  color: #1a1a2e;
+  font-weight: 700;
+}
+
+.key-dates-day.is-empty {
+  background: transparent;
+}
+
+.key-dates-day.is-outside {
+  color: #a0aec0;
+  background: transparent;
+}
+
+.key-dates-day.is-holiday:not(.is-selected) {
+  box-shadow: inset 0 -3px 0 #f8b500;
+}
+
+.key-dates-day.is-selected {
+  border-color: #ff6b9d;
+  background: #ff6b9d;
+  color: #ffffff;
+}
+
+.key-dates-holiday-mark {
+  position: absolute;
+  right: 4px;
+  bottom: 3px;
+  width: 6px;
+  height: 6px;
+  background: #f8b500;
+}
+
+.key-dates-day.is-selected .key-dates-holiday-mark {
+  background: #ffffff;
+}
+
+.key-dates-suggestions {
+  margin-top: 12px;
+}
+
+.key-dates-suggestions-label,
+.key-dates-manual-label,
+.key-dates-descriptions-head,
+.key-dates-notes span {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #4a5568;
+}
+
+.key-dates-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.key-dates-chip {
+  border: 2px solid #1a1a2e;
+  background: #ffffff;
+  color: #1a1a2e;
+  padding: 6px 10px;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.key-dates-manual {
+  margin-top: 14px;
+}
+
+.key-dates-manual-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.key-dates-date-input,
+.key-dates-description-input {
+  padding: 10px 12px;
+  box-shadow: none;
+}
+
+.key-dates-date-input {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+}
+
+.key-dates-date-input:focus,
+.key-dates-description-input:focus,
+.key-dates-notes-input:focus {
+  transform: none;
+}
+
+.key-dates-add-btn,
+.key-dates-remove-btn {
+  padding: 10px 12px;
+  white-space: nowrap;
+}
+
+.key-dates-descriptions-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.key-dates-count {
+  min-width: 24px;
+  padding: 2px 8px;
+  background: #1a1a2e;
+  color: #ffffff;
+  text-align: center;
+}
+
+.key-dates-empty {
+  margin: 0;
+  color: #4a5568;
+  line-height: 1.45;
+}
+
+.key-dates-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.key-dates-item {
+  display: grid;
+  grid-template-columns: minmax(140px, 180px) minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+  border: 2px solid transparent;
+  background: #fafbfc;
+}
+
+.key-dates-item.is-active {
+  border-color: #ff6b9d;
+  background: #fff5f8;
+}
+
+.key-dates-item-date {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-weight: 800;
+  color: #1a1a2e;
+  text-transform: capitalize;
+}
+
+.key-dates-item-date small {
+  font-weight: 600;
+  color: #c44569;
+  text-transform: none;
+}
+
+.key-dates-notes {
+  display: block;
+  margin-top: 14px;
+}
+
+.key-dates-notes-input {
+  min-height: 88px;
+  padding: 12px;
+}
+
+@media (max-width: 860px) {
+  .key-dates-layout,
+  .key-dates-item {
+    grid-template-columns: 1fr;
+  }
 }
 
 .form-input:disabled,

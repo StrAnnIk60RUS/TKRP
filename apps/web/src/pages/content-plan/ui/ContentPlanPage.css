@@ -413,6 +413,32 @@
   overflow-wrap: anywhere;
 }
 
+.post-media {
+  margin: 0 0 12px;
+  border: 1px solid #e2e8f0;
+  background: #fafbfc;
+  padding: 10px;
+}
+
+.post-media-player {
+  display: block;
+  width: 100%;
+  max-height: 420px;
+  object-fit: contain;
+  background: #111827;
+}
+
+.post-media-note,
+.post-media-error {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #4a5568;
+}
+
+.post-media-error {
+  color: #b91c1c;
+}
+
 .post-metrics {
   display: flex;
   gap: 16px;

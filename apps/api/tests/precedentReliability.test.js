@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { computePublicationReliability, enrichSearchResultsWithReliability, getReliabilityDistribution, calibrateWeights } from '../src/modules/precedents/services/precedentReliabilityService.js';
+import { computePublicationReliability, enrichSearchResultsWithReliability, getReliabilityDistribution, calibrateWeights, precedentRankSignals } from '../src/modules/precedents/services/precedentReliabilityService.js';
+import { hasUsablePrecedentSemantics, scoreRetrievalHit } from '../src/modules/precedents/repositories/precedentRepositoryShared.js';
 
 function richPublicationItem() {
   return {
@@ -29,6 +30,26 @@ test('computePublicationReliability on rich item = 1', () => {
   assert.equal(factors.retrieval_score, 1);
   assert.equal(factors.completeness, 1);
   assert.equal(factors.source_trust, 1);
+});
+
+test('precedentRankSignals ranks comment-heavy posts above like-only posts with the same views', () => {
+  const discussed = precedentRankSignals({
+    raw_metrics: { likes: 10, comments: 30, shares: 0, views: 100 },
+    engagement_rate: null
+  });
+  const liked = precedentRankSignals({
+    raw_metrics: { likes: 10, comments: 0, shares: 0, views: 100 },
+    engagement_rate: null
+  });
+  assert.ok(discussed.engagement > liked.engagement);
+  const discussedScore = scoreRetrievalHit({ embeddingScore: 0.4, tokenScore: 0.2, engagementSignal: discussed.engagement, trustSignal: 0.4 });
+  const likedScore = scoreRetrievalHit({ embeddingScore: 0.4, tokenScore: 0.2, engagementSignal: liked.engagement, trustSignal: 0.4 });
+  assert.ok(discussedScore > likedScore);
+});
+
+test('hasUsablePrecedentSemantics rejects unspecified topics', () => {
+  assert.equal(hasUsablePrecedentSemantics({ publication_model: { topic: 'unspecified', summary: 'x'.repeat(40) } }), false);
+  assert.equal(hasUsablePrecedentSemantics({ publication_model: { topic: 'Сервис', summary: 'x'.repeat(40) } }), true);
 });
 
 test('computePublicationReliability on empty item = 0', () => {

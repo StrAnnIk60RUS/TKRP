@@ -11,6 +11,8 @@ import {
   createRateLimitMiddleware
 } from './src/shared/http/security.js';
 import { closePool, isDatabaseEnabled } from './src/shared/db/client.js';
+import { ensureInstagramPreviewUser } from './src/modules/auth/services/authStore.js';
+import { INSTAGRAM_PREVIEW_USERNAME } from './src/modules/auth/services/instagramAccess.js';
 import { getJobQueueStats } from './src/shared/runtime/jobQueue.js';
 import { getStorageMetricsSnapshot } from './src/shared/runtime/storageMetrics.js';
 
@@ -46,6 +48,15 @@ app.listen(PORT, () => {
   console.log(`🚀 LLM Enrichment Server запущен на http://localhost:${PORT}`);
   console.log(`📡 LLM API: ${OPENROUTER_API_KEY ? '✅ Настроен' : '❌ Не настроен'}`);
   console.log(`🗄️ Storage: ${isDatabaseEnabled() ? 'PostgreSQL (USE_DATABASE=true)' : 'JSON-файлы (data/precedents)'}`);
+  ensureInstagramPreviewUser(INSTAGRAM_PREVIEW_USERNAME)
+    .then((result) => {
+      if (result?.created || result?.updated) {
+        console.log(`Instagram preview account ${INSTAGRAM_PREVIEW_USERNAME} is ready`);
+      }
+    })
+    .catch((error) => {
+      console.error('Не удалось подготовить Instagram preview account:', error?.message || error);
+    });
 });
 
 async function shutdown(signal) {

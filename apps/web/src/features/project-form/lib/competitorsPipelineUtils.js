@@ -58,7 +58,7 @@ export function buildEnrichmentDownloadPayload({
       'competitors_data_enriched.json'
   } else if (resultData?.raw_response) {
     dataToDownload = {
-      _warning: 'JSON ответ от LLM невалидный, но данные сохранены для проверки',
+      _warning: 'Ответ модели не удалось разобрать, но данные сохранены для проверки',
       _parse_error: resultData.parse_error,
       _raw_response_from_llm: resultData.raw_response,
       _usage: resultData.usage,
@@ -71,7 +71,7 @@ export function buildEnrichmentDownloadPayload({
       'competitors_data_enriched_INVALID_JSON.json'
   } else if (resultData) {
     dataToDownload = {
-      _error: 'Данные невалидные или неполные',
+      _error: 'Данные некорректные или неполные',
       _raw_response: resultData,
       _original_data: rawCompetitorsData,
       _timestamp: new Date().toISOString()
@@ -104,23 +104,23 @@ export function buildEnrichmentToastMessages(result) {
 
   if (result.success && result.enriched_data) {
     const usageInfo = result.usage
-      ? ` (использовано токенов: ${result.usage.total_tokens || 'N/A'})`
+      ? ` (использовано токенов: ${result.usage.total_tokens || 'нет данных'})`
       : ''
     messages.push({ type: 'success', text: `Данные успешно обогащены!${usageInfo}` })
     if (result.parse_error?.partial) {
       messages.push({
         type: 'warning',
         text:
-          'Часть батчей LLM не обработана; данные сохранены с дефолтной семантикой для пропущенных постов.'
+          'Часть данных не обработана; для пропущенных постов сохранена базовая семантика.'
       })
     }
   } else if (result.enriched_data === null && result.raw_response) {
     const usageInfo = result.usage
-      ? ` (использовано токенов: ${result.usage.total_tokens || 'N/A'})`
+      ? ` (использовано токенов: ${result.usage.total_tokens || 'нет данных'})`
       : ''
     messages.push({
       type: 'warning',
-      text: `Обогащение завершено, но JSON невалидный. Файл скачан для проверки.${usageInfo}`
+      text: `Обогащение завершено, но ответ модели не удалось разобрать. Файл скачан для проверки.${usageInfo}`
     })
   }
 

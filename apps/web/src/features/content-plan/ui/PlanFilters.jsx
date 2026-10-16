@@ -29,7 +29,7 @@ const PlanFilters = ({
             className="plan-filter-input"
             value={filters.search}
             onChange={(e) => onChange('search', e.target.value)}
-            placeholder="Тема, сообщение, CTA"
+            placeholder="Тема, сообщение, призыв"
           />
         </label>
 

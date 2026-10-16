@@ -42,7 +42,7 @@ export const sanitizeExportBasename = (name) => {
 }
 
 export const getPlatformsFromPublications = (pubs) => {
-  const allowed = new Set(['vk', 'linkedin'])
+  const allowed = new Set(['vk', 'linkedin', 'instagram'])
   const set = new Set()
   pubs.forEach((p) => {
     if (allowed.has(p?.platform)) set.add(p.platform)

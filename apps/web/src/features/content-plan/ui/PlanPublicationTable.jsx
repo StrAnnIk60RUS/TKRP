@@ -21,7 +21,7 @@ const PlanPublicationTable = ({ publications, onEdit }) => {
             <th>Формат</th>
             <th>Цель</th>
             <th title="Внутренняя оценка модели, 0–100%, не метрика площадки">Вовлечённость (оценка)</th>
-            <th>CTA</th>
+            <th>Призыв</th>
             <th></th>
           </tr>
         </thead>
@@ -46,7 +46,7 @@ const PlanPublicationTable = ({ publications, onEdit }) => {
                   <div className="plan-table-kpi-band">Потенциал: {kpi.engagementBand}</div>
                 )}
               </td>
-              <td data-label="CTA">{isMeaningfulCta(normalizedPost.cta) ? normalizedPost.cta : '—'}</td>
+              <td data-label="Призыв">{isMeaningfulCta(normalizedPost.cta) ? normalizedPost.cta : '—'}</td>
               <td data-label="Действие">
                 <button type="button" className="secondary-btn plan-table-edit-btn" onClick={() => onEdit(normalizedPost)}>
                   Редактировать

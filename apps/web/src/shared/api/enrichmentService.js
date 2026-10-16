@@ -26,7 +26,7 @@ const safeFetch = async (endpoint, options = {}) => {
     return await fetch(endpoint, options);
   } catch (error) {
     if (error?.name === 'TypeError') {
-      throw new Error(`Cannot connect to server at ${API_URL}: check that the backend is running and that the page address is allowed by CORS.`);
+      throw new Error(`Не удалось подключиться к серверу (${API_URL}). Проверьте, что сервер запущен и адрес страницы разрешён.`);
     }
     throw error;
   }
@@ -278,9 +278,27 @@ export async function generateDraftContentPlan(payload, requestOptions = {}) {
  * @param {Object} payload
  * @returns {Promise<Object>}
  */
+function waitForJob(ms, signal) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      if (signal) signal.removeEventListener('abort', onAbort)
+      resolve()
+    }, ms)
+    const onAbort = () => {
+      clearTimeout(timer)
+      reject(new DOMException('The operation was aborted.', 'AbortError'))
+    }
+    if (signal?.aborted) {
+      onAbort()
+      return
+    }
+    if (signal) signal.addEventListener('abort', onAbort, { once: true })
+  })
+}
+
 export async function optimizeDraftContentPlan(payload, requestOptions = {}) {
   try {
-    return await fetchJsonOrThrow(`${API_URL}/api/plan/optimize`, {
+    const started = await fetchJsonOrThrow(`${API_URL}/api/plan/optimize:async`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -288,6 +306,26 @@ export async function optimizeDraftContentPlan(payload, requestOptions = {}) {
       body: JSON.stringify(payload),
       signal: requestOptions.signal
     })
+    const jobId = started?.job_id
+    if (!jobId) {
+      throw new Error('Сервер не вернул job_id для оптимизации')
+    }
+    const deadline = Date.now() + 15 * 60 * 1000
+    while (Date.now() < deadline) {
+      await waitForJob(2000, requestOptions.signal)
+      const status = await fetchJsonOrThrow(`${API_URL}/api/plan/jobs/${jobId}`, {
+        method: 'GET',
+        signal: requestOptions.signal
+      })
+      const job = status?.job
+      if (job?.status === 'completed') {
+        return { success: true, ...(job.result || {}) }
+      }
+      if (job?.status === 'failed') {
+        throw new Error(job.error || 'Оптимизация завершилась с ошибкой')
+      }
+    }
+    throw new Error('Оптимизация не завершилась за отведённое время')
   } catch (error) {
     console.error('Ошибка в optimizeDraftContentPlan:', error);
     throw error;
@@ -348,6 +386,46 @@ export async function getPlanSnapshotFromServer(token, requestOptions = {}) {
     console.error('Ошибка в getPlanSnapshotFromServer:', error)
     throw error
   }
+}
+
+export async function generatePublicationMedia(payload, requestOptions = {}) {
+  const started = await fetchJsonOrThrow(`${API_URL}/api/plan/media`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(payload),
+    signal: requestOptions.signal
+  })
+  const jobId = started?.job_id
+  if (!jobId) throw new Error('Сервер не вернул job_id для генерации медиа')
+  const deadline = Date.now() + 8 * 60 * 1000
+  while (Date.now() < deadline) {
+    await waitForJob(2500, requestOptions.signal)
+    const status = await fetchJsonOrThrow(`${API_URL}/api/plan/jobs/${jobId}`, {
+      method: 'GET',
+      signal: requestOptions.signal
+    })
+    const job = status?.job
+    if (job?.status === 'completed') {
+      if (!job.result?.url) throw new Error('Сервер не вернул файл медиа')
+      return job.result
+    }
+    if (job?.status === 'failed') {
+      throw new Error(job.error || 'Генерация медиа завершилась с ошибкой')
+    }
+  }
+  throw new Error('Генерация медиа превысила время ожидания')
+}
+
+export async function fetchPlanMediaBlob(urlPath, requestOptions = {}) {
+  const response = await safeFetch(`${API_URL}${urlPath}`, {
+    method: 'GET',
+    headers: authHeaders(),
+    signal: requestOptions.signal
+  })
+  if (!response.ok) throw new Error(await buildFetchErrorMessage(response))
+  return response.blob()
 }
 
 export async function deletePlanSnapshotOnServer(token, requestOptions = {}) {

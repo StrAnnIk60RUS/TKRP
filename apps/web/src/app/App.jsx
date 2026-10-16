@@ -8,10 +8,13 @@ import ContentPlanPage from '../pages/content-plan/ui/ContentPlanPage'
 import LoginPage from '../pages/auth/ui/LoginPage'
 import RegisterPage from '../pages/auth/ui/RegisterPage'
 import NotFoundPage from '../pages/not-found/ui/NotFoundPage'
-import { isUserAuthenticated } from '../shared/ui/AuthGate'
+import { useIsAuthenticated } from '../shared/ui/AuthGate'
 import './styles/App.css'
 
-const AuthenticatedOnly = ({ children }) => (isUserAuthenticated() ? children : <LoginPage />)
+const AuthenticatedOnly = ({ children }) => {
+  const isAuthenticated = useIsAuthenticated()
+  return isAuthenticated ? children : <LoginPage />
+}
 
 function App() {
   return (

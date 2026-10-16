@@ -329,5 +329,7 @@ test('ownerless snapshots are invisible to authenticated users', async () => {
     }
     srv.close();
     await new Promise((r) => srv.once('close', r));
+    const { closePool } = await import('../src/shared/db/client.js');
+    await closePool();
   }
 });

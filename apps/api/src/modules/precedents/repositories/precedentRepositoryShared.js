@@ -347,6 +347,33 @@ export function resolveFilteredCollections(storage, options = {}) {
   };
 }
 
+export function scoreRetrievalHit({
+  embeddingScore = 0,
+  tokenScore = 0,
+  engagementSignal = 0,
+  trustSignal = 0
+} = {}) {
+  const semantic = Math.min(
+    1,
+    Math.max(0, Number(embeddingScore) || 0) * RETRIEVAL_EMBEDDING_WEIGHT +
+      Math.max(0, Number(tokenScore) || 0) * RETRIEVAL_TOKEN_WEIGHT
+  );
+  const engagement = Math.max(0, Math.min(1, Number(engagementSignal) || 0));
+  const trust = Math.max(0, Math.min(1, Number(trustSignal) || 0));
+  const blended = semantic * 0.72 + engagement * 0.16 + trust * 0.12;
+  // Engagement and trust can raise a hit. They do not pull a relevant hit under the semantic score.
+  return Math.min(1, Math.max(semantic, blended));
+}
+
+export function hasUsablePrecedentSemantics(post = {}) {
+  const model = post?.publication_model || {};
+  const topic = String(model.topic || post?.topic || '').trim().toLowerCase();
+  if (!topic || topic === 'unspecified' || topic === 'n/a' || topic === 'none') return false;
+  const summary = String(model.summary || post?.summary || '').trim();
+  const content = String(post?.content || post?.raw_content || '').trim();
+  return summary.length >= 20 || content.length >= 40;
+}
+
 export function applyRetrievalQualityGate(items, limit) {
   if (!Array.isArray(items) || items.length === 0) return [];
   const topScore = Number(items[0]?.score) || 0;
@@ -401,6 +428,7 @@ export function collectPublicationsFromCompetitors(competitors = []) {
 
     posts.forEach((post) => {
       if (!post?.publication_model) return;
+      if (!hasUsablePrecedentSemantics(post)) return;
 
       publications.push({
         publication_id: post.publication_model.publication_id,

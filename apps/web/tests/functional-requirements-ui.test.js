@@ -125,13 +125,13 @@ test('[FR-UI-2.5] buildSuggestedPrecedentQuery из полей формы (RAG-�
 
 test('[FR-UI-2.6] renderMatchExplanation и buildRetrievalBadge для embedding', () => {
   const explanation = renderMatchExplanation([], { type: 'embedding_cosine' })
-  assert.match(explanation, /Semantic retrieval/i)
+  assert.match(explanation, /Поиск по смыслу/i)
 
   const badgeDev = buildRetrievalBadge(
     { type: 'embedding_cosine', embedding_model: 'text-embedding-3-small' },
     { isDeveloper: true }
   )
-  assert.equal(badgeDev.label, 'Semantic retrieval')
+  assert.equal(badgeDev.label, 'Поиск по смыслу')
 
   const badgeMkt = buildRetrievalBadge({ type: 'embedding_cosine' }, { isDeveloper: false })
   assert.equal(badgeMkt.label, 'Поиск по смыслу')
@@ -139,9 +139,9 @@ test('[FR-UI-2.6] renderMatchExplanation и buildRetrievalBadge для embedding
 
 test('[FR-UI-2.6] lexical fallback в UI', () => {
   const badge = buildRetrievalBadge({ type: 'token_overlap_fallback' }, { isDeveloper: true })
-  assert.equal(badge.label, 'Token overlap')
+  assert.equal(badge.label, 'Поиск по ключевым словам')
   const text = renderMatchExplanation(['аналитика', 'кейс'], { type: 'token_overlap_fallback' })
-  assert.match(text, /Лексический fallback/)
+  assert.match(text, /Запасной поиск по словам/)
 })
 
 test('[FR-UI-2.7] formatPrecedentScore и formatReliabilityLabel для карточек', () => {

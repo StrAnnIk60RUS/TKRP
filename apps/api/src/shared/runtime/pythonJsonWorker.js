@@ -54,6 +54,19 @@ export function createPythonJsonWorker({
   let consecutiveFailures = 0;
   let breakerOpenedAt = 0;
 
+  function syncRefState() {
+    if (!child) return;
+    if (pending.size > 0) {
+      child.ref();
+      child.stdout?.ref?.();
+      child.stderr?.ref?.();
+    } else {
+      child.unref();
+      child.stdout?.unref?.();
+      child.stderr?.unref?.();
+    }
+  }
+
   function breakerOpen() {
     return (
       breakerMaxFailures > 0 &&
@@ -128,6 +141,7 @@ export function createPythonJsonWorker({
         startupPromise = null;
         startupResolve = null;
         startupReject = null;
+        syncRefState();
         return;
       }
 
@@ -135,6 +149,7 @@ export function createPythonJsonWorker({
       if (!requestId || !pending.has(requestId)) return;
       const handlers = pending.get(requestId);
       pending.delete(requestId);
+      syncRefState();
 
       if (parsed?.success) {
         handlers.resolve(parsed.result);
@@ -185,10 +200,12 @@ export function createPythonJsonWorker({
     const envelope = { id, ...payload };
     const response = new Promise((resolve, reject) => {
       pending.set(id, { resolve, reject });
+      syncRefState();
       try {
         child.stdin.write(`${JSON.stringify(envelope)}\n`);
       } catch (error) {
         pending.delete(id);
+        syncRefState();
         reject(toError(error, `${description} failed to write request`));
       }
     });
@@ -202,6 +219,7 @@ export function createPythonJsonWorker({
       const handlers = pending.get(id);
       if (handlers) {
         pending.delete(id);
+        syncRefState();
         handlers.reject(timeoutError);
       }
       // Stream state is unknown after a timeout — restart the worker.

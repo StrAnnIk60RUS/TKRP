@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
+import AutoResizeTextarea from '../../../shared/ui/AutoResizeTextarea'
 import '../../../shared/ui/PreviewModal.css'
 import './editorModals.css'
 
@@ -14,6 +15,11 @@ function clamp01(value) {
   const n = Number(value)
   if (!Number.isFinite(n)) return 0
   return Math.max(0, Math.min(1, n))
+}
+
+function formatUnitInterval(value) {
+  const clamped = clamp01(value)
+  return String(Math.round(clamped * 10000) / 10000)
 }
 
 function deriveAutoMinPublications(plan, draft) {
@@ -40,7 +46,7 @@ function buildInitialDraft(plan) {
   return {
     start_date: plan?.planning_horizon?.start_date || '',
     end_date: plan?.planning_horizon?.end_date || '',
-    avg_engagement_rate: plan?.kpi_targets?.avg_engagement_rate ?? 0,
+    avg_engagement_rate: formatUnitInterval(plan?.kpi_targets?.avg_engagement_rate ?? 0),
     estimated_conversions: plan?.kpi_targets?.estimated_conversions ?? 0,
     notes: plan?.notes || ''
   }
@@ -51,10 +57,7 @@ const PlanEditModal = ({ plan, onSave, onCancel }) => {
   const [error, setError] = useState('')
   const autoMinPublications = useMemo(() => deriveAutoMinPublications(plan, draft), [plan, draft])
 
-  const title = useMemo(() => {
-    const hasOpt = Boolean(plan?.kpi_targets?.avg_engagement_rate)
-    return hasOpt ? 'Редактирование параметров плана' : 'Редактирование параметров плана'
-  }, [plan])
+  const title = 'Сроки, прогноз и заметки'
 
   useEffect(() => {
     setDraft(buildInitialDraft(plan))
@@ -133,11 +136,11 @@ const PlanEditModal = ({ plan, onSave, onCancel }) => {
               </label>
 
               <label className="editor-field">
-                avg_engagement_rate (0..1)
+                Средняя вовлечённость (от 0 до 1)
                 <input
                   className="editor-input"
                   type="number"
-                  step="0.01"
+                  step="0.0001"
                   min="0"
                   max="1"
                   value={draft.avg_engagement_rate}
@@ -146,7 +149,7 @@ const PlanEditModal = ({ plan, onSave, onCancel }) => {
               </label>
 
               <label className="editor-field">
-                estimated_conversions
+                Ожидаемые конверсии
                 <input
                   className="editor-input"
                   type="number"
@@ -158,13 +161,13 @@ const PlanEditModal = ({ plan, onSave, onCancel }) => {
               </label>
 
               <label className="editor-field">
-                min_publications (auto)
+                Минимум публикаций (автоматически)
                 <input className="editor-input" type="number" value={autoMinPublications} disabled />
               </label>
 
               <label className="editor-field editor-field-wide">
                 Заметки
-                <textarea
+                <AutoResizeTextarea
                   className="editor-textarea"
                   rows="4"
                   value={draft.notes}

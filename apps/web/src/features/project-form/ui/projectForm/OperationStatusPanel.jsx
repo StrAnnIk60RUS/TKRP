@@ -3,7 +3,7 @@ import React from 'react'
 const OPERATION_TITLES = {
   searchingPrecedents: 'Поиск прецедентов',
   generatingPlan: 'Генерация черновика',
-  optimizingPlan: 'Оптимизация GA',
+  optimizingPlan: 'Генетическая оптимизация',
   seedingPrecedents: 'Загрузка демо-прецедентов',
   loadingOntology: 'Загрузка онтологии',
   exportingOntology: 'Экспорт онтологии'
@@ -15,13 +15,6 @@ const STATUS_LABELS = {
   success: 'Успешно',
   error: 'Ошибка',
   cancelled: 'Отменено'
-}
-
-const TELEMETRY_LABELS = {
-  idle: 'idle',
-  running: 'running',
-  success: 'ok',
-  error: 'error'
 }
 
 const TELEMETRY_LABELS_RU = {
@@ -53,34 +46,16 @@ const OperationStatusPanel = ({ operations, telemetry, onCancel, onRetry, isDeve
     >
       <div className="workflow-section-heading">
         <div>
-          <h2 className="section-title">{isDeveloper ? 'Статус pipeline' : 'Статус операций'}</h2>
+          <h2 className="section-title">{isDeveloper ? 'Статус конвейера' : 'Статус операций'}</h2>
           <p className="workflow-section-subtitle">
             {isDeveloper
-              ? 'Отслеживание долгих операций: статус, тайминги, попытки и управление cancel/retry.'
+              ? 'Отслеживание долгих операций: статус, длительность, попытки, отмена и повтор.'
               : 'Показывает прогресс долгих действий: выполнение, ошибки и повторный запуск.'}
           </p>
         </div>
       </div>
 
-      {isDeveloper && (
-        <div className="workflow-overview-grid">
-          <div className="workflow-overview-card">
-            <span className="workflow-overview-label">Backend</span>
-            <strong className="workflow-overview-value">{TELEMETRY_LABELS[telemetry.backend] || 'idle'}</strong>
-          </div>
-          <div className="workflow-overview-card">
-            <span className="workflow-overview-label">Python</span>
-            <strong className="workflow-overview-value">{TELEMETRY_LABELS[telemetry.python] || 'idle'}</strong>
-          </div>
-          <div className="workflow-overview-card">
-            <span className="workflow-overview-label">LLM</span>
-            <strong className="workflow-overview-value">{TELEMETRY_LABELS[telemetry.llm] || 'idle'}</strong>
-          </div>
-        </div>
-      )}
-
-      {!isDeveloper && (
-        <div className="workflow-overview-grid">
+      <div className="workflow-overview-grid">
           <div className="workflow-overview-card">
             <span className="workflow-overview-label">Сервер</span>
             <strong className="workflow-overview-value">
@@ -100,14 +75,13 @@ const OperationStatusPanel = ({ operations, telemetry, onCancel, onRetry, isDeve
             </strong>
           </div>
         </div>
-      )}
 
       <div className="workflow-checklist">
         {entries.map(([id, op]) => (
           <div key={id} className="workflow-checklist-item">
             <span className="workflow-checklist-mark">•</span>
             <span>
-              {OPERATION_TITLES[id]}: {STATUS_LABELS[op.status]} | attempt #{op.attempt || 0} |{' '}
+              {OPERATION_TITLES[id]}: {STATUS_LABELS[op.status]} | попытка {op.attempt || 0} |{' '}
               {formatDuration(op.durationMs)}
               {op.error ? ` | ${op.error}` : ''}
             </span>

@@ -36,10 +36,16 @@ function syntheticCompetitor(postHasModel) {
         posts: [
           {
             url: 'https://vk.com/test-post',
-            content: 'Test content for DB live test.',
+            content: 'Test content for DB live test with sufficient length to pass precedent semantic gate.',
             metrics: { likes: 1, comments: 0 },
             publication_model: postHasModel
-              ? { publication_id: pubId, platform: 'vk', text: 'Test content' }
+              ? {
+                  publication_id: pubId,
+                  platform: 'vk',
+                  topic: 'Test precedent topic',
+                  summary: 'Test summary with sufficient length for precedent persistence',
+                  text: 'Test content'
+                }
               : null
           }
         ],

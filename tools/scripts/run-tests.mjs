@@ -16,6 +16,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 const testFiles = [
   'apps/web/tests/frontend-formUtils.test.js',
+  'apps/web/tests/keyDatesModel.test.js',
   'apps/web/tests/publicationPresentation.test.js',
   'apps/web/tests/functional-requirements-ui.test.js',
   'apps/web/tests/functional-requirements-registry.test.js',
@@ -40,6 +41,7 @@ const testFiles = [
   'apps/api/tests/fitnessUtils.test.js',
   'apps/api/tests/hierarchicalGa.test.js',
   'apps/api/tests/postEvolution.test.js',
+  'apps/api/tests/mediaGenerationService.test.js',
   'apps/api/tests/engagementMetrics.test.js',
   'apps/api/tests/draftPlanGenerationPipeline.test.js',
   'apps/api/tests/contentPlanOutputQuality.test.js',
@@ -55,6 +57,7 @@ const testFiles = [
   'apps/api/tests/ragQueryCache.test.js',
   'apps/api/tests/precedentReliability.test.js',
   'apps/api/tests/authRoutes.integration.test.js',
+  'apps/api/tests/instagramAccess.test.js',
   'apps/api/tests/jobQueue.test.js',
   'apps/api/tests/draftStore.test.js',
   'apps/api/tests/draftStore.db.test.js',

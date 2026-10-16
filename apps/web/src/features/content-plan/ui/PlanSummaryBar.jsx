@@ -107,7 +107,7 @@ const PlanSummaryBar = ({ summary, optimizationMeta, planExpectedKpi = null }) =
       </div>
 
       <div className="plan-summary-metric">
-        <span className="plan-summary-metric-label">Сводка KPI по фильтру</span>
+        <span className="plan-summary-metric-label">Сводка показателей по фильтру</span>
         <strong className="plan-summary-metric-value">{avgEngagementLabel}</strong>
         <ul className="plan-summary-metric-meta-list">
           <li>
@@ -117,13 +117,13 @@ const PlanSummaryBar = ({ summary, optimizationMeta, planExpectedKpi = null }) =
             <span className="plan-summary-metric-meta-key">Средний охват:</span> {avgReachLabel}
           </li>
           <li>
-            <span className="plan-summary-metric-meta-key">Покрытие ML:</span> {filteredMlCountLabel} из{' '}
+            <span className="plan-summary-metric-meta-key">Покрытие моделью:</span> {filteredMlCountLabel} из{' '}
             {filteredCountLabel} публикаций
           </li>
         </ul>
         <span className="plan-summary-metric-meta">
           {summary?.engagementLikelySaturated
-            ? 'Все публикации имеют ~100% engagement: проверьте исходные данные/ML-нормализацию.'
+            ? 'Все публикации имеют около 100% вовлечённости: проверьте исходные данные и нормализацию модели.'
             : 'Все значения рассчитаны по текущим фильтрам.'}
         </span>
       </div>

@@ -41,7 +41,6 @@ export function buildExportPayload(formData, competitorsData, competitorsFileNam
       min_publications: minPublications,
       key_dates: formData.keyDates.trim() || null,
       content_formats: formData.contentFormats,
-      video_requirements: formData.contentFormats.includes('video') ? formData.videoDescription.trim() : null,
       platforms: formData.platforms
     },
     ontology: {},

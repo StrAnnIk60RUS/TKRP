@@ -65,8 +65,8 @@ export function buildRiskSummary(plan, _formData = {}) {
     risks.push({
       id: 'low_engagement_target',
       severity: 'medium',
-      label: 'Низкий целевой engagement',
-      detail: `Средний целевой engagement_rate ≈ ${(avgEngagement * 100).toFixed(1)}%. Может быть занижена планка.`
+      label: 'Низкая целевая вовлечённость',
+      detail: `Средняя целевая вовлечённость ≈ ${(avgEngagement * 100).toFixed(1)}%. Планка может быть занижена.`
     })
   }
 

@@ -37,7 +37,7 @@ function ParticleBackground() {
       const dark = isDark()
       ctx.clearRect(0, 0, canvas.width, canvas.height)
 
-      const dotColor = dark ? 'rgba(255, 255, 255, 0.6)' : 'rgba(26, 26, 46, 0.5)'
+      const dotColor = dark ? 'rgba(255, 255, 255, 0.18)' : 'rgba(26, 26, 46, 0.5)'
 
       // Draw lines between nearby particles
       for (let i = 0; i < particles.length; i++) {
@@ -47,7 +47,7 @@ function ParticleBackground() {
           const dist = Math.hypot(dx, dy)
 
           if (dist < CONNECT_DISTANCE) {
-            const opacity = (1 - dist / CONNECT_DISTANCE) * 0.4
+            const opacity = (1 - dist / CONNECT_DISTANCE) * (dark ? 0.14 : 0.4)
             const colors = dark ? [[120, 119, 198], [255, 119, 198], [119, 198, 255]] : [[100, 116, 139], [148, 163, 184]]
             const [r, g, b] = colors[(i + j) % colors.length]
             ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${opacity})`

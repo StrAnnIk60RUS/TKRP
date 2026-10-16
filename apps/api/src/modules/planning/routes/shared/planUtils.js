@@ -304,3 +304,65 @@ export function buildRagQueryFromForm(formInput = {}) {
 
   return parts.filter(Boolean).join('. ');
 }
+
+function pinnedRecordFromInput(item) {
+  if (!item || typeof item !== 'object') return null;
+  if (item.type === 'publication' && item.data && typeof item.data === 'object') {
+    return {
+      ...item,
+      score: Math.max(Number(item.score) || 0, 0.99),
+      pinned: true
+    };
+  }
+  const model = item.publication_model && typeof item.publication_model === 'object' ? item.publication_model : {};
+  const topic = String(model.topic || item.topic || '').trim();
+  const summary = String(model.summary || item.summary || item.content || '').trim();
+  if (topic.toLowerCase() === 'unspecified') return null;
+  if (!topic && summary.length < 40) return null;
+  return {
+    type: 'publication',
+    score: 1,
+    pinned: true,
+    matched_tokens: [],
+    data: {
+      publication_id: model.publication_id || item.publication_id || null,
+      platform: item.platform || model.platform || null,
+      competitor_name: item.competitor_name || item.name || null,
+      source_url: item.url || item.source_url || null,
+      raw_content: typeof item.content === 'string' ? item.content : item.raw_content || null,
+      raw_metrics: item.metrics || item.raw_metrics || null,
+      engagement_rate: item.engagement_rate ?? null,
+      publication_model: {
+        ...model,
+        topic: topic || null,
+        summary: summary.slice(0, 1200) || null,
+        objective: model.objective || item.objective || null,
+        format: model.format || item.format || null,
+        tone: model.tone || item.tone || null,
+        publication_id: model.publication_id || item.publication_id || null
+      }
+    }
+  };
+}
+
+/** Current competitor posts stay in the generation context ahead of the general search. */
+export function mergePinnedPublications(ragResults = {}, pinned = [], limit = 8) {
+  const pinnedItems = (Array.isArray(pinned) ? pinned : [])
+    .map(pinnedRecordFromInput)
+    .filter(Boolean)
+    .slice(0, 8);
+  const seen = new Set(pinnedItems.map((item) => item.data?.publication_id).filter(Boolean));
+  const seenUrls = new Set(pinnedItems.map((item) => item.data?.source_url).filter(Boolean));
+  const rest = (Array.isArray(ragResults?.publications) ? ragResults.publications : []).filter((item) => {
+    const id = item?.data?.publication_id;
+    const url = item?.data?.source_url;
+    if (id && seen.has(id)) return false;
+    if (url && seenUrls.has(url)) return false;
+    return true;
+  });
+  const cap = Math.max(Number(limit) || 8, pinnedItems.length);
+  return {
+    ...ragResults,
+    publications: [...pinnedItems, ...rest].slice(0, cap + 4)
+  };
+}

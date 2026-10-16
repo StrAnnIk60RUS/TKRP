@@ -44,14 +44,14 @@ const COLUMN_KEYS = [
   'Формат',
   'Цель',
   'Ключевое сообщение',
-  'CTA',
+  'Призыв',
   'Тон',
   'Вовлечённость %',
   'Конверсия %',
   'Охват %',
-  'ML лайки',
-  'ML репосты',
-  'ML просмотры'
+  'Прогноз лайков',
+  'Прогноз репостов',
+  'Прогноз просмотров'
 ]
 
 function buildPublicationRows(publications) {
@@ -125,11 +125,11 @@ function buildDetailedPostRowsForMonth(month, optimizationMeta = null) {
     { text: 'Тема', style: 'detailHeaderCell' },
     { text: 'Формат', style: 'detailHeaderCell' },
     { text: 'Цель', style: 'detailHeaderCell' },
-    { text: 'CTA', style: 'detailHeaderCell' },
+    { text: 'Призыв', style: 'detailHeaderCell' },
     { text: 'Тон', style: 'detailHeaderCell' },
-    { text: 'ER', style: 'detailHeaderCell' },
-    { text: 'CVR', style: 'detailHeaderCell' },
-    { text: 'Reach', style: 'detailHeaderCell' },
+    { text: 'Вовлеч.', style: 'detailHeaderCell' },
+    { text: 'Конверсия', style: 'detailHeaderCell' },
+    { text: 'Охват', style: 'detailHeaderCell' },
     { text: 'ML', style: 'detailHeaderCell' }
   ]]
   const resolveStage2 = buildStage2PublicationResolver(optimizationMeta)
@@ -332,10 +332,10 @@ function buildPdfLane(publications, label, options = {}) {
       lines.push({ text: `• ${topic}`, fontSize: compact ? 6.2 : 6.6, color: '#111827' })
       lines.push({ text: `формат: ${format} | цель: ${objective}`, fontSize: compact ? 5.8 : 6.2, color: '#4b5563' })
       lines.push({ text: `сообщение: ${keyMessage}`, fontSize: compact ? 5.8 : 6.2, color: '#4b5563' })
-      lines.push({ text: `CTA: ${cta} | тон: ${tone}`, fontSize: compact ? 5.8 : 6.2, color: '#4b5563' })
-      lines.push({ text: `ER: ${engagement} | CVR: ${conversion} | Reach: ${reach}`, fontSize: compact ? 5.8 : 6.2, color: '#374151' })
+      lines.push({ text: `призыв: ${cta} | тон: ${tone}`, fontSize: compact ? 5.8 : 6.2, color: '#4b5563' })
+      lines.push({ text: `вовлечённость: ${engagement} | конверсия: ${conversion} | охват: ${reach}`, fontSize: compact ? 5.8 : 6.2, color: '#374151' })
       lines.push({
-        text: `ML: L ${metrics.likes != null ? Math.round(metrics.likes) : '-'} | S ${metrics.shares != null ? Math.round(metrics.shares) : '-'} | V ${metrics.views != null ? Math.round(metrics.views) : '-'}`,
+        text: `прогноз: лайки ${metrics.likes != null ? Math.round(metrics.likes) : '—'} | репосты ${metrics.shares != null ? Math.round(metrics.shares) : '—'} | просмотры ${metrics.views != null ? Math.round(metrics.views) : '—'}`,
         fontSize: compact ? 5.8 : 6.2,
         color: '#1d4ed8'
       })
@@ -372,6 +372,7 @@ function buildPdfDayCell(day, monthKey, options = {}) {
   }))
   const vkPosts = allWithMatches.filter((item) => String(item?.platform || '').toLowerCase() === 'vk')
   const linkedInPosts = allWithMatches.filter((item) => String(item?.platform || '').toLowerCase() === 'linkedin')
+  const instagramPosts = allWithMatches.filter((item) => String(item?.platform || '').toLowerCase() === 'instagram')
 
   const header = {
     columns: [
@@ -387,7 +388,10 @@ function buildPdfDayCell(day, monthKey, options = {}) {
 
   const lanes = [
     buildPdfLane(vkPosts, 'VK', { maxPostsPerLane, maxTopicLen, compact }),
-    buildPdfLane(linkedInPosts, 'LinkedIn', { maxPostsPerLane, maxTopicLen, compact })
+    buildPdfLane(linkedInPosts, 'LinkedIn', { maxPostsPerLane, maxTopicLen, compact }),
+    ...(instagramPosts.length
+      ? [buildPdfLane(instagramPosts, 'Instagram', { maxPostsPerLane, maxTopicLen, compact })]
+      : [])
   ]
 
   return {
@@ -485,7 +489,7 @@ export function exportToExcel(contentPlan, filename, options = {}) {
         ['Всего публикаций', String(pubs.length)],
         ['', ''],
         ['ML метрики плана', ''],
-        ['Суммарные ML лайки (по постам)', String(Math.round(mlSummary.totalMlLikes || 0))],
+        ['Суммарный прогноз лайков (по постам)', String(Math.round(mlSummary.totalMlLikes || 0))],
         ['Суммарные ML репосты (по постам)', String(Math.round(mlSummary.totalMlShares || 0))],
         ['Суммарные ML просмотры (по постам)', String(Math.round(mlSummary.totalMlViews || 0))],
         ['Средняя вовлечённость (по постам)', formatPercent(mlSummary.avgEngagement)],
@@ -499,7 +503,7 @@ export function exportToExcel(contentPlan, filename, options = {}) {
           ['Всего публикаций', String(pubs.length)],
           ['', ''],
           ['ML метрики плана', ''],
-          ['Суммарные ML лайки (по постам)', String(Math.round(mlSummary.totalMlLikes || 0))],
+          ['Суммарный прогноз лайков (по постам)', String(Math.round(mlSummary.totalMlLikes || 0))],
           ['Суммарные ML репосты (по постам)', String(Math.round(mlSummary.totalMlShares || 0))],
           ['Суммарные ML просмотры (по постам)', String(Math.round(mlSummary.totalMlViews || 0))],
           ['Средняя вовлечённость (по постам)', formatPercent(mlSummary.avgEngagement)],
@@ -511,7 +515,7 @@ export function exportToExcel(contentPlan, filename, options = {}) {
           ['Всего публикаций', String(pubs.length)],
           ['', ''],
           ['ML метрики плана', ''],
-          ['Суммарные ML лайки (по постам)', String(Math.round(mlSummary.totalMlLikes || 0))],
+          ['Суммарный прогноз лайков (по постам)', String(Math.round(mlSummary.totalMlLikes || 0))],
           ['Суммарные ML репосты (по постам)', String(Math.round(mlSummary.totalMlShares || 0))],
           ['Суммарные ML просмотры (по постам)', String(Math.round(mlSummary.totalMlViews || 0))],
           ['Средняя вовлечённость (по постам)', formatPercent(mlSummary.avgEngagement)],

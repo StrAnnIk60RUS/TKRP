@@ -20,7 +20,7 @@ import {
   buildOntologyLlmEnrichment,
   getOntologyLlmEnrichmentConfig
 } from '../services/ontologyLlmEnrichmentService.js';
-import { enrichSearchResultsWithReliability } from '../services/precedentReliabilityService.js';
+import { enrichSearchResultsWithReliability, precedentRankSignals } from '../services/precedentReliabilityService.js';
 import { trainRelevanceModel } from '../../ml/services/relevancePredictionService.js';
 import {
   query,
@@ -47,6 +47,7 @@ import {
   buildEmbeddingTextForContentPlan,
   resolveFilteredCollections,
   applyRetrievalQualityGate,
+  scoreRetrievalHit,
   mergeEmbeddingUpdates,
   upsertByKey,
   collectPublicationsFromCompetitors,
@@ -701,10 +702,13 @@ export async function searchPrecedents(searchQuery, options = {}) {
         const tokenScore = calculateTokenScore(queryTokens, collectPublicationSearchText(publication), {
           boostExactPhrase: normalizedQuery
         });
-        const score = Math.min(
-          1,
-          embeddingScore * RETRIEVAL_EMBEDDING_WEIGHT + tokenScore.score * RETRIEVAL_TOKEN_WEIGHT
-        );
+        const rankSignals = precedentRankSignals(publication, 'publication');
+        const score = scoreRetrievalHit({
+          embeddingScore,
+          tokenScore: tokenScore.score,
+          engagementSignal: rankSignals.engagement,
+          trustSignal: rankSignals.trust
+        });
 
         return {
           type: 'publication',
@@ -725,10 +729,13 @@ export async function searchPrecedents(searchQuery, options = {}) {
         const tokenScore = calculateTokenScore(queryTokens, collectContentPlanSearchText(contentPlan), {
           boostExactPhrase: normalizedQuery
         });
-        const score = Math.min(
-          1,
-          embeddingScore * RETRIEVAL_EMBEDDING_WEIGHT + tokenScore.score * RETRIEVAL_TOKEN_WEIGHT
-        );
+        const rankSignals = precedentRankSignals(contentPlan, 'content_plan');
+        const score = scoreRetrievalHit({
+          embeddingScore,
+          tokenScore: tokenScore.score,
+          engagementSignal: rankSignals.engagement,
+          trustSignal: rankSignals.trust
+        });
 
         return {
           type: 'content_plan',
@@ -783,10 +790,16 @@ export async function searchPrecedents(searchQuery, options = {}) {
         const scoreData = calculateTokenScore(fallbackQueryTokens, searchText, {
           boostExactPhrase: normalizedQuery
         });
+        const rankSignals = precedentRankSignals(publication, 'publication');
 
         return {
           type: 'publication',
-          score: scoreData.score,
+          score: scoreRetrievalHit({
+            embeddingScore: 0,
+            tokenScore: scoreData.score,
+            engagementSignal: rankSignals.engagement,
+            trustSignal: rankSignals.trust
+          }),
           matched_tokens: scoreData.matched_tokens,
           data: publication
         };
@@ -801,10 +814,16 @@ export async function searchPrecedents(searchQuery, options = {}) {
         const scoreData = calculateTokenScore(fallbackQueryTokens, searchText, {
           boostExactPhrase: normalizedQuery
         });
+        const rankSignals = precedentRankSignals(contentPlan, 'content_plan');
 
         return {
           type: 'content_plan',
-          score: scoreData.score,
+          score: scoreRetrievalHit({
+            embeddingScore: 0,
+            tokenScore: scoreData.score,
+            engagementSignal: rankSignals.engagement,
+            trustSignal: rankSignals.trust
+          }),
           matched_tokens: scoreData.matched_tokens,
           data: contentPlan
         };

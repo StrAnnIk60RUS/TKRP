@@ -107,7 +107,7 @@ const TechnicalDetailsPanel = ({
 
           {!!optimizationResult?.stage1?.ga?.history && (
             <details className="workflow-technical-block">
-              <summary>Trace эволюции контент-плана (JSON)</summary>
+              <summary>Ход эволюции контент-плана (JSON)</summary>
               <div className="analysis-view">
                 <pre>{prettyJson(optimizationResult.stage1.ga.history)}</pre>
               </div>
@@ -116,7 +116,7 @@ const TechnicalDetailsPanel = ({
 
           {!!optimizationResult?.stage2?.cta_distribution && (
             <details className="workflow-technical-block">
-              <summary>Распределение CTA</summary>
+              <summary>Распределение призывов</summary>
               {renderPairs(optimizationResult.stage2.cta_distribution)}
             </details>
           )}

@@ -23,7 +23,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = path.join(__dirname, '..', '..', '..', '..');
 const REPO_ROOT = path.join(APP_ROOT, '..', '..');
 const DATA_ROOT = path.join(REPO_ROOT, 'data');
-const PRECEDENTS_ROOT = path.join(DATA_ROOT, 'precedents');
 const SCRIPT_PATH = path.join(REPO_ROOT, 'tools', 'ml', 'engagement_model.py');
 const MODEL_DIR = path.join(DATA_ROOT, 'ml');
 const ML_TIMEOUT_MS = Number(process.env.ML_SCRIPT_TIMEOUT_MS || 180000);
@@ -116,16 +115,14 @@ function readJson(filePath, fallback) {
 }
 
 async function readPrecedentSnapshot() {
-  if (isDatabaseEnabled()) {
-    const snapshot = await getPrecedentsSnapshot();
-    return {
-      publications: snapshot.publications || [],
-      content_plans: snapshot.content_plans || []
-    };
+  // Always use DB (JSON storage removed)
+  if (!isDatabaseEnabled()) {
+    throw new Error('Database is not enabled; JSON fallback for precedent snapshot is removed.');
   }
+  const snapshot = await getPrecedentsSnapshot();
   return {
-    publications: readJson(path.join(PRECEDENTS_ROOT, 'publications.json'), []),
-    content_plans: readJson(path.join(PRECEDENTS_ROOT, 'content_plans.json'), [])
+    publications: snapshot.publications || [],
+    content_plans: snapshot.content_plans || []
   };
 }
 

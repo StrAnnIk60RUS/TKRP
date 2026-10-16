@@ -38,14 +38,22 @@ const LoginPage = () => {
         </p>
       </div>
       <div className="page-content">
-        <form className="auth-form" onSubmit={(e) => e.preventDefault()}>
+        <form
+          className="auth-form"
+          onSubmit={(e) => {
+            e.preventDefault()
+            submit()
+          }}
+        >
           <label className="auth-field-label" htmlFor="auth-username">
             Имя пользователя
           </label>
           <input
+            id="auth-username"
             className="auth-username-input"
             type="text"
             name="auth-username"
+            autoComplete="username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             placeholder="Ваше имя пользователя"
@@ -54,18 +62,16 @@ const LoginPage = () => {
             Пароль
           </label>
           <input
+            id="auth-password"
             className="auth-password-input"
             type="password"
             name="auth-password"
+            autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Ваш пароль"
           />
-          <button
-            type="button"
-            className="auth-submit-btn"
-            onClick={submit}
-          >
+          <button type="submit" className="auth-submit-btn">
             Войти
           </button>
         </form>

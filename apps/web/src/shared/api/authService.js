@@ -6,6 +6,16 @@ const API_URL = import.meta.env.VITE_ENRICHMENT_API_URL || 'http://localhost:300
 
 const SESSION_KEY = 'tkrp_session';
 const USER_ID_KEY = 'tkrp_user_id';
+const authListeners = new Set();
+
+export function subscribeAuth(listener) {
+  authListeners.add(listener);
+  return () => authListeners.delete(listener);
+}
+
+function notifyAuth() {
+  authListeners.forEach((listener) => listener());
+}
 
 export function getSessionToken() {
   return localStorage.getItem(SESSION_KEY) || null;
@@ -17,6 +27,7 @@ export function setSessionToken(token) {
   } else {
     localStorage.removeItem(SESSION_KEY);
   }
+  notifyAuth();
 }
 
 export function getCurrentUserId() {
@@ -54,7 +65,7 @@ const safeFetch = async (endpoint, options = {}) => {
     return await fetch(endpoint, options);
   } catch (error) {
     if (error?.name === 'TypeError') {
-      throw new Error(`Cannot connect to server at ${API_URL}: check that the backend is running and that the page address is allowed by CORS.`);
+      throw new Error(`Не удалось подключиться к серверу (${API_URL}). Проверьте, что сервер запущен и адрес страницы разрешён.`);
     }
     throw error;
   }

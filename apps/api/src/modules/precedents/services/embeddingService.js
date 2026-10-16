@@ -13,7 +13,7 @@ function asTrimmedString(value, fallback = '') {
 }
 
 export function getEmbeddingConfig() {
-  const model = asTrimmedString(process.env.EMBEDDING_MODEL, 'text-embedding-3-small');
+  const model = asTrimmedString(process.env.EMBEDDING_MODEL, 'intfloat/multilingual-e5-large');
   return {
     model,
     // Versioning: embeddings produced by different models are NOT comparable.

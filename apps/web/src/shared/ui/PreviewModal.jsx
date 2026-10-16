@@ -22,26 +22,26 @@ const PreviewModal = ({ data, onConfirm, onCancel, filename }) => {
             <h4>Структура данных:</h4>
             <div className="structure-tree">
               <div className="tree-item">
-                <strong>project_info</strong>
+                <strong>О проекте</strong>
                 <ul>
-                  <li>name: {data.project_info?.name || 'не указано'}</li>
-                  <li>activity_specification: {data.project_info?.activity_specification?.substring(0, 50) || 'не указано'}...</li>
+                  <li>Название: {data.project_info?.name || 'не указано'}</li>
+                  <li>Спецификация: {data.project_info?.activity_specification?.substring(0, 50) || 'не указано'}...</li>
                 </ul>
               </div>
               <div className="tree-item">
-                <strong>target_audience</strong>
+                <strong>Целевая аудитория</strong>
                 <ul>
-                  <li>gender: {data.target_audience?.gender || 'не указано'}</li>
-                  <li>age_range: {data.target_audience?.age_range?.min}-{data.target_audience?.age_range?.max} лет</li>
-                  <li>social_status: {data.target_audience?.social_status || 'не указано'}</li>
+                  <li>Пол: {data.target_audience?.gender || 'не указано'}</li>
+                  <li>Возраст: {data.target_audience?.age_range?.min}-{data.target_audience?.age_range?.max} лет</li>
+                  <li>Социальный статус: {data.target_audience?.social_status || 'не указано'}</li>
                 </ul>
               </div>
               <div className="tree-item">
-                <strong>content_plan_parameters</strong>
+                <strong>Параметры контент-плана</strong>
                 <ul>
-                  <li>timeline: {data.content_plan_parameters?.timeline?.start_date} - {data.content_plan_parameters?.timeline?.end_date}</li>
-                  <li>min_publications: {data.content_plan_parameters?.min_publications}</li>
-                  <li>platforms: {data.content_plan_parameters?.platforms?.join(', ') || 'не выбрано'}</li>
+                  <li>Период: {data.content_plan_parameters?.timeline?.start_date} - {data.content_plan_parameters?.timeline?.end_date}</li>
+                  <li>Минимум публикаций: {data.content_plan_parameters?.min_publications}</li>
+                  <li>Платформы: {data.content_plan_parameters?.platforms?.join(', ') || 'не выбрано'}</li>
                 </ul>
               </div>
             </div>

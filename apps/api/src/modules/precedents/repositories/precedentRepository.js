@@ -1,14 +1,22 @@
-import * as jsonRepo from './precedentRepositoryJson.js';
 import * as dbRepo from './precedentRepositoryDb.js';
+
+export const persistPrecedents = dbRepo.persistPrecedents;
+export const getPrecedentsSummary = dbRepo.getPrecedentsSummary;
+export const getPrecedentsSnapshot = dbRepo.getPrecedentsSnapshot;
+export const searchPrecedents = dbRepo.searchPrecedents;
+export const reembedPrecedentsWithWrongDimension = dbRepo.reembedPrecedentsWithWrongDimension;
+export const getAggregatedOntology = dbRepo.getAggregatedOntology;
+export const getOntologyExportData = dbRepo.getOntologyExportData;
+export const getOntologyTurtleData = dbRepo.getOntologyTurtleData;
 
 /**
  * Storage backend resolution (pure function for testability):
- * - PRECEDENT_STORAGE=json|pg is the explicit switch (wins over everything).
+ * - PRECEDENT_STORAGE=pg is the only valid value (JSON storage removed).
  * - Back-compat: USE_DATABASE=true selects pg.
- * - Production default: APP_ENV=production forces pg (JSON storage is dev-only);
- *   PRECEDENT_STORAGE=json in production is a hard error.
- * - Dev default: json.
- * @returns {'json'|'pg'}
+ * - Production default: APP_ENV=production forces pg.
+ * - Dev default: pg.
+ * @returns {'pg'}
+ * @throws if PRECEDENT_STORAGE=json (JSON storage removed)
  */
 export function resolveStorageBackend(env = process.env) {
   const explicit = String(env?.PRECEDENT_STORAGE || '').trim().toLowerCase();
@@ -19,33 +27,25 @@ export function resolveStorageBackend(env = process.env) {
   if (explicit === 'json') {
     if (production) {
       throw new Error(
-        'PRECEDENT_STORAGE=json is dev-only; production must use pg (PostgreSQL + pgvector). ' +
-        'Set DATABASE_URL and PRECEDENT_STORAGE=pg, or run with APP_ENV=development.'
+        'PRECEDENT_STORAGE=json is removed; JSON storage is no longer supported. ' +
+        'Set PRECEDENT_STORAGE=pg, or remove the variable to use pg (PostgreSQL + pgvector).'
+      );
+    } else {
+      throw new Error(
+        'PRECEDENT_STORAGE=json is removed; JSON storage is no longer supported. ' +
+        'Set PRECEDENT_STORAGE=pg, or remove the variable to use pg (PostgreSQL + pgvector).'
       );
     }
-    return 'json';
   }
   if (explicit) {
-    throw new Error(`Unknown PRECEDENT_STORAGE value: ${explicit} (expected json|pg)`);
+    throw new Error(`Unknown PRECEDENT_STORAGE value: ${explicit} (expected pg)`);
   }
 
   if (production) return 'pg';
   if (String(env?.USE_DATABASE || '').trim().toLowerCase() === 'true') return 'pg';
-  return 'json';
+  return 'pg';
 }
 
-const ACTIVE_BACKEND = resolveStorageBackend();
-const repo = ACTIVE_BACKEND === 'pg' ? dbRepo : jsonRepo;
-
-export const persistPrecedents = repo.persistPrecedents;
-export const getPrecedentsSummary = repo.getPrecedentsSummary;
-export const getPrecedentsSnapshot = repo.getPrecedentsSnapshot;
-export const searchPrecedents = repo.searchPrecedents;
-export const reembedPrecedentsWithWrongDimension = repo.reembedPrecedentsWithWrongDimension;
-export const getAggregatedOntology = repo.getAggregatedOntology;
-export const getOntologyExportData = repo.getOntologyExportData;
-export const getOntologyTurtleData = repo.getOntologyTurtleData;
-
 export function getActiveStorageBackend() {
-  return ACTIVE_BACKEND;
+  return resolveStorageBackend();
 }

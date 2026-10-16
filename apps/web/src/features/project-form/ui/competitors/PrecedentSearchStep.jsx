@@ -26,7 +26,7 @@ const renderCardScore = (item) => {
 const renderMatchExplanation = (matchedTokens = [], retrieval = null) => {
   const type = retrieval?.type;
   if (type === 'embedding_cosine') {
-    return 'Semantic retrieval (эмбеддинги): совпавшие токены не считаются';
+    return 'Поиск по смыслу (эмбеддинги): совпавшие слова не считаются';
   }
   if (!matchedTokens.length) return 'Без совпавших токенов';
   return matchedTokens.join(', ');
@@ -145,8 +145,8 @@ const PrecedentSearchStep = ({
                       </div>
                       <div className="precedent-card-meta">
                         <span>{item.data.competitor_name || 'Неизвестный конкурент'}</span>
-                        <span>{item.data.platform || 'unknown'}</span>
-                        <span>{item.data.publication_model?.format || 'unknown'}</span>
+                        <span>{item.data.platform || 'не указано'}</span>
+                        <span>{item.data.publication_model?.format || 'не указано'}</span>
                       </div>
                       <div className="precedent-card-body">
                         <div>Тип: {item.data.publication_model?.type || 'other'}</div>
@@ -178,7 +178,7 @@ const PrecedentSearchStep = ({
                         {renderCardScore(item)}
                       </div>
                       <div className="precedent-card-meta">
-                        <span>{item.data.platform || 'unknown'}</span>
+                        <span>{item.data.platform || 'не указано'}</span>
                         <span>
                           {item.data.content_plan_model?.posting_frequency_per_week || 0} постов/неделю
                         </span>
@@ -192,7 +192,7 @@ const PrecedentSearchStep = ({
                           {(item.data.content_plan_model?.audience_segments || []).join(', ') || 'не указана'}
                         </div>
                         <div>
-                          Avg engagement:{' '}
+                          Средняя вовлечённость:{' '}
                           {formatScore(item.data.content_plan_model?.kpi_estimate?.avg_engagement_rate)}
                         </div>
                         <div>

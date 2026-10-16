@@ -1,4 +1,4 @@
-import { buildPostFeatureVector, buildPostFeatureVectorFromFeatureMap, POST_FEATURE_NAMES } from '../../../ml/services/ml/ontologyFeatureEngineering.js';
+import { buildPostFeatureVector, POST_FEATURE_NAMES } from '../../../ml/services/ml/ontologyFeatureEngineering.js';
 import { predictPostMetricsByFeatureVectors } from '../../../ml/services/relevancePredictionService.js';
 import { runAsyncGeneticAlgorithm } from './asyncGaCore.js';
 import { 
@@ -9,7 +9,7 @@ import {
   inversionMutation
 } from './operators.js';
 import {
-  DEFAULT_FITNESS_WEIGHTS,
+  estimateCommentsFromBase,
   kpiScore,
   combineFitness
 } from './fitnessUtils.js';
@@ -22,9 +22,10 @@ import {
   choosePreferredTopic,
   normalizePublicationTopicForUi
 } from '../contentOutputUtils.js';
+import { generatePostContent } from '../llmPostGeneration.js';
+import { buildFallbackMediaPrompt, mediaKindForFormat } from '../mediaGenerationService.js';
 
 const TONE_START = 24;
-const TONE_END = 28;
 const CTA_INDEX = 20;
 
 function asNumber(value, fallback = 0) {
@@ -75,11 +76,13 @@ function normalizeGaMethod(value, allowed, fallback) {
   return allowed.includes(method) ? method : fallback;
 }
 
-// Веса для фитнес-функции поста (shared with plan-level via fitnessUtils)
-const FITNESS_WEIGHTS = { ...DEFAULT_FITNESS_WEIGHTS };
-
-function calculateFitness(predictedMetrics, metadata) {
-  return kpiScore(predictedMetrics, metadata, { keyPrefix: '', weights: FITNESS_WEIGHTS });
+function calculateFitness(predictedMetrics, metadata, publication = null) {
+  const estimate = estimateCommentsFromBase(
+    predictedMetrics?.[0],
+    publication?.metrics || publication?.raw_metrics || null
+  );
+  const metrics = estimate == null ? predictedMetrics : [predictedMetrics[0], predictedMetrics[1], predictedMetrics[2], estimate];
+  return kpiScore(metrics, metadata, { keyPrefix: '' });
 }
 
 /** Средняя L1-разница по измеримым признакам (0..1): выше — дальше от других слотов плана. */
@@ -100,13 +103,15 @@ function peerGenomeDiversityScore(candidate, peerGenomes) {
   return Math.max(0, Math.min(1, sum / peerGenomes.length));
 }
 
-function buildAllowedValues(index) {
-  const binaryIndexes = new Set([0, 3, 4, 8, 9, 10, 12, 14, 15, 17, 19, 20, 24, 25, 26, 27, 28, 32, 33]);
-  const ternaryIndexes = new Set([2, 5, 6, 11, 16, 18, 21, 22, 29, 30]);
-  const normalizedIndexes = new Set([1, 7, 13, 23, 31]);
-  if (binaryIndexes.has(index)) return [0, 1];
-  if (ternaryIndexes.has(index)) return [0, 0.5, 1];
-  if (normalizedIndexes.has(index)) return [0, 0.25, 0.5, 0.75, 1];
+const TONE_LABELS = ['expert', 'friendly', 'official', 'inspiring', 'humorous'];
+const HOOK_IDS = ['direct', 'question', 'case', 'contrast'];
+const LENGTH_IDS = ['short', 'medium', 'long'];
+
+function decisionAllowed(index) {
+  if (index === 0) return [0, 1, 2, 3, 4];
+  if (index === 1) return [0, 0.25, 0.5, 0.75, 1];
+  if (index === 3) return [0, 1, 2, 3];
+  if (index === 4) return [0, 1, 2];
   return [0, 1];
 }
 
@@ -126,6 +131,20 @@ function resolveToneIndex(tone) {
   return null;
 }
 
+function toneFromFeatureMap(featureMap = {}) {
+  let bestIndex = -1;
+  let bestValue = 0;
+  for (let index = 0; index <= 4; index += 1) {
+    const value = asNumber(featureMap?.[`tone_onehot_${index}`], 0);
+    if (value > bestValue) {
+      bestValue = value;
+      bestIndex = index;
+    }
+  }
+  if (bestIndex < 0) return '';
+  return ['expert', 'friendly', 'official', 'inspiring', 'humorous'][bestIndex];
+}
+
 function resolveCtaPreference(publication = {}) {
   const objective = String(publication?.objective || '').toLowerCase();
   if (objective === 'convert' || objective === 'retain') return 'required';
@@ -133,35 +152,66 @@ function resolveCtaPreference(publication = {}) {
   return 'avoid';
 }
 
-function repairGenome(genome, constants = {}) {
-  const repaired = POST_FEATURE_NAMES.map((_, index) => {
-    if (index === CTA_INDEX && constants.hasCta !== undefined && constants.hasCta !== null) return constants.hasCta;
-    if (index === 34) return asNumber(constants.tonesCount, 1);
-    if (index === 35) return asNumber(constants.creativityFromBestPlan, 0.5);
-    return nearestAllowedValue(asNumber(genome[index], 0), buildAllowedValues(index));
-  });
+function baseDecision(publication = {}) {
+  const toneIndex = resolveToneIndex(publication?.tone);
+  const creativity = asNumber(publication?.ontology_features?.creativity, 0.5);
+  return [
+    toneIndex == null ? 0 : toneIndex,
+    nearestAllowedValue(creativity, decisionAllowed(1)),
+    String(publication?.cta || '').trim() ? 1 : 0,
+    0,
+    1,
+    detectListsFlag(publication)
+  ];
+}
 
-  // Принудительно устанавливаем целевой тон, если он задан
-  if (constants.targetToneIndex !== undefined && constants.targetToneIndex >= 0 && constants.targetToneIndex <= 4) {
-    for (let index = TONE_START; index <= TONE_END; index += 1) {
-      repaired[index] = 0;
-    }
-    repaired[TONE_START + constants.targetToneIndex] = 1;
-  } else {
-    // Иначе оставляем один активный тон
-    let winningToneIndex = TONE_START;
-    let winningToneValue = -1;
-    for (let index = TONE_START; index <= TONE_END; index += 1) {
-      if (repaired[index] > winningToneValue) {
-        winningToneValue = repaired[index];
-        winningToneIndex = index;
-      }
-      repaired[index] = 0;
-    }
-    repaired[winningToneIndex] = 1;
+function detectListsFlag(publication = {}) {
+  const text = `${publication?.summary || ''}\n${publication?.key_message || ''}`;
+  return /(^|\n)\s*(?:[-•*]|\d+[.)])\s+/u.test(text) ? 1 : 0;
+}
+
+function repairDecision(genome, constants = {}) {
+  const next = [0, 1, 2, 3, 4, 5].map((index) =>
+    nearestAllowedValue(asNumber(genome?.[index], 0), decisionAllowed(index))
+  );
+  if (Number.isInteger(constants.targetToneIndex) && constants.targetToneIndex >= 0 && constants.targetToneIndex <= 4) {
+    next[0] = constants.targetToneIndex;
   }
-  
-  return repaired;
+  if (constants.hasCta !== undefined && constants.hasCta !== null) {
+    next[2] = asNumber(constants.hasCta, 0) >= 0.5 ? 1 : 0;
+  }
+  return next;
+}
+
+function writingBriefFromDecision(decision) {
+  return {
+    tone: TONE_LABELS[decision[0]] || 'expert',
+    creativity: decision[1],
+    has_cta: decision[2] >= 0.5 ? 1 : 0,
+    hook: HOOK_IDS[decision[3]] || 'direct',
+    length: LENGTH_IDS[decision[4]] || 'medium',
+    lists: decision[5] >= 0.5 ? 1 : 0
+  };
+}
+
+function projectDecisionToVector(decision, baseVector, planFeatureMap = {}) {
+  const vector = Array.isArray(baseVector) ? baseVector.slice() : [];
+  while (vector.length < POST_FEATURE_NAMES.length) vector.push(0);
+  for (let index = 0; index < 5; index += 1) {
+    vector[TONE_START + index] = index === decision[0] ? 1 : 0;
+  }
+  vector[CTA_INDEX] = decision[2] >= 0.5 ? 1 : 0;
+  vector[POST_FEATURE_NAMES.indexOf('creativity')] = decision[1];
+  vector[POST_FEATURE_NAMES.indexOf('lead_is_hook')] = decision[3] > 0 ? 1 : 0;
+  vector[POST_FEATURE_NAMES.indexOf('title_has_question')] = decision[3] === 1 ? 1 : 0;
+  vector[POST_FEATURE_NAMES.indexOf('title_has_intrigue')] = decision[3] === 2 ? 1 : 0;
+  vector[POST_FEATURE_NAMES.indexOf('title_has_digit')] = decision[3] === 3 ? 1 : 0;
+  vector[POST_FEATURE_NAMES.indexOf('has_lists')] = decision[5] >= 0.5 ? 1 : 0;
+  vector[POST_FEATURE_NAMES.indexOf('sentence_length')] = decision[4] === 0 ? 0 : decision[4] === 2 ? 1 : 0.5;
+  vector[POST_FEATURE_NAMES.indexOf('lead_length_norm')] = decision[4] === 0 ? 0.25 : decision[4] === 2 ? 1 : 0.5;
+  vector[34] = asNumber(planFeatureMap.unique_tones, 1);
+  vector[35] = asNumber(planFeatureMap.avg_creativity, decision[1]);
+  return vector;
 }
 
 function createFeatureMap(vector) {
@@ -171,22 +221,21 @@ function createFeatureMap(vector) {
   }, {});
 }
 
-function createIndividual(baseVector, constants, rng) {
-  const genome = baseVector.map((value, index) => {
-    if (index >= 34) return value;
-    const allowed = buildAllowedValues(index);
-    const keepBase = rng() < 0.6;
+function createDecisionIndividual(baseDecisionGenome, constants, rng) {
+  const genome = baseDecisionGenome.map((value, index) => {
+    const allowed = decisionAllowed(index);
+    const keepBase = rng() < 0.4;
     return keepBase ? nearestAllowedValue(value, allowed) : allowed[Math.floor(rng() * allowed.length)];
   });
-  return repairGenome(genome, constants);
+  return repairDecision(genome, constants);
 }
 
-function mutateGenome(genome, constants, rng) {
-  const next = cloneJson(genome);
-  const mutableIndex = Math.floor(rng() * 34);
-  const allowed = buildAllowedValues(mutableIndex);
+function mutateDecision(genome, constants, rng) {
+  const next = genome.slice();
+  const mutableIndex = Math.floor(rng() * next.length);
+  const allowed = decisionAllowed(mutableIndex);
   next[mutableIndex] = allowed[Math.floor(rng() * allowed.length)];
-  return repairGenome(next, constants);
+  return repairDecision(next, constants);
 }
 
 function capPostPredictedMetrics(predictedMetrics, metadata) {
@@ -214,10 +263,10 @@ async function evolveSinglePublication(
     tonesCount: planFeatureMap.unique_tones,
     creativityFromBestPlan: planFeatureMap.avg_creativity
   });
-  
-  const targetToneIndex = lockedFields.targetToneIndex !== undefined 
-    ? lockedFields.targetToneIndex 
-    : resolveToneIndex(publication?.tone);
+  const startingDecision = baseDecision(publication);
+  const targetToneIndex = lockedFields.targetToneIndex === undefined || lockedFields.targetToneIndex === null
+    ? null
+    : lockedFields.targetToneIndex;
   
   const constants = {
     tonesCount: planFeatureMap.unique_tones,
@@ -241,7 +290,7 @@ async function evolveSinglePublication(
   const normalizedCrossoverProbability = normalizeGaProbability(gaConfig.crossoverProbability, 0.9);
   const normalizedMutationProbability = normalizeGaProbability(
     gaConfig.mutationProbability ?? readPostGaEnvNumber('PLAN_GA_POST_MUTATION_PROBABILITY'),
-    0.12
+    0.2
   );
 
   let crossoverFn;
@@ -260,16 +309,16 @@ async function evolveSinglePublication(
   let mutateFn;
   switch (mutationMethod) {
     case 'inversion':
-      mutateFn = (individual, rng) => inversionMutation(individual, rng);
+      mutateFn = (individual, rng) => repairDecision(inversionMutation(individual, rng), constants);
       break;
     case 'random_replace':
     default:
-      mutateFn = (individual, rng) => mutateGenome(individual, constants, rng);
+      mutateFn = (individual, rng) => mutateDecision(individual, constants, rng);
   }
 
   const traces = [];
   const repairedBasesAll = stage2Options.repairedBases;
-  const peerWeight = clampProbability(asNumber(stage2Options.peerDiversityWeight, 0.1), 0.1);
+  const peerWeight = clampProbability(asNumber(stage2Options.peerDiversityWeight, 0.28), 0.28);
   const targetCtaShare = asNumber(stage2Options.targetCtaShare, -1);
   const ctaAlignmentWeight = lockedFields.has_cta === undefined || lockedFields.has_cta === null
     ? clampProbability(asNumber(stage2Options.ctaAlignmentWeight, 0.05), 0.05)
@@ -290,28 +339,30 @@ async function evolveSinglePublication(
     crossoverProbability: normalizedCrossoverProbability,
     mutationProbability: normalizedMutationProbability,
     selectionMethod,
-    createIndividual: (rng) => createIndividual(baseVector, constants, rng),
+    createIndividual: (rng) => createDecisionIndividual(startingDecision, constants, rng),
     cloneIndividual: (individual) => cloneJson(individual),
     crossover: (left, right, rng) => {
       const crossed = crossoverFn(left, right, rng);
-      return crossed.map((child) => repairGenome(child, constants));
+      return crossed.map((child) => repairDecision(child, constants));
     },
     mutate: mutateFn,
     cacheKeyForIndividual: (individual) => JSON.stringify(individual),
     scorePopulation: async (population) => {
-      const repaired = population.map((item) => repairGenome(item, constants));
-      const predictionResult = await predictPostMetricsByFeatureVectors(repaired, { forceTrain: false });
+      const repaired = population.map((item) => repairDecision(item, constants));
+      const projected = repaired.map((item) => projectDecisionToVector(item, baseVector, planFeatureMap));
+      const predictionResult = await predictPostMetricsByFeatureVectors(projected, { forceTrain: false });
       
       return predictionResult.predictions.map((predictedMetrics, index) => {
         const capped = capPostPredictedMetrics(predictedMetrics, predictionResult.metadata);
         const kpi = calculateFitness(
           [capped.cappedLikes, capped.cappedShares, capped.cappedViews],
-          predictionResult.metadata
+          predictionResult.metadata,
+          publication
         );
         const diversity = peerGenomeDiversityScore(repaired[index], peerGenomes);
         let ctaPenalty = 0;
         if (ctaAlignmentWeight > 0 && targetCtaShare >= 0) {
-          const geneCta = asNumber(repaired[index][CTA_INDEX], 0) >= 0.5 ? 1 : 0;
+          const geneCta = asNumber(repaired[index][2], 0) >= 0.5 ? 1 : 0;
           ctaPenalty = ctaAlignmentWeight * Math.abs(geneCta - targetCtaShare);
         }
         const combined = combineFitness({
@@ -349,8 +400,10 @@ async function evolveSinglePublication(
     }
   });
 
-  const bestVector = repairGenome(result.best || baseVector, constants);
+  const bestDecision = repairDecision(result.best || startingDecision, constants);
+  const bestVector = projectDecisionToVector(bestDecision, baseVector, planFeatureMap);
   const featureMap = createFeatureMap(bestVector);
+  const writingBrief = writingBriefFromDecision(bestDecision);
   const bestFitness = asNumber(result.best_meta?.fitness, 0);
   const bestLikes = asNumber(result.best_meta?.predicted_likes, 0);
   const bestShares = asNumber(result.best_meta?.predicted_shares, 0);
@@ -364,9 +417,11 @@ async function evolveSinglePublication(
         predicted_likes: bestLikes,
         predicted_shares: bestShares,
         predicted_views: bestViews,
-        predicted_likes_source: 'ga_post_metrics_model'
+        predicted_likes_source: 'decision_proxy'
       },
-      ontology_features: featureMap
+      tone: writingBrief.tone,
+      ontology_features: featureMap,
+      writing_brief: writingBrief
     },
     predictedLikes: bestLikes,
     predictedShares: bestShares,
@@ -374,6 +429,7 @@ async function evolveSinglePublication(
     fitness: bestFitness,
     featureVector: bestVector,
     featureMap,
+    writingBrief,
     ga: {
       ...result,
       history: traces
@@ -457,7 +513,7 @@ function selectArchetypeForPublication(publication = {}, archetypes = [], usageB
 
   for (const archetype of archetypes) {
     const key = createArchetypeKey(archetype);
-    const usagePenalty = (usageByKey.get(key) || 0) * 1.4;
+    const usagePenalty = (usageByKey.get(key) || 0) * 6;
     const toneKey = String(archetype?.tone || '').toLowerCase();
     const tonePenalty = toneUsage && targetUniqueTones > toneUsage.size
       ? (toneUsage.get(toneKey) || 0) * 2
@@ -478,41 +534,26 @@ function selectArchetypeForPublication(publication = {}, archetypes = [], usageB
   return bestArchetype;
 }
 
-function cloneFeatureMap(featureMap = {}, planFeatureMap = {}) {
-  const next = { ...featureMap };
-  next.tones_count = asNumber(planFeatureMap.unique_tones, next.tones_count || 1);
-  next.creativity_from_best_plan = asNumber(planFeatureMap.avg_creativity, next.creativity_from_best_plan || 0);
-  next.has_cta = 0;
-  next.grammar_quality = Math.max(asNumber(next.grammar_quality, 1), 0.75);
-  next.tech_quality = Math.max(asNumber(next.tech_quality, 1), 1);
-  return next;
-}
-
-function assignCtaToFeatureMap(featureMap = {}, hasCta = false) {
+function resolveWritingBrief(slotResult, publication, featureMap = {}) {
+  const stored = slotResult?.writingBrief || slotResult?.optimizedPublication?.writing_brief;
+  if (stored && typeof stored === 'object') {
+    return {
+      tone: stored.tone || toneFromFeatureMap(featureMap) || publication?.tone || 'expert',
+      creativity: asNumber(stored.creativity, 0.5),
+      has_cta: asNumber(stored.has_cta, 0) >= 0.5 ? 1 : 0,
+      hook: HOOK_IDS.includes(stored.hook) ? stored.hook : 'direct',
+      length: LENGTH_IDS.includes(stored.length) ? stored.length : 'medium',
+      lists: asNumber(stored.lists, 0) >= 0.5 ? 1 : 0
+    };
+  }
   return {
-    ...featureMap,
-    has_cta: hasCta ? 1 : 0
+    tone: toneFromFeatureMap(featureMap) || publication?.tone || 'expert',
+    creativity: asNumber(featureMap.creativity, 0.5),
+    has_cta: asNumber(featureMap.has_cta, 0) > 0 ? 1 : 0,
+    hook: 'direct',
+    length: 'medium',
+    lists: asNumber(featureMap.has_lists, 0) > 0 ? 1 : 0
   };
-}
-
-function assignToneToFeatureMap(featureMap = {}, tone = '') {
-  const targetToneIndex = resolveToneIndex(tone);
-  if (!Number.isInteger(targetToneIndex)) {
-    return featureMap;
-  }
-  const next = { ...featureMap };
-  for (let index = TONE_START; index <= TONE_END; index += 1) {
-    next[`tone_onehot_${index - TONE_START}`] = index - TONE_START === targetToneIndex ? 1 : 0;
-  }
-  return next;
-}
-
-function rankCtaPriority(publication = {}) {
-  const objective = String(publication?.objective || '').toLowerCase();
-  if (objective === 'convert') return 4;
-  if (objective === 'retain') return 3;
-  if (objective === 'engage' || objective === 'brand_building') return 2;
-  return 1;
 }
 
 const DEFAULT_PLAN_CTA = 'Запросить демонстрацию решения';
@@ -536,7 +577,7 @@ function resolveEffectiveCta(basePublication, sourcePublication, featureMap) {
   return '';
 }
 
-function buildFinalPublication(basePublication, bestPublication, featureMap, predictedLikes, predictedShares, predictedViews, index) {
+function buildFinalPublication(basePublication, bestPublication, featureMap, predictedLikes, predictedShares, predictedViews, index, toneOverride = '', keyMessageOverride = null, summaryOverride = null, ctaOverride = null) {
   const source = cloneJson(bestPublication || {});
   const base = cloneJson(basePublication || {});
   const semanticCore = base?.semantic_core || source?.semantic_core || buildDraftSemanticCore(basePublication || bestPublication || {});
@@ -544,28 +585,34 @@ function buildFinalPublication(basePublication, bestPublication, featureMap, pre
   const sourceKpi = source?.expected_kpi && typeof source.expected_kpi === 'object' ? source.expected_kpi : {};
   const objective = base?.objective || source?.objective || null;
   const format = base?.format || source?.format || null;
-  const tone = base?.tone || source?.tone || null;
+  const tone = toneOverride || base?.tone || source?.tone || null;
   const topic = normalizePublicationTopicForUi(
     choosePreferredTopic(semanticCore, base?.topic || source?.topic || null, objective, index)
   );
-  const cta = resolveEffectiveCta(
-    { ...base, objective, topic },
-    { ...source, objective, topic },
-    featureMap
-  );
-  const keyMessage = choosePreferredKeyMessage(semanticCore, base?.key_message || source?.key_message || '', {
-    topic,
-    objective,
-    format,
-    tone,
-    index
-  });
-  const summary = choosePreferredSummary(semanticCore, base?.summary || source?.summary || '', {
-    topic,
-    format,
-    fallbackSummary: base?.summary || source?.summary || ''
-  });
-  return {
+   const cta = typeof ctaOverride === 'string' && ctaOverride.trim()
+     ? ctaOverride.trim()
+     : resolveEffectiveCta(
+       { ...base, objective, topic },
+       { ...source, objective, topic },
+       featureMap
+     );
+   const keyMessage = typeof keyMessageOverride === 'string' && keyMessageOverride.trim()
+     ? keyMessageOverride.trim()
+     : choosePreferredKeyMessage(semanticCore, base?.key_message || source?.key_message || '', {
+       topic,
+       objective,
+       format,
+       tone,
+       index
+     });
+   const summary = typeof summaryOverride === 'string' && summaryOverride.trim()
+     ? summaryOverride.trim()
+     : choosePreferredSummary(semanticCore, base?.summary || source?.summary || '', {
+       topic,
+       format,
+       fallbackSummary: base?.summary || source?.summary || ''
+     });
+  const nextPublication = {
     ...source,
     ...base,
     publication_id: base?.publication_id || source?.publication_id || `final_publication_${String(index + 1).padStart(3, '0')}`,
@@ -595,11 +642,59 @@ function buildFinalPublication(basePublication, bestPublication, featureMap, pre
       ml_predicted_likes: predictedLikes,
       ml_predicted_shares: predictedShares,
       ml_predicted_views: predictedViews,
-      predicted_likes_source: 'final_best_post_template'
+      predicted_likes_source: 'written_post_features'
     },
-    ontology_features: featureMap,
-    semantic_core: semanticCore
+    ontology_features: featureMap
   };
+  return {
+    ...nextPublication,
+    semantic_core: buildDraftSemanticCore(nextPublication)
+  };
+}
+
+function rebalanceBriefField(results, field, allowed, limit) {
+  const counts = new Map();
+  for (const item of results) {
+    const value = item.writingBrief?.[field] || allowed[0];
+    counts.set(value, (counts.get(value) || 0) + 1);
+  }
+  const order = results
+    .map((item, index) => ({ index, fitness: asNumber(item.fitness, 0) }))
+    .sort((left, right) => left.fitness - right.fitness);
+  for (const { index } of order) {
+    const value = results[index].writingBrief?.[field] || allowed[0];
+    if ((counts.get(value) || 0) <= limit) continue;
+    const replacement = allowed
+      .slice()
+      .sort((left, right) => (counts.get(left) || 0) - (counts.get(right) || 0))
+      .find((candidate) => candidate !== value);
+    if (!replacement) continue;
+    counts.set(value, (counts.get(value) || 1) - 1);
+    counts.set(replacement, (counts.get(replacement) || 0) + 1);
+    results[index].writingBrief = {
+      ...(results[index].writingBrief || {}),
+      [field]: replacement
+    };
+    if (results[index].optimizedPublication) {
+      results[index].optimizedPublication = {
+        ...results[index].optimizedPublication,
+        ...(field === 'tone' ? { tone: replacement } : {}),
+        writing_brief: { ...results[index].writingBrief }
+      };
+    }
+  }
+}
+
+/** After independent post GAs, spread tone and hook across the chosen briefs. */
+function reconcileChosenBriefs(results = []) {
+  if (!Array.isArray(results) || results.length < 2) return results;
+  const next = results.map((item) => ({
+    ...item,
+    writingBrief: { ...(item.writingBrief || item.optimizedPublication?.writing_brief || {}) }
+  }));
+  rebalanceBriefField(next, 'tone', TONE_LABELS, Math.max(1, Math.ceil(next.length / TONE_LABELS.length)));
+  rebalanceBriefField(next, 'hook', HOOK_IDS, Math.max(1, Math.ceil(next.length / HOOK_IDS.length)));
+  return next;
 }
 
 export async function optimizePublicationsEvolution(publications = [], planFeatureMap = {}, config = {}) {
@@ -607,21 +702,13 @@ export async function optimizePublicationsEvolution(publications = [], planFeatu
   const lockedFields = config.lockedFields || {};
 
   const repairedBases = publications.map((pub) => {
-    const targetToneIndex =
-      lockedFields.targetToneIndex !== undefined
-        ? lockedFields.targetToneIndex
-        : resolveToneIndex(pub?.tone);
-    const constants = {
-      tonesCount: planFeatureMap.unique_tones,
-      creativityFromBestPlan: planFeatureMap.avg_creativity,
+    const targetToneIndex = lockedFields.targetToneIndex === undefined || lockedFields.targetToneIndex === null
+      ? null
+      : lockedFields.targetToneIndex;
+    return repairDecision(baseDecision(pub), {
       hasCta: lockedFields.has_cta,
       targetToneIndex
-    };
-    const raw = buildPostFeatureVector(pub, {
-      tonesCount: planFeatureMap.unique_tones,
-      creativityFromBestPlan: planFeatureMap.avg_creativity
     });
-    return repairGenome(raw, constants);
   });
 
   const peerDivRaw =
@@ -629,8 +716,8 @@ export async function optimizePublicationsEvolution(publications = [], planFeatu
     config.peerDiversityWeight ??
     readPostGaEnvNumber('PLAN_GA_PEER_DIVERSITY_WEIGHT');
   const peerDiversityWeight = Number.isFinite(Number(peerDivRaw))
-    ? clampProbability(peerDivRaw, 0.1)
-    : 0.1;
+    ? clampProbability(peerDivRaw, 0.28)
+    : 0.28;
 
   const optimized = await mapWithConcurrency(
     publications,
@@ -644,17 +731,18 @@ export async function optimizePublicationsEvolution(publications = [], planFeatu
       })
   );
 
-  const bestPublication = optimized
+  const coordinated = reconcileChosenBriefs(optimized);
+  const bestPublication = coordinated
     .slice()
     .sort((left, right) => right.fitness - left.fitness)[0] || null;
   const archetypes = buildPublicationArchetypes(
-    optimized,
-    gaConfig.maxArchetypes ?? config.maxArchetypes ?? 5
+    coordinated,
+    gaConfig.maxArchetypes ?? config.maxArchetypes ?? 8
   );
 
   return {
-    optimizedPublications: optimized.map((item) => item.optimizedPublication),
-    publicationResults: optimized,
+    optimizedPublications: coordinated.map((item) => item.optimizedPublication),
+    publicationResults: coordinated,
     bestPublication: bestPublication?.optimizedPublication || null,
     archetypes
   };
@@ -670,7 +758,7 @@ export async function fillPlanWithBestPublication(publications = [], publication
       .map((item) => [item.optimizedPublication.publication_id, item])
   );
   const archetypes = slotResults.length
-    ? buildPublicationArchetypes(slotResults, options.maxArchetypes ?? 5)
+    ? buildPublicationArchetypes(slotResults, options.maxArchetypes ?? 8)
     : [];
     
   if (!archetypes.length || !Array.isArray(publications) || publications.length === 0) {
@@ -681,75 +769,160 @@ export async function fillPlanWithBestPublication(publications = [], publication
     };
   }
 
-  const totalCount = publications.length;
-  const requiredCtaCount = publications.filter((publication) => resolveCtaPreference(publication) === 'required').length;
-  const preferredCtaCount = publications.filter((publication) => resolveCtaPreference(publication) === 'preferred').length;
-  const targetCtaShare = options.targetCtaShare ?? asNumber(planFeatureMap.cta_share, 0);
-  const shareBased = Math.max(0, Math.min(totalCount, Math.round(targetCtaShare * totalCount)));
-  const softPreferredBudget = Math.min(3, preferredCtaCount);
-  const ctaTargetCount = Math.min(
-    totalCount,
-    Math.max(requiredCtaCount, shareBased, requiredCtaCount + softPreferredBudget)
-  );
-  
-  const requiredCtaIndices = publications
-    .map((publication, index) => (resolveCtaPreference(publication) === 'required' ? index : null))
-    .filter((index) => index !== null);
-  const ctaIndices = new Set(requiredCtaIndices);
-  const fillSorted = publications
-    .map((publication, index) => ({
-      index,
-      priority: rankCtaPriority(publication),
-      hasExistingCta: publication?.cta ? 1 : 0
-    }))
-    .sort(
-      (left, right) =>
-        right.priority - left.priority ||
-        right.hasExistingCta - left.hasExistingCta ||
-        left.index - right.index
-    );
-  for (const { index } of fillSorted) {
-    if (ctaIndices.size >= ctaTargetCount) break;
-    if (!ctaIndices.has(index)) ctaIndices.add(index);
-  }
-  
   const usageByKey = new Map();
   const toneUsage = new Map();
-  const targetUniqueTones = options.targetUniqueTones ?? asNumber(planFeatureMap.unique_tones, 0);
-  const selectedSources = publications.map((publication, index) =>
+   const targetUniqueTones = options.targetUniqueTones ?? asNumber(planFeatureMap.unique_tones, 0);
+   const llmContext = options.llmContext || {};
+   const formInput = llmContext.formInput || llmContext.form_input;
+   const ragResults = llmContext.ragResults;
+   const selectedSources = publications.map((publication, index) =>
     slotResultsById.get(publication?.publication_id) ||
     slotResults[index] ||
     selectArchetypeForPublication(publication, archetypes, usageByKey, toneUsage, targetUniqueTones)
   );
   
-  const featureVectors = publications.map((_, index) => {
+  const avoidOpenings = [];
+  const avoidTopics = [];
+  const drafts = [];
+  for (let index = 0; index < publications.length; index += 1) {
+    const publication = publications[index];
     const source = selectedSources[index]?.optimizedPublication || selectedSources[index] || archetypes[0];
     const slotFeatureMap = selectedSources[index]?.featureMap || source?.ontology_features || {};
-    const baseFeatureMap = assignToneToFeatureMap(cloneFeatureMap(slotFeatureMap, planFeatureMap), publications[index]?.tone);
-    return buildPostFeatureVectorFromFeatureMap(assignCtaToFeatureMap(baseFeatureMap, ctaIndices.has(index)));
-  });
-  
-  const predictionResult = await predictPostMetricsByFeatureVectors(featureVectors, { forceTrain: false });
+    const brief = resolveWritingBrief(selectedSources[index], publication, slotFeatureMap);
+    const evolvedTone = brief.tone || toneFromFeatureMap(slotFeatureMap) || publication?.tone;
+    const topic = publication?.topic || source?.topic;
+    const format = publication?.format || source?.format;
+    const objective = publication?.objective || source?.objective;
+    const generated = await generatePostContent(
+      publication,
+      {
+        topic,
+        format,
+        objective,
+        tone: evolvedTone || source?.tone,
+        platform: publication?.platform || source?.platform,
+        has_cta: brief.has_cta,
+        creativity: brief.creativity,
+        hook: brief.hook,
+        length: brief.length,
+        lists: brief.lists,
+        index,
+        avoid_openings: avoidOpenings.slice(-12),
+        avoid_topics: avoidTopics.slice(-24)
+      },
+      formInput,
+      ragResults,
+      {}
+    );
+    const keyMessage = generated?.key_message || generated?.keyMessage || '';
+    const summary = generated?.summary || '';
+    const cta = generated?.cta || '';
+    if (summary) avoidOpenings.push(String(summary).replace(/\s+/g, ' ').trim().slice(0, 120));
+    if (topic) avoidTopics.push(String(topic));
+    drafts.push({
+      publication,
+      source,
+      brief,
+      evolvedTone,
+      keyMessage,
+      summary,
+      cta,
+      mediaPrompt: String(generated?.media_prompt || '').trim(),
+      textOrigin: generated?.text_origin || 'llm'
+    });
+  }
 
+  const featureOptions = {
+    tonesCount: planFeatureMap.unique_tones,
+    creativityFromBestPlan: planFeatureMap.avg_creativity
+  };
+  const bodyIsUsable = (summary, keyMessage) =>
+    String(summary || '').trim().length >= 80 && String(keyMessage || '').trim().length >= 12;
+
+  const writtenVectors = drafts.map((draft) => buildPostFeatureVector({
+    topic: draft.publication?.topic || draft.source?.topic,
+    summary: draft.summary,
+    key_message: draft.keyMessage,
+    cta: draft.cta,
+    tone: draft.evolvedTone
+  }, featureOptions));
+  const predictionResult = await predictPostMetricsByFeatureVectors(writtenVectors, { forceTrain: false });
+  const shouldCompareDraft = drafts.some((draft) =>
+    draft.textOrigin === 'template_fallback' ||
+    bodyIsUsable(draft.publication?.summary, draft.publication?.key_message)
+  );
+  const originalVectors = shouldCompareDraft
+    ? drafts.map((draft) => buildPostFeatureVector({
+      topic: draft.publication?.topic,
+      summary: draft.publication?.summary,
+      key_message: draft.publication?.key_message,
+      cta: draft.publication?.cta,
+      tone: draft.publication?.tone
+    }, featureOptions))
+    : [];
+  const originalPrediction = originalVectors.length
+    ? await predictPostMetricsByFeatureVectors(originalVectors, { forceTrain: false })
+    : null;
+
+  const publicationsArray = drafts.map((draft, index) => {
+    const writtenPred = predictionResult.predictions[index] || [0, 0, 0];
+    const originalPred = originalPrediction?.predictions?.[index] || null;
+    let summary = draft.summary;
+    let keyMessage = draft.keyMessage;
+    let cta = draft.cta;
+    let textOrigin = draft.textOrigin;
+    let pred = writtenPred;
+    let vector = writtenVectors[index];
+    const draftUsable = bodyIsUsable(draft.publication?.summary, draft.publication?.key_message);
+    const writtenKpi = calculateFitness(writtenPred, predictionResult.metadata, draft.publication);
+    const originalKpi = originalPred
+      ? calculateFitness(originalPred, originalPrediction.metadata, draft.publication)
+      : -1;
+    const keepDraft = draftUsable && originalPred && (
+      textOrigin === 'template_fallback' ||
+      originalKpi > writtenKpi + 0.03
+    );
+    if (keepDraft) {
+      summary = draft.publication.summary;
+      keyMessage = draft.publication.key_message;
+      cta = draft.publication.cta || '';
+      textOrigin = 'draft_kept';
+      pred = originalPred;
+      vector = originalVectors[index];
+    }
+    const writtenMap = createFeatureMap(vector);
+    const built = buildFinalPublication(
+      draft.publication,
+      draft.source,
+      writtenMap,
+      pred[0],
+      pred[1],
+      pred[2],
+      index,
+      draft.evolvedTone,
+      keyMessage,
+      summary,
+      cta
+    );
+    const mediaKind = mediaKindForFormat(draft.publication?.format || draft.source?.format);
+    const mediaPrompt = mediaKind
+      ? (keepDraft
+        ? buildFallbackMediaPrompt(mediaKind, draft.publication?.topic, summary)
+        : draft.mediaPrompt || buildFallbackMediaPrompt(mediaKind, draft.publication?.topic, summary))
+      : '';
+    return {
+      ...built,
+      writing_brief: draft.brief,
+      text_origin: textOrigin,
+      media_prompt: mediaPrompt,
+      media: null
+    };
+  });
+
+  const ctaAssignedCount = drafts.filter((draft) => Number(draft.brief?.has_cta) > 0).length;
   return {
-    publications: publications.map((publication, index) => {
-      const source = selectedSources[index]?.optimizedPublication || selectedSources[index] || archetypes[0];
-      const slotFeatureMap = selectedSources[index]?.featureMap || source?.ontology_features || {};
-      const baseFeatureMap = assignToneToFeatureMap(cloneFeatureMap(slotFeatureMap, planFeatureMap), publication?.tone);
-      const featureMap = assignCtaToFeatureMap(baseFeatureMap, ctaIndices.has(index));
-      const pred = predictionResult.predictions[index] || [0, 0, 0];
-      
-      return buildFinalPublication(
-        publication,
-        source,
-        featureMap,
-        pred[0],
-        pred[1],
-        pred[2],
-        index
-      );
-    }),
-    ctaTargetCount,
-    ctaAssignedCount: ctaIndices.size
+    publications: publicationsArray,
+    ctaTargetCount: ctaAssignedCount,
+    ctaAssignedCount
   };
 }

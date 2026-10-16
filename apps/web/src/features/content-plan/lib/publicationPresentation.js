@@ -1,6 +1,6 @@
 const ALLOWED_OBJECTIVES = ['inform', 'educate', 'engage', 'convert', 'retain', 'brand_building']
 const ALLOWED_FORMATS = ['text', 'image', 'video', 'combined']
-const ALLOWED_PLATFORMS = ['vk', 'linkedin']
+const ALLOWED_PLATFORMS = ['vk', 'linkedin', 'instagram']
 const ALLOWED_TONES = ['expert', 'friendly', 'official', 'inspiring', 'humorous', 'neutral']
 
 const OBJECTIVE_LABELS = {
@@ -31,7 +31,8 @@ const FORMAT_ALIASES = {
 
 const PLATFORM_LABELS = {
   vk: 'ВКонтакте',
-  linkedin: 'LinkedIn'
+  linkedin: 'LinkedIn',
+  instagram: 'Instagram'
 }
 
 const TONE_ALIASES = {
@@ -153,6 +154,17 @@ export function getToneLabel(value) {
   return TONE_LABELS[normalized] || toStringSafe(value) || 'не указан'
 }
 
+export function getMediaKind(format) {
+  const normalized = normalizeFormat(format, '')
+  if (normalized === 'video') return 'video'
+  if (normalized === 'image' || normalized === 'combined') return 'image'
+  return null
+}
+
+export function getMediaPromptLabel(format) {
+  return getMediaKind(format) === 'video' ? 'Промпт для видео' : 'Промпт для изображения'
+}
+
 export function getFormatLabel(value) {
   const normalized = normalizeFormat(value, '')
   return FORMAT_LABELS[normalized] || toStringSafe(value) || 'не указан'
@@ -234,7 +246,9 @@ export function normalizePublicationForUi(publication) {
     cta: toStringSafe(publication.cta),
     format: normalizeFormat(publication.format),
     objective: normalizeObjective(publication.objective),
-    platform: normalizePlatform(publication.platform)
+    platform: normalizePlatform(publication.platform),
+    media_prompt: toStringSafe(publication.media_prompt),
+    media: publication.media && typeof publication.media === 'object' ? publication.media : null
   }
 }
 

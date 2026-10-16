@@ -18,11 +18,11 @@ export function formatReliabilityLabel(reliability) {
 export function renderMatchExplanation(matchedTokens = [], retrieval = null) {
   const type = retrieval?.type
   if (type === 'embedding_cosine') {
-    return 'Semantic retrieval: совпадение считается по смыслу, а не по словам'
+    return 'Поиск по смыслу: совпадение считается по смыслу, а не по словам'
   }
   if (type === 'token_overlap' || type === 'token_overlap_fallback') {
-    if (!matchedTokens.length) return 'Лексический fallback: совпадение по токенам запроса'
-    return `Лексический fallback: ${matchedTokens.join(', ')}`
+    if (!matchedTokens.length) return 'Запасной поиск по словам: совпадение по словам запроса'
+    return `Запасной поиск по словам: ${matchedTokens.join(', ')}`
   }
   if (!matchedTokens.length) return 'Без совпавших токенов'
   return matchedTokens.join(', ')
@@ -33,15 +33,15 @@ export function buildRetrievalBadge(retrieval, { isDeveloper = true } = {}) {
   if (type === 'embedding_cosine') {
     return isDeveloper
       ? {
-          label: 'Semantic retrieval',
-          hint: retrieval?.embedding_model ? `${retrieval.embedding_model}` : 'embeddings',
+          label: 'Поиск по смыслу',
+          hint: retrieval?.embedding_model ? `${retrieval.embedding_model}` : 'эмбеддинги',
           tone: 'success'
         }
       : { label: 'Поиск по смыслу', hint: '', tone: 'success' }
   }
   if (type === 'token_overlap' || type === 'token_overlap_fallback') {
     return isDeveloper
-      ? { label: 'Token overlap', hint: 'fallback', tone: 'neutral' }
+      ? { label: 'Поиск по ключевым словам', hint: 'запасной режим', tone: 'neutral' }
       : { label: 'Поиск по ключевым словам', hint: '', tone: 'neutral' }
   }
   if (!type) return null

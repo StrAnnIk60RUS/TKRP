@@ -16,8 +16,10 @@ import {
   choosePreferredKeyMessage,
   choosePreferredSummary,
   choosePreferredTopic,
+  assignDistinctCtas,
   dedupeKeyMessagesAcrossPublications,
   dedupeRepeatedProductBoilerplateInSummaries,
+  diversifyRepeatedSummaryOpenings,
   ensureDistinctTopicTitles,
   normalizePublicationTopicForUi,
   reconcilePublicationKeyMessageWithTopic,
@@ -47,7 +49,7 @@ const BATCH_PROMPT_PATH = path.join(
   'articleDraftPlanBatchPrompt.txt'
 );
 
-const ALLOWED_PLATFORMS = ['vk', 'linkedin'];
+const ALLOWED_PLATFORMS = ['vk', 'linkedin', 'instagram'];
 const ALLOWED_OBJECTIVES = ['inform', 'educate', 'engage', 'convert', 'retain', 'brand_building'];
 const DEFAULT_FORMATS = ['text', 'image', 'video', 'combined'];
 const ALLOWED_TONES = ['expert', 'friendly', 'official', 'inspiring', 'humorous', 'neutral'];
@@ -216,17 +218,51 @@ function getMinSummaryLengthByFormat(format = 'text') {
   return MIN_SUMMARY_LENGTH[normalized] || MIN_SUMMARY_LENGTH.text;
 }
 
+const SUMMARY_PAD_SENTENCES = [
+  ' Дальше — что проверить на месте, какой результат считать удачным и кто подтверждает, что шаг закрыт.',
+  ' Рядом имеет смысл показать один рабочий пример и границу, после которой гипотезу пора остановить.',
+  ' Отдельно стоит назвать ограничение: где метод не подходит и какой сигнал говорит, что пора сменить подход.',
+  ' Полезно сравнить два соседних решения по сроку, риску и тому, что увидит заказчик в первую неделю.',
+  ' В конце оставьте читателю один вопрос, на который можно ответить из своего опыта, без общего призыва.'
+];
+
 function ensureTextLength(value, minLength, maxLength = MAX_SUMMARY_LENGTH) {
   const normalized = typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
   if (!normalized) return '';
   if (normalized.length >= minLength) return normalized.slice(0, maxLength);
-  const padSentence =
-    ' Добавь практические детали, конкретные шаги внедрения, ожидаемый результат и короткий призыв к действию.';
+  let seed = 0;
+  const sample = normalized.slice(0, 80);
+  for (let i = 0; i < sample.length; i += 1) {
+    seed = (seed * 33 + sample.charCodeAt(i)) >>> 0;
+  }
   let extended = normalized;
+  let padIndex = seed;
   while (extended.length < minLength) {
-    extended = `${extended}${padSentence}`;
+    extended = `${extended}${SUMMARY_PAD_SENTENCES[padIndex % SUMMARY_PAD_SENTENCES.length]}`;
+    padIndex += 1;
   }
   return extended.slice(0, maxLength).trim();
+}
+
+function excerptForSlot(text, maxLen, salt = 0) {
+  const clean = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!clean) return '';
+  const sentences = clean.split(/(?<=[.!?])\s+/u).map((part) => part.trim()).filter(Boolean);
+  const source = sentences.length ? sentences[Math.abs(salt) % sentences.length] : clean;
+  if (source.length <= maxLen) return source;
+  const cut = source.slice(0, maxLen);
+  const space = cut.lastIndexOf(' ');
+  return `${(space > 40 ? cut.slice(0, space) : cut).trim()}…`;
+}
+
+function nicheDetailForVariant(formInput = {}, variant = 0) {
+  const fields = [formInput.projectDescription, formInput.projectBenefits, formInput.projectGoals, formInput.consumerPurchaseGoal]
+    .map((value) => (typeof value === 'string' ? value.trim() : ''))
+    .filter(Boolean);
+  if (!fields.length) {
+    return 'Берите один прикладной факт этого слота и не пересказывайте весь состав продукта.';
+  }
+  return excerptForSlot(fields[Math.abs(variant) % fields.length], 170, variant);
 }
 
 function tokenizeSemanticText(value) {
@@ -265,20 +301,14 @@ function topicAnchorsInKeyMessage(topic, keyMessage) {
 
 function buildSummaryRepairFromTopic(topic, format, formInput) {
   const minLength = getMinSummaryLengthByFormat(format);
-  const projectDescription =
-    typeof formInput.projectDescription === 'string' && formInput.projectDescription.trim()
-      ? formInput.projectDescription.trim()
-      : 'Экспертная публикация о продукте, сервисе или бренде и его прикладной ценности для целевой аудитории.';
-  const projectBenefits =
-    typeof formInput.projectBenefits === 'string' && formInput.projectBenefits.trim()
-      ? formInput.projectBenefits.trim()
-      : 'Сфокусируйся на практической пользе решения, прозрачных шагах внедрения и измеримом эффекте для бизнеса.';
-  const audienceHint =
-    typeof formInput.consumerCategory === 'string' && formInput.consumerCategory.trim()
-      ? `Материал адресован аудитории ${formInput.consumerCategory.trim()}.`
-      : 'Материал ориентирован на команду, которая отвечает за качество, сроки и управляемость процесса.';
   const safeTopic = sanitizeTopicTitle(topic) || 'тема публикации';
-  const core = `${safeTopic}: показываем реальный рабочий сценарий, где тема влияет на скорость, качество или стоимость процесса. ${projectDescription} ${projectBenefits} ${audienceHint} Даём понятные шаги, на что смотреть в первую очередь, какой эффект можно измерить и какой следующий шаг логично сделать после публикации.`;
+  const detail = nicheDetailForVariant(formInput, summarySanitizeSeed(safeTopic, format, 'inform', safeTopic));
+  const audience =
+    typeof formInput.consumerCategory === 'string' && formInput.consumerCategory.trim()
+      ? formInput.consumerCategory.trim()
+      : '';
+  const audienceHint = audience ? ` Аудитория слота: ${audience}.` : '';
+  const core = `По теме «${safeTopic}» достаточно одного рабочего эпизода, а не полного описания продукта. ${detail}${audienceHint} Назовите, что меняется после этого шага и как это проверить без пересказа остальных публикаций плана.`;
   return ensureTextLength(core, minLength, MAX_SUMMARY_LENGTH);
 }
 
@@ -355,19 +385,27 @@ export function sanitizeUserFacingSummary(summary, topic, format, formInput = {}
   if (!normalized) {
     return buildSummaryRepairFromTopic(topic, format, formInput);
   }
-  const hasMetaNarration =
-    /\b(?:цель\s+публикации|задача\s+материала|читатель\s+получит|структура\s+материала)\b/iu.test(normalized);
-  if (hasMetaNarration) {
-    return buildSummaryRepairFromTopic(topic, format, formInput);
+  const keptSentences = normalized
+    .split(/(?<=[.!?])\s+/u)
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => {
+      if (!sentence) return false;
+      if (/\b(?:цель\s+публикации|задача\s+материала|читатель\s+получит|структура\s+материала)\b/iu.test(sentence)) {
+        return false;
+      }
+      if (AUTHOR_BRIEF_PHRASE_RE.test(sentence)) return false;
+      return true;
+    });
+  if (keptSentences.length) {
+    normalized = keptSentences.join(' ');
   }
-  if (AUTHOR_BRIEF_PHRASE_RE.test(normalized)) {
+  const stillInstruction =
+    /\b(?:цель\s+публикации|задача\s+материала|читатель\s+получит|структура\s+материала)\b/iu.test(normalized) ||
+    AUTHOR_BRIEF_PHRASE_RE.test(normalized);
+  if (stillInstruction || normalized.length < Math.min(120, minLength)) {
     const obj = normalizeObjective(objective, 'inform');
     const seed = summarySanitizeSeed(topic, format, obj, normalized);
-    return buildDiversifiedSummaryForSlot(
-      { topic, format, objective: obj },
-      formInput,
-      seed
-    );
+    return buildDiversifiedSummaryForSlot({ topic, format, objective: obj }, formInput, seed);
   }
   return ensureTextLength(normalized, minLength, MAX_SUMMARY_LENGTH);
 }
@@ -378,18 +416,7 @@ function buildDiversifiedSummaryForSlot(slot, formInput, variantSeed = 0) {
     sanitizeTopicTitle(slot?.topic) || buildFallbackTopic(slot, formInput, (idx % 17) + 1);
   const format = slot?.format || 'text';
   const objective = normalizeObjective(slot?.objective, 'inform');
-  const pd =
-    typeof formInput.projectDescription === 'string' && formInput.projectDescription.trim()
-      ? formInput.projectDescription.trim()
-      : 'Экспертная публикация о продукте и его прикладной ценности.';
-  const pb =
-    typeof formInput.projectBenefits === 'string' && formInput.projectBenefits.trim()
-      ? formInput.projectBenefits.trim()
-      : 'Практическая польза, прозрачные шаги внедрения и измеримый эффект.';
-  const aud =
-    typeof formInput.consumerCategory === 'string' && formInput.consumerCategory.trim()
-      ? `Аудитория: ${String(formInput.consumerCategory).trim()}.`
-      : 'Аудитория: команды, отвечающие за качество и управляемость процесса.';
+  const detail = nicheDetailForVariant(formInput, idx + 3);
   const objectiveLine =
     objective === 'convert'
       ? 'Фокус на точке входа в проект и том, как эффект увидеть в цифрах за короткий горизонт.'
@@ -402,14 +429,14 @@ function buildDiversifiedSummaryForSlot(slot, formInput, variantSeed = 0) {
             : 'Фокус на прикладном сценарии и типовых ошибках, которые дорого обходятся.';
   const v = idx % 8;
   const bodies = [
-    `Инженер на участке формулирует «${topic}» как вопрос приоритета: что фиксировать в первую очередь, чтобы не расползался контроль. ${objectiveLine} ${pd} ${pb} ${aud} Дальше — последовательность шагов, критерии «готово/не готово» и как не смешать ответственность ролей.`,
-    `Если смотреть глазами проверки качества: где в «${topic}» чаще всего пустые места в документации и чем это грозит при аудите. ${objectiveLine} ${pd} ${pb} ${aud} Разбираем, какие данные собрать заранее, как проверить целостность и как связать факт на местах с отчётностью.`,
-    `Короткая развилка для руководителя: два подхода к «${topic}» — быстрый пилот и поэтапная стандартизация. ${objectiveLine} ${pd} ${pb} ${aud} Сопоставляем риски, сроки, стоимость владения и критерии, когда выбирать каждый путь.`,
-    `Стартуем с боли смены: лишние простои и спорные записи, когда «${topic}» не доведено до регламента. ${objectiveLine} ${pd} ${pb} ${aud} Показываем рабочий порядок действий, кому какие проверки делать и как измерить эффект до и после.`,
-    `Миф и проверка фактами: «${topic}» не сводится к покупке «коробки». ${objectiveLine} ${pd} ${pb} ${aud} Что должно быть настроено в процессе, кто владелец данных, и какие метрики честно покажут прогресс.`,
-    `Вопрос недели для команды: что изменится на участке через месяц, если закрыть «${topic}» системно. ${objectiveLine} ${pd} ${pb} ${aud} Даём признаки зрелого решения, красные флаги при внедрении и чек-лист для самопроверки перед масштабированием.`,
-    `Цифры как якорь: какая доля переделок связана с пробелами в «${topic}», и как это увидеть в отчёте без ручного «домысла». ${objectiveLine} ${pd} ${pb} ${aud} Объясняем, какие источники данных нужны, как часто сверять и кто подписывает результат.`,
-    `Смена, где «${topic}» уже работает: что делают иначе, и что ломается, если система есть, а дисциплины нет. ${objectiveLine} ${pd} ${pb} ${aud} Практические шаги, чтобы процесс не рушился на передаче смен и смене персонала.`
+    `Инженер формулирует «${topic}» как вопрос приоритета: что фиксировать в первую очередь. ${objectiveLine} Опора слота: ${detail} Дальше — критерии «готово/не готово» именно для этой темы.`,
+    `Если смотреть глазами проверки: где в «${topic}» пустеет документация и чем это кончается на аудите. ${objectiveLine} Факт, который нельзя размазывать на другие посты: ${detail}`,
+    `Развилка для руководителя по «${topic}»: быстрый пилот или поэтапная стандартизация. ${objectiveLine} ${detail} Сравнивайте срок, риск и то, что увидит заказчик в первую неделю.`,
+    `Смена упирается в «${topic}», когда регламент есть только на бумаге. ${objectiveLine} ${detail} Покажите один порядок действий и как измерить эффект до и после.`,
+    `«${topic}» не сводится к покупке готового блока. ${objectiveLine} ${detail} Назовите владельца данных и метрику, которая честно покажет прогресс.`,
+    `Вопрос команде: что изменится через месяц, если закрыть «${topic}» до конца. ${objectiveLine} ${detail} Дайте красный флаг и один пункт самопроверки.`,
+    `Цифра как якорь для «${topic}»: какую долю переделок можно увидеть в отчёте без ручной догадки. ${objectiveLine} ${detail} Укажите источник данных и кто подписывает результат.`,
+    `Там, где «${topic}» уже работает, ломается не инструмент, а передача между людьми. ${objectiveLine} ${detail} Опишите, что делают иначе на одной конкретной передаче.`
   ];
   const body = bodies[v];
   return sanitizeUserFacingSummary(body, topic, format, formInput, objective);
@@ -580,25 +607,72 @@ function buildCompactPlanContext(item = {}) {
   };
 }
 
+function jaccardTokenSets(left, right) {
+  if (!left.size && !right.size) return 1;
+  let shared = 0;
+  for (const token of left) {
+    if (right.has(token)) shared += 1;
+  }
+  const union = left.size + right.size - shared;
+  return union ? shared / union : 0;
+}
+
+function pickDiverseByMmr(items, limit, textOf) {
+  const ranked = toArray(items);
+  if (ranked.length <= limit) return ranked;
+  const selected = [ranked[0]];
+  const rest = ranked.slice(1);
+  while (selected.length < limit && rest.length) {
+    let bestIndex = 0;
+    let bestScore = Number.NEGATIVE_INFINITY;
+    const selectedSets = selected.map((item) => new Set(tokenizeSemanticText(textOf(item))));
+    for (let index = 0; index < rest.length; index += 1) {
+      const relevance = (Number(rest[index]?.score) || 0) * 0.65 + (Number(rest[index]?.reliability) || 0) * 0.35;
+      const candidateSet = new Set(tokenizeSemanticText(textOf(rest[index])));
+      let maxSimilarity = 0;
+      for (const selectedSet of selectedSets) {
+        maxSimilarity = Math.max(maxSimilarity, jaccardTokenSets(candidateSet, selectedSet));
+      }
+      const mmr = relevance * 0.62 - maxSimilarity * 0.38;
+      if (mmr > bestScore) {
+        bestScore = mmr;
+        bestIndex = index;
+      }
+    }
+    selected.push(rest.splice(bestIndex, 1)[0]);
+  }
+  return selected;
+}
+
+function ragPublicationText(item = {}) {
+  const data = item?.data || {};
+  const model = data?.publication_model || {};
+  return `${model.topic || data.topic || ''} ${model.summary || data.summary || ''}`;
+}
+
+function ragPlanText(item = {}) {
+  const data = item?.data || {};
+  const model = data?.content_plan_model || {};
+  return `${model.plan_id || data.plan_id || ''} ${(model.audience_segments || []).join(' ')} ${data.summary || ''}`;
+}
+
 function buildCompactRagContext(ragResults = {}) {
-  const publications = toArray(ragResults.publications)
+  const rankedPublications = toArray(ragResults.publications)
     .slice()
     .sort(
       (left, right) =>
         ((right?.score || 0) * 0.65 + (right?.reliability || 0) * 0.35) -
         ((left?.score || 0) * 0.65 + (left?.reliability || 0) * 0.35)
-    )
-    .slice(0, 8)
-    .map(buildCompactPublicationContext);
-  const contentPlans = toArray(ragResults.content_plans)
+    );
+  const publications = pickDiverseByMmr(rankedPublications, 8, ragPublicationText).map(buildCompactPublicationContext);
+  const rankedPlans = toArray(ragResults.content_plans)
     .slice()
     .sort(
       (left, right) =>
         ((right?.score || 0) * 0.65 + (right?.reliability || 0) * 0.35) -
         ((left?.score || 0) * 0.65 + (left?.reliability || 0) * 0.35)
-    )
-    .slice(0, 5)
-    .map(buildCompactPlanContext);
+    );
+  const contentPlans = pickDiverseByMmr(rankedPlans, 5, ragPlanText).map(buildCompactPlanContext);
 
   const precedentIds = uniqueStrings([
     ...publications.map((item) => item.publication_id),
@@ -727,7 +801,9 @@ function buildGeneratedPublicationsContext(publications = []) {
       platform: item.platform,
       objective: item.objective,
       format: item.format,
-      topic: item.topic
+      topic: item.topic,
+      key_message: typeof item.key_message === 'string' ? item.key_message.slice(0, 180) : '',
+      summary_opening: summaryOpeningNormalizer(item.summary || '').slice(0, 100)
     }));
 }
 
@@ -735,7 +811,8 @@ function buildSlotFallback(idx, config) {
   const platform = config.platforms[idx % config.platforms.length] || 'linkedin';
   const objective = ALLOWED_OBJECTIVES[idx % ALLOWED_OBJECTIVES.length];
   const format = config.formats[idx % config.formats.length] || 'text';
-  const tone = config.defaultTone;
+  const toneRotation = ['expert', 'friendly', 'official', 'inspiring', 'neutral'];
+  const tone = toneRotation[idx % toneRotation.length];
   return {
     slot_id: `slot_${String(idx + 1).padStart(3, '0')}`,
     planned_date: config.schedule[idx] || config.startDate,
@@ -855,9 +932,14 @@ function repairSkeleton(rawSkeleton = {}, formInput = {}, targetPublicationCount
         if (candidate > requestedEnd) return requestedEnd;
         return candidate;
       })(),
-      platform: publicationDayMode === 'shared'
-        ? fallback.platform
-        : normalizePlatform(source.platform, fallback.platform),
+      platform: (() => {
+        const normalized = publicationDayMode === 'shared'
+          ? fallback.platform
+          : normalizePlatform(source.platform, fallback.platform);
+        const requested = Array.isArray(config.platforms) ? config.platforms : [];
+        if (requested.length && !requested.includes(normalized)) return fallback.platform;
+        return normalized;
+      })(),
       objective: normalizeObjective(source.objective, fallback.objective),
       format: normalizeFormat(source.format, fallback.format),
       tone: normalizeTone(source.tone, fallback.tone)
@@ -907,10 +989,6 @@ function repairSkeleton(rawSkeleton = {}, formInput = {}, targetPublicationCount
   };
 }
 
-function buildCallToAction(objective, projectName) {
-  return buildObjectiveCta(objective, projectName);
-}
-
 function calculateCtaBounds(totalPublications) {
   const minCount = Math.max(1, Math.ceil(totalPublications * CTA_MIN_SHARE));
   const maxCount = Math.max(minCount, Math.floor(totalPublications * CTA_MAX_SHARE));
@@ -948,8 +1026,13 @@ function enforceCtaCoverage(publications = [], projectName = '') {
       publication.cta = '';
       return;
     }
+    const existing = typeof publication.cta === 'string' ? publication.cta.trim() : '';
+    if (existing) {
+      publication.cta = existing;
+      return;
+    }
     const objective = normalizeObjective(publication?.objective, 'inform');
-    publication.cta = buildCallToAction(objective, projectName);
+    publication.cta = buildObjectiveCta(objective, projectName, publication.topic || '', index);
   });
 
   return next;
@@ -974,26 +1057,21 @@ function buildFallbackTopic(slot, formInput, index) {
 }
 
 function buildFallbackSummary(slot, formInput) {
-  const projectDescription = typeof formInput.projectDescription === 'string' && formInput.projectDescription.trim()
-    ? formInput.projectDescription.trim()
-    : 'Экспертная публикация о продукте, сервисе или бренде и его прикладной ценности для целевой аудитории.';
-  const projectBenefits = typeof formInput.projectBenefits === 'string' && formInput.projectBenefits.trim()
-    ? formInput.projectBenefits.trim()
-    : 'Сфокусируйся на практической пользе решения, прозрачных шагах внедрения и измеримом эффекте для бизнеса.';
-  const projectGoals = typeof formInput.projectGoals === 'string' && formInput.projectGoals.trim()
-    ? formInput.projectGoals.trim()
-    : 'Покажи, как проект повышает эффективность команды, снижает риски и ускоряет принятие решений.';
   const topic = sanitizeTopicTitle(slot?.topic) || buildFallbackTopic(slot, formInput, 0);
+  const detail = nicheDetailForVariant(
+    formInput,
+    summarySanitizeSeed(topic, slot?.format || 'text', slot?.objective || 'inform', topic)
+  );
   const scenarioLine =
     slot?.objective === 'convert'
-      ? 'На практике эффект чаще всего виден там, где контроль совпадает с циклом партии и смены: какие показатели честно сравнить до и после.'
+      ? 'Эффект этого слота виден в одной точке входа: какие две цифры честно сравнить до и после.'
       : slot?.objective === 'retain'
-        ? 'После запуска качество держится не «само»: какие регламентные шаги и роли не дают процессу откатиться.'
+        ? 'После запуска этот сценарий держится конкретным регламентным шагом, а не общим обещанием сервиса.'
         : slot?.objective === 'engage'
-          ? 'На участке нередко сталкиваются два рабочих варианта — оба правдоподобны; разбираем, где они расходятся и что проверить в первую очередь.'
-          : 'Сценарий на смене: где теряется время, из‑за чего всплывает брак и какие проверки реально меняют исход.';
-  const base = `${topic}. ${projectDescription} ${projectBenefits} ${projectGoals} ${scenarioLine}`;
-  return sanitizeUserFacingSummary(base, topic, slot?.format, formInput);
+          ? 'Здесь спорят два рабочих варианта; покажите, где они расходятся, и не повторяйте спор соседнего поста.'
+          : 'Возьмите один эпизод, где теряется время или качество, и одну проверку, которая меняет исход.';
+  const base = `«${topic}». ${detail} ${scenarioLine}`;
+  return sanitizeUserFacingSummary(base, topic, slot?.format, formInput, slot?.objective);
 }
 
 function buildFallbackKeyMessage(formInput, slot = {}) {
@@ -1123,7 +1201,18 @@ function normalizeBatchPublication(
   ).slice(0, 5);
   const normalizedUsedPrecedentIds = rawUsedPrecedentIds.filter((id) => allowedPrecedentIds.has(id));
 
-  const semanticCore = fallback.semantic_core || buildDraftSemanticCore(fallback);
+  const generatedTopic = typeof rawItem.topic === 'string' ? rawItem.topic.trim() : '';
+  const generatedKey = typeof rawItem.key_message === 'string' ? rawItem.key_message.trim() : '';
+  const substantialGeneration = generatedKey.length >= 40 || normalizedSummary.length >= 180;
+  const semanticCore = substantialGeneration
+    ? buildDraftSemanticCore({
+        topic: generatedTopic || fallback.topic,
+        key_message: generatedKey || fallback.key_message,
+        summary: normalizedSummary || fallback.summary,
+        objective: normalizeObjective(rawItem.objective, slot.objective),
+        format: normalizeFormat(rawItem.format, slot.format)
+      })
+    : fallback.semantic_core || buildDraftSemanticCore(fallback);
   const normalizedPublication = {
     publication_id: `plan_pub_${String(index + 1).padStart(3, '0')}`,
     planned_date: slot.planned_date,
@@ -1185,14 +1274,7 @@ function normalizeBatchPublication(
     formInput,
     normalizedPublication.objective
   );
-  normalizedPublication.cta = normalizedPublication.cta
-    ? buildObjectiveCta(
-        normalizedPublication.objective,
-        typeof formInput?.projectName === 'string' ? formInput.projectName : '',
-        normalizedPublication.topic,
-        index
-      )
-    : '';
+  normalizedPublication.cta = typeof normalizedPublication.cta === 'string' ? normalizedPublication.cta.trim() : '';
 
   return repairPublicationSemanticCoherence(
     normalizedPublication,
@@ -1343,7 +1425,7 @@ ${targetPublicationCount}
     'draft_skeleton',
     async () =>
       callOpenRouterChat(systemPrompt, userPrompt, {
-        temperature: 0.2,
+        temperature: 0.4,
         responseFormat: 'json'
       })
   );
@@ -1353,6 +1435,36 @@ ${targetPublicationCount}
   return {
     skeleton,
     usage: llmResponse.usage || null
+  };
+}
+export async function generateSkeletonOnly(formInput, query, ragResults, _ragLimit) {
+  const compactRagContext = buildCompactRagContext(ragResults);
+  const targetPublicationCount = getTargetPublicationCount(formInput);
+  const { skeleton, usage } = await generateSkeleton(formInput, query, compactRagContext, targetPublicationCount);
+  const repaired = repairSkeleton(
+    skeleton,
+    formInput,
+    targetPublicationCount,
+    compactRagContext
+  );
+  return { skeleton: repaired, usage };
+}
+
+function buildGenerationBrief(formInput = {}) {
+  return {
+    project_name: formInput.projectName || formInput.brandName || '',
+    description_excerpt: excerptForSlot(formInput.projectDescription, 220, 0),
+    benefits_excerpt: excerptForSlot(formInput.projectBenefits, 180, 1),
+    goals_excerpt: excerptForSlot(formInput.projectGoals, 160, 2),
+    audience: formInput.consumerCategory || '',
+    platforms: formInput.platforms || [],
+    formats: formInput.contentFormats || [],
+    horizon: {
+      start: formInput.contentPlanStartDate || null,
+      end: formInput.contentPlanEndDate || null
+    },
+    frequency: formInput.publicationFrequency || '',
+    brand_voice: formInput.brandVoice || formInput.tonePreference || ''
   };
 }
 
@@ -1372,8 +1484,8 @@ async function generateMonthlyPublications({
   const stylePack = buildVerticalStylePack(formInput);
   const userPrompt = `Сгенерируй публикации для одного месяца по skeleton.
 
-Требования проекта:
-${JSON.stringify(formInput, null, 2)}
+Краткое досье проекта (не копируй его целиком в каждый пост):
+${JSON.stringify(buildGenerationBrief(formInput), null, 2)}
 
 Вертикаль и контекст ниши:
 ${JSON.stringify(verticalContext, null, 2)}
@@ -1412,12 +1524,11 @@ ${monthKey}
 ${JSON.stringify(slots, null, 2)}
 `;
 
-  // Чуть выше, чем у скелета — больше лексического разнообразия в текстах постов при том же JSON-режиме.
   const llmResponse = await runPipelineStage(
     `draft_month_batch:${monthKey}`,
     async () =>
       callOpenRouterChat(systemPrompt, userPrompt, {
-        temperature: 0.28,
+        temperature: 0.62,
         responseFormat: 'json'
       })
   );
@@ -1431,16 +1542,19 @@ ${JSON.stringify(slots, null, 2)}
   };
 }
 
-function buildGeneratedPublicationContextItem(slot = {}, resolved = {}) {
+function modelCopyIsUsable(publication) {
+  const summary = String(publication?.summary || '').trim();
+  const keyMessage = String(publication?.key_message || '').trim();
+  if (summary.length < 80 || keyMessage.length < 12) return false;
+  return !shouldRewriteMachineKeyMessage(keyMessage);
+}
+
+function keepMeasuredEngagement(publication, calibrated) {
+  if (publication?.expected_kpi?.engagement_rate_source !== 'ml_post_metrics_calculated') return calibrated;
   return {
-    publication_id: slot.slot_id,
-    planned_date: slot.planned_date,
-    platform: slot.platform,
-    objective: normalizeObjective(resolved.objective, slot.objective),
-    format: normalizeFormat(resolved.format, slot.format),
-    topic: typeof resolved.topic === 'string' ? resolved.topic.trim() : '',
-    key_message: typeof resolved.key_message === 'string' ? resolved.key_message.trim() : '',
-    summary: typeof resolved.summary === 'string' ? resolved.summary.trim() : ''
+    ...calibrated,
+    engagement_rate: publication.expected_kpi.engagement_rate,
+    engagement_rate_source: 'ml_post_metrics_calculated'
   };
 }
 
@@ -1530,18 +1644,13 @@ export async function generateDraftPlanBatched({
 
   mergedPlan.publications = ensureDistinctTopicTitles(mergedPlan.publications);
 
-  const repairedPlan = mergedPlan;
-
-  // ML-предсказание релевантности (engagement_rate) на основе embeddings.
-  // Если модель недоступна/не обучена или произошла ошибка — продолжаем с эвристическими expected_kpi.
   try {
-    const mlResult = await predictEngagementRatesForGeneratedPublications(repairedPlan.publications, {
+    const mlResult = await predictEngagementRatesForGeneratedPublications(mergedPlan.publications, {
       forceTrain: false
     });
-
-    repairedPlan.publications = mlResult.updatedPublications;
-    repairedPlan.kpi_targets = {
-      ...(repairedPlan.kpi_targets || {}),
+    mergedPlan.publications = mlResult.updatedPublications;
+    mergedPlan.kpi_targets = {
+      ...(mergedPlan.kpi_targets || {}),
       avg_engagement_rate: mlResult.avgEngagementRate,
       avg_engagement_rate_source: 'ml_relevance_prediction'
     };
@@ -1549,78 +1658,93 @@ export async function generateDraftPlanBatched({
     console.warn('[relevancePrediction] Failed to predict engagement_rate:', error?.message || error);
   }
 
-  repairedPlan.publications = enforceCtaCoverage(
-    repairedPlan.publications,
-    typeof formInput?.projectName === 'string' ? formInput.projectName : ''
-  );
-  repairedPlan.publications = repairedPlan.publications.map((publication, index) => {
+  const projectName = typeof formInput?.projectName === 'string' ? formInput.projectName : '';
+  mergedPlan.publications = enforceCtaCoverage(mergedPlan.publications, projectName);
+  mergedPlan.publications = mergedPlan.publications.map((publication, index) => {
     const topic = sanitizeTopicTitle(publication?.topic);
     const canonical = normalizePublicationTopicForUi(publication?.title || publication?.topic) || topic;
     const tone = alignToneToObjective(topic, publication?.tone, publication?.objective);
+    const usable = modelCopyIsUsable(publication);
     const semanticCore = publication?.semantic_core || buildDraftSemanticCore(publication);
-    const cta = publication?.cta
-      ? buildObjectiveCta(
-          publication?.objective,
-          typeof formInput?.projectName === 'string' ? formInput.projectName : '',
+    const keyMessage = usable
+      ? stripObjectiveMeta(publication.key_message)
+      : reconcilePublicationKeyMessageWithTopic(
+        {
+          ...publication,
           topic,
-          index
-        )
-      : '';
-    const preferredKeyMessage = choosePreferredKeyMessage(
-      semanticCore,
-      shouldRewriteMachineKeyMessage(publication?.key_message)
-        ? ''
-        : publication?.key_message,
-      {
-        topic: canonical,
-        objective: publication?.objective,
-        format: publication?.format,
-        tone,
+          title: publication?.title,
+          key_message: choosePreferredKeyMessage(
+            semanticCore,
+            shouldRewriteMachineKeyMessage(publication?.key_message) ? '' : publication?.key_message,
+            {
+              topic: canonical,
+              objective: publication?.objective,
+              format: publication?.format,
+              tone,
+              index
+            }
+          )
+        },
         index
-      }
-    );
-    return {
-      ...publication,
-      topic,
-      tone,
-      key_message: reconcilePublicationKeyMessageWithTopic(
-        { ...publication, topic, title: publication?.title, key_message: preferredKeyMessage },
-        index
-      ),
-      summary: sanitizeUserFacingSummary(
-        choosePreferredSummary(
-          semanticCore,
-          publication?.summary,
-          { topic: canonical, format: publication?.format, formInput, fallbackSummary: publication?.summary }
-        ),
+      );
+    const summary = usable
+      ? stripObjectiveMeta(publication.summary)
+      : sanitizeUserFacingSummary(
+        choosePreferredSummary(semanticCore, publication?.summary, {
+          topic: canonical,
+          format: publication?.format,
+          formInput,
+          fallbackSummary: publication?.summary
+        }),
         canonical,
         publication?.format,
         formInput,
         publication?.objective
-      ),
-      cta,
-      expected_kpi: calibrateExpectedKpi(publication?.expected_kpi, {
+      );
+    return {
+      ...publication,
+      topic,
+      tone,
+      key_message: keyMessage,
+      summary,
+      text_origin: usable ? 'llm' : 'template_fallback',
+      expected_kpi: keepMeasuredEngagement(publication, calibrateExpectedKpi(publication?.expected_kpi, {
         objective: publication?.objective,
         format: publication?.format,
         tone,
-        cta
-      }),
-      semantic_core: semanticCore
+        cta: publication?.cta
+      })),
+      semantic_core: buildDraftSemanticCore({
+        ...publication,
+        topic: canonical,
+        key_message: keyMessage,
+        summary
+      })
     };
   });
 
-  repairedPlan.publications = dedupeKeyMessagesAcrossPublications(repairedPlan.publications);
-  repairedPlan.publications = repairedPlan.publications.map((publication, index) => ({
-    ...publication,
-    key_message: reconcilePublicationKeyMessageWithTopic(publication, index)
-  }));
-  repairedPlan.publications = dedupeRepeatedProductBoilerplateInSummaries(repairedPlan.publications);
-  repairedPlan.publications = repairedPlan.publications.map((publication, index) => ({
-    ...publication,
-    key_message: reconcilePublicationKeyMessageWithTopic(publication, index)
-  }));
+  mergedPlan.publications = dedupeKeyMessagesAcrossPublications(mergedPlan.publications);
+  mergedPlan.publications = mergedPlan.publications.map((publication, index) => (
+    publication.text_origin === 'llm'
+      ? publication
+      : {
+        ...publication,
+        key_message: reconcilePublicationKeyMessageWithTopic(publication, index)
+      }
+  ));
+  mergedPlan.publications = dedupeRepeatedProductBoilerplateInSummaries(mergedPlan.publications);
+  mergedPlan.publications = diversifyRepeatedSummaryOpenings(mergedPlan.publications);
+  mergedPlan.publications = assignDistinctCtas(mergedPlan.publications, projectName);
+  mergedPlan.publications = mergedPlan.publications.map((publication, index) => (
+    publication.text_origin === 'llm'
+      ? publication
+      : {
+        ...publication,
+        key_message: reconcilePublicationKeyMessageWithTopic(publication, index)
+      }
+  ));
 
-  const validation = validateDraftPlan(repairedPlan, formInput);
+  const validation = validateDraftPlan(mergedPlan, formInput);
   if (!validation.valid) {
     const error = new Error(`Итоговый draft_content_plan не прошел валидацию: ${validation.errors.join('; ')}`);
     error.validation_errors = validation.errors;
@@ -1629,7 +1753,7 @@ export async function generateDraftPlanBatched({
 
   return {
     draft: {
-      draft_content_plan: repairedPlan
+      draft_content_plan: mergedPlan
     },
     usage: usageItems.length ? mergeUsageStats(usageItems) : null,
     generation_metadata: {
@@ -1643,6 +1767,19 @@ export async function generateDraftPlanBatched({
       content_profile: buildVerticalContext(formInput),
       style_pack: buildVerticalStylePack(formInput)
     }
+  };
+}
+
+function buildGeneratedPublicationContextItem(slot = {}, resolved = {}) {
+  return {
+    publication_id: slot.slot_id,
+    planned_date: slot.planned_date,
+    platform: slot.platform,
+    objective: normalizeObjective(resolved.objective, slot.objective),
+    format: normalizeFormat(resolved.format, slot.format),
+    topic: typeof resolved.topic === 'string' ? resolved.topic.trim() : '',
+    key_message: typeof resolved.key_message === 'string' ? resolved.key_message.trim() : '',
+    summary: typeof resolved.summary === 'string' ? resolved.summary.trim() : ''
   };
 }
 

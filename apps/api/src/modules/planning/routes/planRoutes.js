@@ -3,16 +3,25 @@ import { Router } from 'express';
 import { generateDraftPlanBatched } from '../services/draftPlanGenerationPipeline.js';
 import { runHierarchicalOptimization } from '../services/evolutionary/hierarchicalGa.js';
 import { searchPrecedents } from '../../precedents/repositories/precedentRepository.js';
-import { buildRagQueryFromForm, normalizeDraftPlanResponse } from './shared/planUtils.js';
+import { buildRagQueryFromForm, mergePinnedPublications, normalizeDraftPlanResponse } from './shared/planUtils.js';
 import { sendRouteError } from '../../../shared/http/routeUtils.js';
 import { loadDraft, saveDraft } from '../services/draftStore.js';
 import { deleteSnapshot, loadSnapshot, saveSnapshot } from '../services/planSnapshotStore.js';
 import { resolveSession } from '../../auth/services/authStore.js';
 import { requireSessionOrAdminApiKey } from '../../auth/services/sessionGate.js';
+import { rejectInstagramIfForbidden } from '../../auth/services/instagramAccess.js';
 import { enqueueJob, getJobStatus, listJobs, getJobQueueStats } from '../../../shared/runtime/jobQueue.js';
+import {
+  generatePublicationMedia,
+  mediaKindForFormat,
+  resolveStoredMediaPath
+} from '../services/mediaGenerationService.js';
+import { existsSync } from 'fs';
 
 const router = Router();
 const wizardDraftsByUser = new Map();
+
+router.use(rejectInstagramIfForbidden);
 
 function readBearerToken(req) {
   const header = req.headers?.authorization;
@@ -50,7 +59,7 @@ async function initDraftFromDisk(userId) {
 }
 
 async function handleGeneratePlan(req, res, routeName) {
-  const { form_input, rag_query, rag_limit } = req.body || {};
+  const { form_input, rag_query, rag_limit, pinned_publications } = req.body || {};
   if (!form_input || typeof form_input !== 'object') {
     return res.status(400).json({
       success: false,
@@ -70,11 +79,12 @@ async function handleGeneratePlan(req, res, routeName) {
   }
 
   const ragLimit = rag_limit || 8;
-  const ragResults = await searchPrecedents(query, {
+  const searched = await searchPrecedents(query, {
     limit: ragLimit,
     platforms: Array.isArray(form_input.platforms) ? form_input.platforms : [],
     audience_segments: buildAudienceSegmentsFromForm(form_input)
   });
+  const ragResults = mergePinnedPublications(searched, pinned_publications, ragLimit);
 
   const generated = await generateDraftPlanBatched({
     formInput: form_input,
@@ -114,7 +124,13 @@ router.post('/generate-batched', requireSessionOrAdminApiKey, async (req, res) =
 
 router.post('/optimize', requireSessionOrAdminApiKey, async (req, res) => {
   try {
-    const result = await runHierarchicalOptimization(req.body || {});
+    const { form_input, ragResults, ...rest } = req.body || {};
+    const payload = {
+      ...rest,
+      form_input,
+      ragResults
+    };
+    const result = await runHierarchicalOptimization(payload);
     return res.json({
       success: true,
       ...result,
@@ -141,6 +157,61 @@ router.post('/optimize:async', requireSessionOrAdminApiKey, async (req, res) => 
   } catch (error) {
     return sendRouteError(res, req, 500, 'Некорректный запрос в /api/plan/optimize:async', error);
   }
+});
+
+router.post('/media', requireSessionOrAdminApiKey, async (req, res) => {
+  const prompt = typeof req.body?.prompt === 'string' ? req.body.prompt.trim() : '';
+  const format = req.body?.format;
+  const platform = req.body?.platform;
+  if (!mediaKindForFormat(format)) {
+    return res.status(400).json({
+      success: false,
+      error: 'Медиа генерируется для форматов image, video и combined',
+      request_id: req.requestId
+    });
+  }
+  if (!prompt) {
+    return res.status(400).json({
+      success: false,
+      error: 'Промпт для генерации пуст',
+      request_id: req.requestId
+    });
+  }
+  if (!process.env.OPENROUTER_API_KEY) {
+    return res.status(503).json({
+      success: false,
+      error: 'OPENROUTER_API_KEY не задан',
+      request_id: req.requestId
+    });
+  }
+  try {
+    const jobId = enqueueJob(
+      'media_generate',
+      (body) => generatePublicationMedia(body),
+      { prompt, format, platform }
+    );
+    return res.status(202).json({
+      success: true,
+      job_id: jobId,
+      status: 'queued',
+      status_url: `/api/plan/jobs/${jobId}`,
+      request_id: req.requestId
+    });
+  } catch (error) {
+    return sendRouteError(res, req, 500, 'Не удалось поставить генерацию медиа в очередь', error);
+  }
+});
+
+router.get('/media/files/:fileName', requireSessionOrAdminApiKey, (req, res) => {
+  const filePath = resolveStoredMediaPath(req.params?.fileName);
+  if (!filePath || !existsSync(filePath)) {
+    return res.status(404).json({
+      success: false,
+      error: 'Файл медиа не найден',
+      request_id: req.requestId
+    });
+  }
+  return res.sendFile(filePath);
 });
 
 router.get('/jobs/:jobId', requireSessionOrAdminApiKey, async (req, res) => {

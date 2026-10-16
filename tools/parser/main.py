@@ -1,7 +1,9 @@
 import os
 
 from parser import (
+    InstagramParserError,
     VKParserError,
+    parse_instagram_account,
     parse_vk_account,
     save_post_to_json,
     save_posts_to_json,
@@ -36,16 +38,23 @@ def main() -> None:
     """
     Simple CLI entrypoint for the parser.
     """
-    url = input("Enter VK account URL: ").strip()
+    url = input("Enter account URL: ").strip()
     if not url:
         print("Empty URL. Exit.")
         return
 
     output_path = os.getenv("PARSER_OUTPUT_PATH", "posts.json")
 
+    lowered = url.lower()
+    is_instagram = "instagram.com" in lowered or "instagr.am" in lowered
+
     try:
-        print("Parsing posts from VK account...")
-        posts = parse_vk_account(url)
+        if is_instagram:
+            print("Parsing posts from Instagram account...")
+            posts = parse_instagram_account(url)
+        else:
+            print("Parsing posts from VK account...")
+            posts = parse_vk_account(url)
 
         save_posts_to_json(posts, json_path=output_path)
 
@@ -64,6 +73,9 @@ def main() -> None:
             print(f"\n... and {len(posts) - 5} more posts")
 
         print(f"\nAll posts saved to '{output_path}'")
+    except InstagramParserError as exc:
+        print(f"Instagram parsing error: {exc}")
+        raise SystemExit(1)
     except VKParserError as exc:
         print(f"VK parsing error: {exc}")
 

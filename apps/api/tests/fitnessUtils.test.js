@@ -6,7 +6,8 @@ import {
   capPredictedMetrics,
   normalizeAgainstTarget,
   kpiScore,
-  combineFitness
+  combineFitness,
+  estimateCommentsFromBase
 } from '../src/modules/planning/services/evolutionary/fitnessUtils.js';
 
 const PLAN_METADATA = {
@@ -57,6 +58,14 @@ test('kpiScore uses shared weights and prefix-aware metadata keys', () => {
   const postLevel = kpiScore([50, 0, 0], POST_METADATA, { keyPrefix: '' });
   const expectedPost = DEFAULT_FITNESS_WEIGHTS.likes * normalizeAgainstTarget(50, 50);
   assert.ok(Math.abs(postLevel - expectedPost) < 1e-9);
+});
+
+test('kpiScore includes observed comments when a fourth metric is present', () => {
+  const withoutComments = kpiScore([50, 0, 0], POST_METADATA, { keyPrefix: '' });
+  const withComments = kpiScore([50, 0, 0, 25], POST_METADATA, { keyPrefix: '' });
+  assert.ok(withComments > withoutComments);
+  assert.equal(estimateCommentsFromBase(40, { likes: 20, comments: 10 }), 20);
+  assert.equal(estimateCommentsFromBase(40, { likes: 20, comments: 0 }), null);
 });
 
 test('kpiScore is deterministic for identical inputs', () => {

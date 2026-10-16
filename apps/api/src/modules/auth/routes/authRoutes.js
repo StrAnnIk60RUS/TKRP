@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { createUser, getCurrentUser, loginUser, logoutSession } from '../services/authStore.js';
+import { instagramFeatures } from '../services/instagramAccess.js';
 import { sendRouteError } from '../../../shared/http/routeUtils.js';
 
 const router = Router();
@@ -19,7 +20,7 @@ router.post('/register', async (req, res) => {
     if (typeof username !== 'string' || typeof password !== 'string' || password.length < 6 || password.length > 128) {
       return res.status(400).json({
         success: false,
-        error: 'Некорректный username или password (password: 6-128 символов)',
+        error: 'Некорректное имя пользователя или пароль (пароль: 6–128 символов)',
         request_id: req.requestId
       });
     }
@@ -27,7 +28,7 @@ router.post('/register', async (req, res) => {
     if (!created) {
       return res.status(409).json({
         success: false,
-        error: 'Username уже зарегистри',
+        error: 'Имя пользователя уже занято',
         request_id: req.requestId
       });
     }
@@ -50,7 +51,7 @@ router.post('/login', async (req, res) => {
     if (typeof username !== 'string' || typeof password !== 'string') {
       return res.status(400).json({
         success: false,
-        error: 'Оток absent or incorrect fields username/password',
+        error: 'Укажите имя пользователя и пароль',
         request_id: req.requestId
       });
     }
@@ -58,7 +59,7 @@ router.post('/login', async (req, res) => {
     if (!result) {
       return res.status(400).json({
         success: false,
-        error: 'Username или password некоррект',
+        error: 'Неверное имя пользователя или пароль',
         request_id: req.requestId
       });
     }
@@ -80,7 +81,7 @@ router.post('/logout', async (req, res) => {
     if (!token) {
       return res.status(400).json({
         success: false,
-        error: 'Отток absent',
+        error: 'Не указан токен сессии',
         request_id: req.requestId
       });
     }
@@ -101,7 +102,7 @@ router.get('/me', async (req, res) => {
     if (!token) {
       return res.status(400).json({
         success: false,
-        error: 'Authorization Bearer token required',
+        error: 'Нужен токен авторизации',
         request_id: req.requestId
       });
     }
@@ -109,13 +110,16 @@ router.get('/me', async (req, res) => {
     if (!user) {
       return res.status(401).json({
         success: false,
-        error: 'Session не найден or expired',
+        error: 'Сессия не найдена или истекла',
         request_id: req.requestId
       });
     }
     return res.json({
       success: true,
-      user,
+      user: {
+        ...user,
+        features: instagramFeatures(user)
+      },
       request_id: req.requestId
     });
   } catch (error) {

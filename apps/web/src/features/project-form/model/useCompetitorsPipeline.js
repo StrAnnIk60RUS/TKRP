@@ -59,7 +59,7 @@ export function useCompetitorsPipeline(addToast, options = {}) {
         'competitors_data_enriched.json';
     } else if (resultData && resultData.raw_response) {
       dataToDownload = {
-        _warning: 'JSON ответ от LLM невалидный, но данные сохранены для проверки',
+        _warning: 'Ответ модели не удалось разобрать, но данные сохранены для проверки',
         _parse_error: resultData.parse_error,
         _raw_response_from_llm: resultData.raw_response,
         _usage: resultData.usage,
@@ -72,7 +72,7 @@ export function useCompetitorsPipeline(addToast, options = {}) {
         'competitors_data_enriched_INVALID_JSON.json';
     } else if (resultData) {
       dataToDownload = {
-        _error: 'Данные невалидные или неполные',
+        _error: 'Данные некорректные или неполные',
         _raw_response: resultData,
         _original_data: rawCompetitorsData,
         _timestamp: new Date().toISOString()
@@ -116,7 +116,7 @@ export function useCompetitorsPipeline(addToast, options = {}) {
   const handleEnrichCompetitorsData = async (opts = {}) => {
     const { skipDownload = false } = opts
     if (!competitorsData) {
-      addToast('Сначала загрузите данные конкурентов', 'error');
+      addToast('Сначала соберите данные конкурентов по ссылкам', 'error');
       return { success: false, reason: 'no_competitors_data' };
     }
 
@@ -134,7 +134,7 @@ export function useCompetitorsPipeline(addToast, options = {}) {
     }
 
     setIsEnriching(true);
-    addToast('Начало обогащения данных через LLM...', 'info');
+    addToast('Начало обогащения данных...', 'info');
 
     let resultData = null;
     let errorData = null;
@@ -148,18 +148,18 @@ export function useCompetitorsPipeline(addToast, options = {}) {
         setCompetitorsFileName(
           competitorsFileName?.replace('.json', '_enriched.json') || 'competitors_data_enriched.json'
         );
-        const usageInfo = result.usage ? ` (использовано токенов: ${result.usage.total_tokens || 'N/A'})` : '';
+        const usageInfo = result.usage ? ` (использовано токенов: ${result.usage.total_tokens || 'нет данных'})` : '';
         addToast(`Данные успешно обогащены!${usageInfo}`, 'success');
         if (result.parse_error?.partial) {
           addToast(
-            'Часть батчей LLM не обработана; данные сохранены с дефолтной семантикой для пропущенных постов.',
+            'Часть данных не обработана; для пропущенных постов сохранена базовая семантика.',
             'warning'
           );
         }
         return { success: true, result };
       } else if (result.enriched_data === null && result.raw_response) {
-        const usageInfo = result.usage ? ` (использовано токенов: ${result.usage.total_tokens || 'N/A'})` : '';
-        addToast(`Обогащение завершено, но JSON невалидный. Файл скачан для проверки.${usageInfo}`, 'warning');
+        const usageInfo = result.usage ? ` (использовано токенов: ${result.usage.total_tokens || 'нет данных'})` : '';
+        addToast(`Обогащение завершено, но ответ модели не удалось разобрать. Файл скачан для проверки.${usageInfo}`, 'warning');
         return { success: false, reason: 'invalid_llm_json', result };
       } else if (result.error) {
         throw new Error(result.error);
@@ -225,7 +225,7 @@ export function useCompetitorsPipeline(addToast, options = {}) {
     }
 
     if (isEnrichmentServerAvailable === false) {
-      addToast('Сервер парсинга/обогащения недоступен. Убедитесь, что backend запущен.', 'error');
+      addToast('Сервер парсинга и обогащения недоступен. Убедитесь, что сервер запущен.', 'error');
       return;
     }
 
@@ -239,22 +239,37 @@ export function useCompetitorsPipeline(addToast, options = {}) {
     const numericLimit =
       postsLimit === 'all' ? null : Number.isNaN(Number(postsLimit)) ? null : Number(postsLimit);
 
-    for (const url of urls) {
-      try {
-        const result = await parseCompetitorByUrl(url, numericLimit);
-        if (result?.success && result?.competitors_data?.competitors) {
-          successfulResults.push(result.competitors_data);
-        } else {
-          failedUrls.push({ url, reason: result?.error || 'Нет competitors_data в ответе' });
+    const parsedByUrl = new Array(urls.length);
+    let nextUrlIndex = 0;
+    const parseWorker = async () => {
+      while (nextUrlIndex < urls.length) {
+        const index = nextUrlIndex;
+        nextUrlIndex += 1;
+        const url = urls[index];
+        try {
+          const result = await parseCompetitorByUrl(url, numericLimit);
+          parsedByUrl[index] = { url, result };
+        } catch (error) {
+          console.error('Ошибка parse-only для URL', url, error);
+          parsedByUrl[index] = { url, error };
         }
-      } catch (error) {
-        console.error('Ошибка parse-only для URL', url, error);
-        failedUrls.push({ url, reason: error.message });
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(2, urls.length) }, () => parseWorker()));
+    for (const entry of parsedByUrl) {
+      if (!entry) continue;
+      if (entry.error) {
+        failedUrls.push({ url: entry.url, reason: entry.error.message });
+      } else if (entry.result?.success && entry.result?.competitors_data?.competitors) {
+        successfulResults.push(entry.result.competitors_data);
+      } else {
+        failedUrls.push({ url: entry.url, reason: entry.result?.error || 'Нет competitors_data в ответе' });
       }
     }
 
     if (successfulResults.length === 0) {
-      addToast('Не удалось спарсить ни одного конкурента. Проверьте ссылки.', 'error');
+      const firstReason = failedUrls[0]?.reason ? ` Причина: ${failedUrls[0].reason}` : '';
+      addToast(`Не удалось спарсить ни одного конкурента. Проверьте ссылки.${firstReason}`, 'error');
       setIsParsingFromUrls(false);
       return;
     }
@@ -297,10 +312,10 @@ export function useCompetitorsPipeline(addToast, options = {}) {
         if (result.success && result.enriched_data) {
           setCompetitorsData(result.enriched_data);
           setCompetitorsFileName('competitors_from_urls_enriched.json');
-          const usageInfo = result.usage ? ` (токенов: ${result.usage.total_tokens || 'N/A'})` : '';
+          const usageInfo = result.usage ? ` (токенов: ${result.usage.total_tokens || 'нет данных'})` : '';
           addToast(`Данные обогащены автоматически${usageInfo}`, 'success');
           if (result.parse_error?.partial) {
-            addToast('Обогащение частичное: один или несколько батчей LLM пропущены.', 'warning');
+            addToast('Обогащение частичное: одна или несколько частей обработки пропущены.', 'warning');
           }
         } else if (result.error) {
           addToast(`Обогащение не удалось: ${result.error}`, 'error');

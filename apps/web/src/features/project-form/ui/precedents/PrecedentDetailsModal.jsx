@@ -7,9 +7,9 @@ function formatPercent(score) {
 
 function prettyRetrievalType(retrieval) {
   const type = retrieval?.type
-  if (type === 'embedding_cosine') return 'Semantic retrieval (эмбеддинги · cosine similarity)'
-  if (type === 'token_overlap_fallback') return 'Token overlap (фолбэк)'
-  return type || 'unknown'
+  if (type === 'embedding_cosine') return 'Поиск по смыслу (эмбеддинги, косинусное сходство)'
+  if (type === 'token_overlap_fallback') return 'Поиск по словам (запасной режим)'
+  return type || 'неизвестно'
 }
 
 function ReliabilityBreakdown({ factors }) {
@@ -52,8 +52,8 @@ const PrecedentDetailsModal = ({ item, retrieval, onClose, showTechnicalDetails 
 
   const subtitle =
     item.type === 'publication'
-      ? `${item.data?.competitor_name || 'Неизвестный конкурент'} · ${item.data?.platform || 'unknown'}`
-      : `${item.data?.platform || 'unknown'} · ${item.data?.content_plan_model?.total_publications || 0} публикаций`
+      ? `${item.data?.competitor_name || 'Неизвестный конкурент'} · ${item.data?.platform || 'не указано'}`
+      : `${item.data?.platform || 'не указано'} · ${item.data?.content_plan_model?.total_publications || 0} публикаций`
 
   const whyFound =
     item.type === 'publication'

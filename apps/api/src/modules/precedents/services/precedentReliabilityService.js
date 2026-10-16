@@ -99,6 +99,38 @@ function contentPlanSourceTrust(plan) {
   return clamp01(passed / 2);
 }
 
+function publicationEngagementSignal(pub = {}) {
+  const metrics = pub.raw_metrics || pub.metrics || {};
+  const likes = Number(metrics.likes) || 0;
+  const comments = Number(metrics.comments) || 0;
+  const shares = Number(metrics.shares ?? metrics.reposts) || 0;
+  const views = Number(metrics.views) || 0;
+  const interactions = likes + comments * 1.5 + shares;
+  const volume = Math.min(1, Math.log1p(interactions) / Math.log1p(400));
+  const viewRate = views > 0 ? Math.min(1, interactions / views) : 0;
+  const stored = Number(pub.engagement_rate);
+  const rate = Number.isFinite(stored) && stored > 0 ? Math.min(1, stored) : 0;
+  return Math.min(1, Math.max(rate, viewRate, volume));
+}
+
+/**
+ * Signals used while ranking, before the retrieval score exists.
+ * Comments are weighted above likes so discussion-heavy posts are not invisible.
+ */
+export function precedentRankSignals(record = {}, kind = 'publication') {
+  if (kind === 'content_plan') {
+    const model = record?.content_plan_model || {};
+    const rate = Number(model?.kpi_estimate?.avg_engagement_rate ?? model?.kpi_estimate?.best_engagement_rate);
+    const engagement = Number.isFinite(rate) && rate > 0 ? Math.min(1, rate) : 0;
+    const trust = clamp01(0.65 * contentPlanCompleteness(record) + 0.35 * contentPlanSourceTrust(record));
+    return { engagement, trust };
+  }
+  return {
+    engagement: publicationEngagementSignal(record),
+    trust: clamp01(0.7 * publicationCompleteness(record) + 0.3 * publicationSourceTrust(record))
+  };
+}
+
 /**
  * Вычисляет надёжность публикации-прецедента.
  * @param {Object} item - элемент результата поиска { type, score, data }

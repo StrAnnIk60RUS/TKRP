@@ -3,6 +3,8 @@ import {
   getCompactTopicHeading,
   getFormatLabel,
   getKpiPresentation,
+  getMediaKind,
+  getMediaPromptLabel,
   getObjectiveLabel,
   getPlatformLabel,
   getToneLabel,
@@ -10,20 +12,21 @@ import {
   normalizePublicationForUi,
   truncateText
 } from '../lib/publicationPresentation'
+import PostMediaBlock from './PostMediaBlock'
 
 const getEngagementSourceLabel = (source) => {
-  if (source === 'ml_post_metrics_calculated') return 'рассчитано на основе ML-прогноза'
-  if (source === 'ml_relevance_prediction') return 'оценено ML-моделью'
+  if (source === 'ml_post_metrics_calculated') return 'рассчитано на основе прогноза модели'
+  if (source === 'ml_relevance_prediction') return 'оценено моделью'
   return 'оценка по эвристикам'
 }
 
 const getAbsoluteSourceLabel = (source) => {
-  if (source === 'stage2_post_evolution') return 'этап оптимизации постов (Stage 2)'
+  if (source === 'stage2_post_evolution') return 'этап оптимизации постов'
   if (source === 'stage2_post_evolution_normalized')
-    return 'этап оптимизации постов (Stage 2, нормализовано к общему прогнозу плана)'
-  if (source === 'ml_post_metrics_prediction') return 'прогноз пост-метрик ML-модели'
+    return 'этап оптимизации постов (приведено к общему прогнозу плана)'
+  if (source === 'ml_post_metrics_prediction') return 'прогноз метрик поста моделью'
   if (source === 'final_best_post_template') return 'итоговый шаблон лучшего поста'
-  if (source === 'ga_post_metrics_model') return 'генетический отбор с ML-оценкой'
+  if (source === 'ga_post_metrics_model') return 'генетический отбор с оценкой модели'
   return 'источник не указан'
 }
 
@@ -37,6 +40,8 @@ const PostCard = ({ post, showPlatformField, onEdit }) => {
   const showFullHeadingTooltip = fullHeading !== postHeading
   const summaryPreview = truncateText(normalizedPost.summary, 320)
   const hasMeaningfulCta = isMeaningfulCta(normalizedPost.cta)
+  const mediaKind = getMediaKind(normalizedPost.format)
+  const mediaPrompt = normalizedPost.media_prompt || ''
   const kpi = getKpiPresentation(normalizedPost.expected_kpi)
   const expectedKpi = normalizedPost.expected_kpi || {}
   const mlLikesRaw = expectedKpi.ml_predicted_likes ?? expectedKpi.predicted_likes
@@ -79,10 +84,18 @@ const PostCard = ({ post, showPlatformField, onEdit }) => {
         </div>
         {hasMeaningfulCta && (
           <div>
-            <strong>CTA:</strong> {normalizedPost.cta}
+            <strong>Призыв:</strong> {normalizedPost.cta}
+          </div>
+        )}
+        {mediaKind && (
+          <div>
+            <strong>{getMediaPromptLabel(normalizedPost.format)}:</strong>{' '}
+            {truncateText(mediaPrompt, 280) || 'не задан'}
           </div>
         )}
       </div>
+
+      {mediaKind && <PostMediaBlock media={normalizedPost.media} />}
 
       {normalizedPost.expected_kpi && (
         <div className="post-metrics">

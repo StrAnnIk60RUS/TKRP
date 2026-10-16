@@ -1,7 +1,7 @@
 import { parseJsonObjectFromLlmContent } from '../../../shared/utils/llmJsonParsing.js';
 import { validateAgainstJsonSchema } from '../../../shared/utils/jsonSchemaValidator.js';
 
-const ALLOWED_PLATFORMS = ['vk', 'linkedin'];
+const ALLOWED_PLATFORMS = ['vk', 'linkedin', 'instagram'];
 export const ALLOWED_ENRICHMENT_OBJECTIVES = [
   'inform',
   'educate',
@@ -68,9 +68,10 @@ function buildSlimPost(post, competitor, competitorIndex, postIndex, config) {
     platform: normalizePlatform(competitor?.platform),
     content: truncateText(post?.content, config.maxPostContentChars),
     datetime: post?.datetime || null,
-    engagement_rate: Number.isFinite(Number(post?.engagement_rate))
-      ? Number(Number(post.engagement_rate).toFixed(4))
-      : 0,
+    engagement_rate:
+      typeof post?.engagement_rate === 'number' && Number.isFinite(post.engagement_rate)
+        ? Number(post.engagement_rate.toFixed(4))
+        : null,
     metrics: {
       likes: Number(post?.metrics?.likes) || 0,
       comments: Number(post?.metrics?.comments) || 0,

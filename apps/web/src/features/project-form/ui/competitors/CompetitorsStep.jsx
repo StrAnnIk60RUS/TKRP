@@ -13,6 +13,7 @@ const CompetitorsStep = ({
   canEnrich,
   showEnrichButton = true,
   precedentsAlreadyInDb = false,
+  allowInstagram = false,
   onUrlChange,
   onAddUrl,
   onRemoveUrl,
@@ -36,7 +37,7 @@ const CompetitorsStep = ({
 
   const serverBadge =
     isEnrichmentServerAvailable === false
-      ? { text: 'Backend недоступен', tone: 'danger' }
+      ? { text: 'Сервер недоступен', tone: 'danger' }
       : isEnrichmentServerAvailable === true
       ? null
       : { text: 'Проверка backend…', tone: 'neutral' };
@@ -47,8 +48,8 @@ const CompetitorsStep = ({
         <div className="competitors-step-header">
           <span className="actions-label">Конкуренты: ссылки и данные</span>
           <span className="actions-description">
-            Шаг 1. Парсинг и обогащение нужны только если данных конкурентов ещё нет в базе прецедентов. Если вы уже
-            проходили этот цикл раньше, можно перейти к следующим шагам.
+            Парсинг и обогащение нужны только если данных конкурентов ещё нет в базе прецедентов. Если база уже
+            заполнена, можно перейти к следующим шагам.
           </span>
         </div>
 
@@ -94,7 +95,8 @@ const CompetitorsStep = ({
               <div className="ui-callout">
                 <div className="ui-callout-title">Что вставлять</div>
                 <div className="ui-callout-text">
-                  Ссылку на страницу/профиль/группу конкурента в VK или LinkedIn. Можно вставлять несколько ссылок —
+                  Ссылку на страницу/профиль/группу конкурента в VK или LinkedIn
+                  {allowInstagram ? ' или Instagram' : ''}. Можно вставлять несколько ссылок —
                   каждая будет обработана отдельно.
                 </div>
               </div>
@@ -103,6 +105,7 @@ const CompetitorsStep = ({
                 <div className="ui-callout-text">
                   <div className="ui-mono">https://vk.com/company</div>
                   <div className="ui-mono">https://www.linkedin.com/company/company-name/</div>
+                  {allowInstagram && <div className="ui-mono">https://www.instagram.com/company/</div>}
                 </div>
               </div>
               <div className="ui-callout ui-callout-warning">
@@ -127,7 +130,11 @@ const CompetitorsStep = ({
                 type="text"
                 value={url}
                 onChange={(e) => onUrlChange(index, e.target.value)}
-                placeholder="https://vk.com/..., https://www.linkedin.com/..."
+                placeholder={
+                  allowInstagram
+                    ? 'https://vk.com/..., https://www.linkedin.com/..., https://www.instagram.com/...'
+                    : 'https://vk.com/..., https://www.linkedin.com/...'
+                }
                 className="form-input competitor-url-input"
               />
               {competitorUrls.length > 1 && (

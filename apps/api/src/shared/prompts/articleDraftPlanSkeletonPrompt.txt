@@ -12,7 +12,7 @@
       "start_date": "YYYY-MM-DD",
       "end_date": "YYYY-MM-DD"
     },
-    "platforms": ["vk" | "linkedin"],
+    "platforms": ["vk" | "linkedin" | "instagram"],
     "target_audience": ["string"],
     "constraints": {
       "min_publications": number,
@@ -28,7 +28,7 @@
       {
         "slot_id": "slot_001",
         "planned_date": "YYYY-MM-DD",
-        "platform": "vk" | "linkedin",
+        "platform": "vk" | "linkedin" | "instagram",
         "objective": "inform|educate|engage|convert|retain|brand_building",
         "format": "text|image|video|combined",
         "tone": "expert|friendly|official|inspiring|humorous|neutral"
@@ -41,8 +41,8 @@
 1. Слотов должно быть ровно столько, сколько указано во входном целевом числе публикаций.
 2. Все даты должны лежать внутри горизонта планирования.
 3. Распредели публикации по всему периоду, а не только в начале.
-4. Используй только платформы из входных данных.
-5. План должен быть разнообразным по целям, форматам и платформам.
+4. Используй только платформы из входных данных. Допустимы `vk`, `linkedin` и `instagram`; `instagram` ставь только если он передан во входе.
+5. План должен быть разнообразным по целям, форматам и платформам. Для `instagram` закладывай визуальный формат (image или video), для `linkedin` — более развернутую экспертную подачу.
 6. Не генерируй поля `topic`, `summary`, `key_message`, `cta`, `estimated_cost`, `expected_kpi` на этом этапе.
 7. Не схлопывай результат в 5-10 примеров. Нужен полный skeleton на весь объём.
 8. Поле `format` заполняй только одним значением из `text|image|video|combined` (запрещены `text_post`, `image_post` и другие варианты).

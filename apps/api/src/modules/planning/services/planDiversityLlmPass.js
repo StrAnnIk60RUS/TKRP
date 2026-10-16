@@ -46,7 +46,8 @@ export function mergePublicationsRewrite(originalPubs, llmList) {
 }
 
 /**
- * Включить пост-обработку LLM: body.stage3.llm_diversity_rewrite === true или PLAN_DIVERSITY_LLM_REWRITE=1
+ * Пост-обработка LLM включена по умолчанию.
+ * Выключается телом stage3.llm_diversity_rewrite === false или PLAN_DIVERSITY_LLM_REWRITE=0|false|off.
  */
 export function shouldRunPlanDiversityLlmRewrite(payload = {}, stage3Override = null) {
   const stage3 =
@@ -57,7 +58,9 @@ export function shouldRunPlanDiversityLlmRewrite(payload = {}, stage3Override = 
         : {};
   if (stage3.llm_diversity_rewrite === false) return false;
   if (stage3.llm_diversity_rewrite === true) return true;
-  return String(process.env.PLAN_DIVERSITY_LLM_REWRITE || '').trim() === '1';
+  const flag = String(process.env.PLAN_DIVERSITY_LLM_REWRITE || '').trim().toLowerCase();
+  if (flag === '0' || flag === 'false' || flag === 'off') return false;
+  return true;
 }
 
 /**
@@ -129,7 +132,7 @@ export async function applyPlanDiversityLlmRewrite(planSlice = {}, options = {})
 
   const userPrompt = `Входной план (JSON). Перепиши key_message и summary по правилам из системного промпта.\n\n${JSON.stringify(payloadIn)}`;
 
-  const temperature = Number.isFinite(Number(options.temperature)) ? Number(options.temperature) : 0.35;
+  const temperature = Number.isFinite(Number(options.temperature)) ? Number(options.temperature) : 0.65;
 
   const llmResponse = await callOpenRouterChat(systemPrompt, userPrompt, {
     temperature,

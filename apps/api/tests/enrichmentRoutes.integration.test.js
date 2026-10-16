@@ -171,5 +171,7 @@ test('POST /api/parse-and-enrich: missing url returns 400', async () => {
   } finally {
     srv.close();
     await new Promise((r) => srv.once('close', r));
+    const { closePool } = await import('../src/shared/db/client.js');
+    await closePool();
   }
 });

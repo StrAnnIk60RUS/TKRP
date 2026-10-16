@@ -11,7 +11,6 @@ import {
 import { runAsyncGeneticAlgorithm } from './asyncGaCore.js';
 import { GA_UTILS } from './gaCore.js';
 import {
-  DEFAULT_FITNESS_WEIGHTS,
   kpiScore,
   combineFitness
 } from './fitnessUtils.js';
@@ -26,15 +25,17 @@ import {
 import { normalizePublicationToneValue } from '../../routes/shared/planUtils.js';
 import {
   alignToneToObjective,
+  assignDistinctCtas,
   buildDraftSemanticCore,
   buildNaturalKeyMessage,
-  buildObjectiveCta,
+  buildNaturalTopicVariation,
   calibrateExpectedKpi,
   choosePreferredKeyMessage,
   choosePreferredSummary,
   choosePreferredTopic,
   dedupeKeyMessagesAcrossPublications,
   dedupeRepeatedProductBoilerplateInSummaries,
+  diversifyRepeatedSummaryOpenings,
   ensureDistinctTopicTitles,
   normalizePublicationTopicForUi,
   reconcilePublicationKeyMessageWithTopic,
@@ -168,13 +169,11 @@ function buildAngleDerivedTopics(seedTopics, keywordSet) {
   const seeds = uniqueDomainTopics(seedTopics, 18);
   const derived = [];
   const seen = new Set(seeds.map((s) => normalizeKey(s)));
-  const focusCap = 3;
-  seeds.forEach((base, si) => {
+  seeds.forEach((base) => {
     const b = String(base || '').trim();
     if (!b) return;
-    EVO_TOPIC_ANGLE_FOCUS.slice(0, focusCap).forEach((focus, fi) => {
-      const tag = ['обзор', 'разбор', 'практика', 'риски', 'экономика'][(si + fi) % 5];
-      const candidate = `${b} (${tag}: ${focus})`;
+    EVO_TOPIC_ANGLE_FOCUS.forEach((focus) => {
+      const candidate = `${b} — ${focus}`;
       const nk = normalizeKey(candidate);
       if (seen.has(nk)) return;
       if (keywordSet?.size && scoreTextRelevance(candidate, keywordSet) < 0.12) return;
@@ -397,7 +396,7 @@ function buildDomains(draftContentPlan, precedentContext = {}) {
   const draftTopics = uniqueDomain(fromDraft.map((item) => item.topic));
   const precedentTopics = uniqueDomain(fromPrecedents.map((item) => item.topic));
   const keywordSet = buildKeywordSet(draftContentPlan, fromDraft);
-  const relevantPrecedentTopics = precedentTopics.filter((topic) => scoreTextRelevance(topic, keywordSet) >= 0.25);
+  const relevantPrecedentTopics = precedentTopics.filter((topic) => scoreTextRelevance(topic, keywordSet) >= 0.12);
   const ontologyPhrases = collectOntologyTopicPhrases(precedentContext.ontology, keywordSet);
 
   const baseTopics = draftTopics.length
@@ -424,12 +423,44 @@ function buildDomains(draftContentPlan, precedentContext = {}) {
 }
 
 function expandBasePublications(draftContentPlan, targetCount) {
-  const base = Array.isArray(draftContentPlan?.publications) ? draftContentPlan.publications : [];
+  // Use publications if available, otherwise use publication_slots from skeleton
+  let base = [];
+  if (Array.isArray(draftContentPlan?.publications) && draftContentPlan.publications.length > 0) {
+    base = draftContentPlan.publications;
+  } else if (Array.isArray(draftContentPlan?.publication_slots) && draftContentPlan.publication_slots.length > 0) {
+    // Clone slot objects and ensure they have publication_id placeholder
+    base = draftContentPlan.publication_slots.map(slot => ({
+      ...slot,
+      // Ensure we have a placeholder publication_id; will be replaced later
+      publication_id: ''
+    }));
+  }
+  // If still empty, fallback to empty array (will produce empty objects)
+  if (base.length === 0) {
+    base = [{}];
+  }
   return Array.from({ length: targetCount }, (_, index) => {
-    const source = cloneJson(base[index % Math.max(1, base.length)] || {});
+    const sourceIndex = index % base.length;
+    const cycle = Math.floor(index / base.length);
+    const source = cloneJson(base[sourceIndex]);
+    if (cycle > 0) {
+      const objective = source.objective || 'inform';
+      source.topic = buildNaturalTopicVariation(
+        source.topic || `Публикация ${index + 1}`,
+        objective,
+        cycle + 1,
+        index
+      );
+      source.key_message = '';
+      source.summary = '';
+      source.cta = '';
+      delete source.semantic_core;
+    }
     return {
       ...source,
-      publication_id: source.publication_id || `evo_publication_${String(index + 1).padStart(3, '0')}`
+      publication_id: source.publication_id && cycle === 0
+        ? source.publication_id
+        : `evo_publication_${String(index + 1).padStart(3, '0')}`
     };
   });
 }
@@ -681,16 +712,16 @@ function buildSyncedSummary(resolvedTopic, resolvedObjective, resolvedFormat, in
           ? 'В комбинированном формате'
           : 'В текстовом материале';
   const cores = [
-    `${formatLead} разбираем тему: ${topicPhrase}. Цель публикации — ${hint}. Показываем контекст задачи, типовые боли аудитории и рабочий подход к решению. Даём ориентиры по внедрению и ожидаемый эффект для команды.`,
-    `Практический разбор: ${topicPhrase}. Задача материала — ${hint}. Описываем прикладной контекст, этапы проверки гипотез и измеримый результат.`,
-    `Погружаемся в «${topicPhrase}». ${hintCap}. Приводим прикладные примеры, ограничения и шаги, которые можно сделать без «большого проекта с нуля».`,
-    `Тема недели — ${topicPhrase}. ${hintCap}. Собираем воедино факты, типовые ошибки и критерии, когда решение действительно окупается.`,
-    `Читатель получит карту вопросов по ${topicPhrase.toLowerCase()}: что уточнить у команды, где чаще всего «ломается» внедрение, и как не потерять фокус. Цель — ${hint}.`,
-    `Сценарный подход: сначала диагностика, затем пилот, затем масштабирование — на примере ${topicPhrase.toLowerCase()}. ${hintCap}.`,
-    `Материал для тех, кто уже сталкивался с ${topicPhrase.toLowerCase()} и хочет системности. ${hintCap}.`,
-    `Ставим ${topicPhrase.toLowerCase()} в связку с KPI, рисками и зрелостью процессов. Цель публикации — ${hint}.`,
-    `Объясняем «зачем это сейчас» и «что меняется на местах» вокруг ${topicPhrase.toLowerCase()}. ${hintCap}.`,
-    `Без перегруза терминами: ясные формулировки, чек-лист и ориентиры по теме «${topicPhrase}». ${hintCap}.`
+    `${formatLead} про «${topicPhrase}» начинается с одного ограничения, а не с описания всего продукта. ${hintCap}.`,
+    `На примере «${topicPhrase}» виден конкретный сбой и одна проверка, которая меняет исход. ${hintCap}.`,
+    `Вопрос к команде про «${topicPhrase}»: какой шаг вы бы убрали первым? ${hintCap}.`,
+    `Два соседних подхода к «${topicPhrase}» расходятся по сроку и цене ошибки. ${hintCap}.`,
+    `Факт по «${topicPhrase}»: эффект считается сравнением до и после, а не общим обещанием. ${hintCap}.`,
+    `Сначала диагностика узкого места в «${topicPhrase}», потом короткий пилот, и только затем масштаб. ${hintCap}.`,
+    `«${topicPhrase}» для тех, кто уже упирался в этот сценарий и хочет другой угол, не повтор соседнего поста. ${hintCap}.`,
+    `Вокруг «${topicPhrase}» важны метрика, риск и то, кто подписывает результат. Смысл слота: ${hint}.`,
+    `Что меняется на месте, если закрыть «${topicPhrase}» до конца месяца. ${hintCap}.`,
+    `Короткий чек-лист по «${topicPhrase}» без пересказа остальных тем плана. ${hintCap}.`
   ];
   const core = cores[mix % cores.length];
   return padEvoSummaryBody(core, minLen, mix + 3);
@@ -705,6 +736,15 @@ function syncBodyFieldsAfterGeneChange(
   resolvedTone = '',
   syncOptions = {}
 ) {
+  const existingKeyMessage = typeof base.key_message === 'string' ? base.key_message.trim() : '';
+  const existingSummary = typeof base.summary === 'string' ? base.summary.trim() : '';
+  if (existingKeyMessage && existingSummary && !shouldRewriteMachineKeyMessage(existingKeyMessage)) {
+    return {
+      key_message: existingKeyMessage,
+      summary: existingSummary.length > 2200 ? existingSummary.slice(0, 2200).trim() : existingSummary
+    };
+  }
+
   const topicChanged = normalizeKey(resolvedTopic) !== normalizeKey(base.topic);
   const objectiveChanged = normalizeKey(resolvedObjective) !== normalizeKey(base.objective);
   const formatChanged = normalizeKey(resolvedFormat) !== normalizeKey(base.format);
@@ -910,9 +950,6 @@ function applyGenomeToPlan(
   };
 }
 
-// Веса для фитнес-функции (shared with post-level via fitnessUtils)
-const FITNESS_WEIGHTS = { ...DEFAULT_FITNESS_WEIGHTS };
-
 function buildNormalizedFrequencyMap(values = []) {
   const freq = buildFrequencyMap(values);
   const total = Array.from(freq.values()).reduce((sum, value) => sum + value, 0);
@@ -993,7 +1030,9 @@ function enforceCtaCoverage(publications = [], lockedFields = {}) {
     const forceHasCta = lockedFields.has_cta ? 1 : 0;
     return publications.map((publication, index) => ({
       ...publication,
-      cta: forceHasCta ? buildEvolutionCtaText(publication?.objective, index) : '',
+      cta: forceHasCta
+        ? String(publication?.cta || '').trim() || buildEvolutionCtaText(publication?.objective, index)
+        : '',
       ontology_features: {
         ...(publication?.ontology_features || {}),
         has_cta: forceHasCta
@@ -1023,9 +1062,10 @@ function enforceCtaCoverage(publications = [], lockedFields = {}) {
   const activeSet = new Set(activeIndices);
   return next.map((publication, index) => {
     const hasCta = activeSet.has(index);
+    const existingCta = String(publication?.cta || '').trim();
     return {
       ...publication,
-      cta: hasCta ? buildEvolutionCtaText(publication?.objective, index) : '',
+      cta: hasCta ? existingCta || buildEvolutionCtaText(publication?.objective, index) : '',
       ontology_features: {
         ...(publication?.ontology_features || {}),
         has_cta: hasCta ? 1 : 0
@@ -1102,7 +1142,7 @@ function jaccardTokenSimilarity(a, b) {
 }
 
 /** 1 − средняя Jaccard-похожесть тел постов (key_message + summary) по парам слотов. */
-function scorePlanBodyLexicalDiversity(publications = []) {
+export function scorePlanBodyLexicalDiversity(publications = []) {
   if (!Array.isArray(publications) || publications.length <= 1) return 1;
   const sets = publications.map((p) => bodyTokenSet(p)).filter((s) => s.size >= 4);
   if (sets.length <= 1) return 0.55;
@@ -1129,14 +1169,53 @@ function scorePlanSummaryPrefixDiversity(publications = [], prefixLen = 112) {
   return clamp01(1 - concentration * 0.72, 0);
 }
 
+function commentRatioFromPublications(publications = []) {
+  let comments = 0;
+  let likes = 0;
+  for (const publication of publications) {
+    const metrics = publication?.metrics || publication?.raw_metrics || null;
+    comments += Number(metrics?.comments) || 0;
+    likes += Number(metrics?.likes) || 0;
+  }
+  if (comments <= 0 || likes <= 0) return null;
+  return comments / likes;
+}
+
+function scoreGenomeOntologyAlignment(genome, precedentContext = {}) {
+  const publications = precedentContext?.reliablePublications || [];
+  const topics = new Set();
+  const objectives = new Set();
+  for (const item of publications) {
+    const model = item?.data?.publication_model || item?.data || {};
+    const topic = normalizeKey(model.topic);
+    const objective = normalizeKey(model.objective);
+    if (topic) topics.add(topic);
+    if (objective) objectives.add(objective);
+  }
+  if (!Array.isArray(genome) || genome.length === 0 || (topics.size === 0 && objectives.size === 0)) return 0;
+  let score = 0;
+  for (const gene of genome) {
+    if (!Array.isArray(gene)) continue;
+    const topic = normalizeKey(gene[0]);
+    const objective = normalizeKey(gene[2]);
+    if (topic && topics.has(topic)) score += 1;
+    else if (objective && objectives.has(objective)) score += 0.35;
+  }
+  return clamp01(score / genome.length, 0);
+}
+
 function calculateFitness(predictedMetrics, metadata, publications = [], options = {}) {
-  const kpi = kpiScore(predictedMetrics, metadata, { keyPrefix: 'total_', weights: FITNESS_WEIGHTS });
+  const commentRatio = commentRatioFromPublications(publications);
+  const metricsForKpi = commentRatio != null
+    ? [predictedMetrics[0], predictedMetrics[1], predictedMetrics[2], asNumber(predictedMetrics[0], 0) * commentRatio]
+    : predictedMetrics;
+  const kpi = kpiScore(metricsForKpi, metadata, { keyPrefix: 'total_' });
 
   const diversityScore = scorePlanDiversity(publications);
   const stemSpreadScore = scoreTopicStemSpread(publications);
   const summaryPrefixScore = scorePlanSummaryPrefixDiversity(publications, 112);
   const bodyLexScore = scorePlanBodyLexicalDiversity(publications);
-  const textBlend = clamp01(asNumber(options?.textDiversityBlend, 0.08), 0.08);
+  const textBlend = clamp01(asNumber(options?.textDiversityBlend, 0.42), 0.42);
   const structuralBlend = 1 - textBlend;
   const blendedStructural = clamp01(
     diversityScore * 0.66 + stemSpreadScore * 0.17 + summaryPrefixScore * 0.17,
@@ -1176,15 +1255,15 @@ export async function optimizeContentPlanEvolution(draftContentPlan, config = {}
     0.68
   );
   const textDiversityBlend = clampProbability(
-    ga?.textDiversityBlend ?? constraints?.text_diversity_blend ?? readPlanGaEnvNumber('PLAN_GA_TEXT_DIVERSITY_BLEND'),
-    0.08
+    ga?.textDiversityBlend ?? constraints?.text_diversity_blend ??       readPlanGaEnvNumber('PLAN_GA_TEXT_DIVERSITY_BLEND'),
+    0.42
   );
   const draftPreservationWeight = clampProbability(
     ga?.draftPreservationWeight ??
       constraints?.draft_preservation_weight ??
       readPlanGaEnvNumber('PLAN_GA_DRAFT_PRESERVATION_WEIGHT') ??
       undefined,
-    0.11
+    0.06
   );
 
   const crossoverMethod = normalizeGaMethod(ga.crossoverMethod, ['one_point', 'two_point', 'uniform'], 'one_point');
@@ -1198,7 +1277,7 @@ export async function optimizeContentPlanEvolution(draftContentPlan, config = {}
   const normalizedCrossoverProbability = normalizeGaProbability(ga.crossoverProbability, 0.9);
   const normalizedMutationProbability = normalizeGaProbability(
     ga.mutationProbability ?? readPlanGaEnvNumber('PLAN_GA_MUTATION_PROBABILITY'),
-    0.12
+    0.2
   );
 
   let crossoverFn;
@@ -1351,11 +1430,7 @@ export async function optimizeContentPlanEvolution(draftContentPlan, config = {}
       const predictionResult = await predictPlanMetricsByFeatureVectors(featureVectors, { forceTrain: false });
       
       return predictionResult.predictions.map((predictedMetrics, index) => {
-        const trustedTemplates = precedentContext?.ontology?.trusted_llm_additions?.relation_templates_count || 0;
-        const trustedSynonyms = precedentContext?.ontology?.trusted_llm_additions?.synonyms_count || 0;
-        const ontologyConsistencyBonus = precedentContext?.ontologyRollout?.enabled
-          ? clamp01((trustedTemplates * 0.2 + trustedSynonyms * 0.05) / 5, 0)
-          : 0;
+        const ontologyConsistencyBonus = scoreGenomeOntologyAlignment(population[index], precedentContext);
         const fitness = calculateFitness(
           predictedMetrics,
           predictionResult.metadata,
@@ -1449,9 +1524,7 @@ export function sanitizePlanPublicationsBodies(publications = []) {
       {},
       typeof objective === 'string' ? objective : 'inform'
     );
-    const cta = pub?.cta
-      ? buildObjectiveCta(pub?.objective, '', topic, index)
-      : '';
+    const cta = typeof pub?.cta === 'string' ? pub.cta.trim() : '';
     const keyMeta = { topic: canonical, objective, format, tone, index };
     const finalizeKm = (raw) =>
       reconcilePublicationKeyMessageWithTopic({ ...pub, topic, title: pub?.title, key_message: raw }, index);
@@ -1511,9 +1584,10 @@ export function sanitizePlanPublicationsBodies(publications = []) {
     key_message: reconcilePublicationKeyMessageWithTopic(pub, index)
   }));
   const pass4 = dedupeRepeatedProductBoilerplateInSummaries(pass3);
-  const pass5 = pass4.map((pub, index) => ({
+  const pass5 = diversifyRepeatedSummaryOpenings(pass4);
+  const pass6 = pass5.map((pub, index) => ({
     ...pub,
     key_message: reconcilePublicationKeyMessageWithTopic(pub, index)
   }));
-  return ensureDistinctTopicTitles(pass5);
+  return ensureDistinctTopicTitles(assignDistinctCtas(pass6));
 }

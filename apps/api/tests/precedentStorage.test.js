@@ -2,16 +2,21 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { resolveStorageBackend } from '../src/modules/precedents/repositories/precedentRepository.js';
 
-test('resolveStorageBackend defaults to json in dev', () => {
-  assert.equal(resolveStorageBackend({}), 'json');
+test('resolveStorageBackend defaults to pg', () => {
+  assert.equal(resolveStorageBackend({}), 'pg');
 });
 
 test('resolveStorageBackend honors explicit PRECEDENT_STORAGE=pg', () => {
   assert.equal(resolveStorageBackend({ PRECEDENT_STORAGE: 'pg' }), 'pg');
 });
 
-test('resolveStorageBackend honors explicit PRECEDENT_STORAGE=json (dev)', () => {
-  assert.equal(resolveStorageBackend({ PRECEDENT_STORAGE: 'json' }), 'json');
+test('resolveStorageBackend rejects json (dev)', () => {
+  try {
+    resolveStorageBackend({ PRECEDENT_STORAGE: 'json' });
+    assert.fail('expected throw');
+  } catch (error) {
+    assert.match(error.message, /PRECEDENT_STORAGE=json is removed/);
+  }
 });
 
 test('resolveStorageBackend back-compat USE_DATABASE=true selects pg', () => {
@@ -27,7 +32,7 @@ test('resolveStorageBackend rejects json in production', () => {
     resolveStorageBackend({ PRECEDENT_STORAGE: 'json', APP_ENV: 'production' });
     assert.fail('expected throw');
   } catch (error) {
-    assert.match(error.message, /dev-only/);
+    assert.match(error.message, /PRECEDENT_STORAGE=json is removed/);
   }
 });
 

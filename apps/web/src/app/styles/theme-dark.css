@@ -1,0 +1,465 @@
+/*
+ * Dark theme surfaces. Light theme keeps the original styles:
+ * every rule here is scoped to body.theme-dark.
+ */
+
+body.theme-dark {
+  --bg-shell: #0c0e14;
+  --bg-header: #080a10;
+  --bg-raised: #14161e;
+  --bg-inset: #101218;
+  --bg-control: #161822;
+  --line: #2a2c38;
+  --ink: #d4d2de;
+  --ink-muted: #8e8ca0;
+  --shadow: #101218;
+}
+
+body.theme-dark .app-container {
+  background: var(--bg-shell);
+  border-color: #22242e;
+  box-shadow:
+    8px 8px 0 0 #161822,
+    16px 16px 0 0 rgba(0, 0, 0, 0.55);
+}
+
+body.theme-dark .app-header,
+body.theme-dark .app-footer {
+  background: var(--bg-header);
+  border-color: var(--line);
+}
+
+body.theme-dark .app-header {
+  border-bottom-color: #c45a84;
+}
+
+body.theme-dark .subtitle,
+body.theme-dark .role-mode-hint {
+  color: var(--ink-muted);
+}
+
+body.theme-dark .main-nav {
+  border-top-color: var(--line);
+}
+
+body.theme-dark .role-select,
+body.theme-dark .nav-link:not(.active):not(:hover) {
+  background: var(--bg-control);
+  border-color: #222433;
+  color: var(--ink);
+}
+
+body.theme-dark .nav-link:hover,
+body.theme-dark .nav-link.active {
+  background: #ff6b9d;
+  border-color: #ff6b9d;
+  color: #ffffff;
+}
+
+body.theme-dark .app-main {
+  background: var(--bg-shell);
+  color: var(--ink);
+}
+
+body.theme-dark .app-main *,
+body.theme-dark .modal-content *,
+body.theme-dark .toast * {
+  color: inherit;
+}
+
+body.theme-dark :is(
+  .form-section,
+  .plan-section,
+  .plan-summary-metric,
+  .post-card,
+  .platform-block,
+  .workflow-overview-card,
+  .workflow-result-card,
+  .workflow-checklist-item,
+  .precedent-card,
+  .precedent-workflow-section-embedded,
+  .ontology-preview-panel,
+  .ontology-preview-metric,
+  .ontology-preview-card,
+  .ontology-preview-item,
+  .calendar-day-card,
+  .calendar-platform-lane,
+  .calendar-publication-card,
+  .auth-form,
+  .auth-gate,
+  .modal-content,
+  .toast,
+  .download-dropdown-menu,
+  .wizard-step-tab,
+  .wizard-status-pill,
+  .checkbox-label,
+  .key-dates-picker,
+  .key-dates-descriptions,
+  .key-dates-chip,
+  .key-dates-nav-btn,
+  .key-dates-add-btn,
+  .key-dates-remove-btn,
+  .preview-info,
+  .plan-history-diff,
+  .secondary-btn,
+  .onboarding-master-select,
+  .post-media,
+  .post-metrics-section,
+  .precedent-query-box,
+  .precedent-empty-state-light,
+  .analysis-view,
+  .quick-actions,
+  .onboarding-master,
+  .process-indicator
+) {
+  background: var(--bg-raised);
+  border-color: var(--line);
+  color: var(--ink);
+  box-shadow: 4px 4px 0 0 var(--shadow);
+}
+
+body.theme-dark :is(
+  .form-input,
+  .form-textarea,
+  .form-select,
+  .editor-input,
+  .editor-textarea,
+  .auth-username-input,
+  .auth-password-input,
+  .plan-display-name-input,
+  .checkbox-group,
+  .calendar-marker,
+  .key-dates-day,
+  .modal-body,
+  .precedent-search-textarea,
+  .demo-horizon-select option
+) {
+  background: var(--bg-inset);
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+body.theme-dark :is(.form-input, .form-textarea, .form-select, .editor-input, .editor-textarea, .auth-username-input, .auth-password-input):focus,
+body.theme-dark :is(.form-input, .form-textarea, .form-select, .editor-input, .editor-textarea, .auth-username-input, .auth-password-input):focus-visible {
+  background: #181a24;
+  color: var(--ink);
+}
+
+body.theme-dark .app-main ::placeholder,
+body.theme-dark .modal-content ::placeholder {
+  color: #7d7b8c;
+  opacity: 1;
+}
+
+body.theme-dark .app-main :is(
+  .page-subtitle,
+  .page-subtitle-detail,
+  .form-hint,
+  .workflow-section-subtitle,
+  .evolution-settings-lead,
+  .evolution-settings-subtitle,
+  .actions-description,
+  .key-dates-lead,
+  .editor-hint,
+  .post-metrics-note,
+  .post-metrics,
+  .post-content,
+  .workflow-overview-label,
+  .workflow-overview-meta,
+  .ontology-preview-metric-label,
+  .ontology-preview-subtitle,
+  .precedent-results-subtitle,
+  .competitors-select-label,
+  .section-subtitle
+) {
+  color: var(--ink-muted);
+}
+
+body.theme-dark .ontology-item li,
+body.theme-dark .evolution-settings-section .form-hint {
+  background: var(--bg-inset);
+  border-color: var(--line);
+}
+
+body.theme-dark .app-main :is(.required, .precedent-card-score) {
+  color: #ff6b9d;
+}
+
+body.theme-dark .app-main :is(
+  .error-message,
+  .editor-error,
+  .post-media-error,
+  .workflow-risk-item.severity-high
+) {
+  color: #f0a0b0;
+}
+
+body.theme-dark .editor-error {
+  background: #2a161c;
+  border-color: #8a3048;
+}
+
+body.theme-dark .app-main :is(
+  .workflow-risk-item.severity-medium,
+  .plan-summary-constraint-detail
+) {
+  color: #e6c57a;
+}
+
+body.theme-dark .app-main .workflow-risk-item.severity-low,
+body.theme-dark .app-main .workflow-risk-detail {
+  color: var(--ink-muted);
+}
+
+body.theme-dark .app-main :is(
+  .precedent-reliability-success,
+  .wizard-nav-summary-status.completed
+) {
+  color: #8fdbb0;
+}
+
+body.theme-dark .app-main .precedent-reliability-neutral {
+  color: #c4b6e0;
+}
+
+body.theme-dark .app-main :is(
+  .precedent-reliability-warn,
+  .wizard-nav-summary-status.attention,
+  .wizard-nav-summary-status.in_progress
+) {
+  color: #e6c57a;
+}
+
+body.theme-dark .not-found-link {
+  color: #e48aa8;
+}
+
+body.theme-dark :is(
+  .wizard-status-pill.is-completed,
+  .workflow-checklist-item.is-complete,
+  .calendar-marker-holiday,
+  .plan-history-current-badge,
+  .precedent-retrieval-success
+) {
+  background: #13261c;
+  color: #8fdbb0;
+  border-color: #1f6b45;
+}
+
+body.theme-dark :is(
+  .wizard-status-pill.is-in-progress,
+  .wizard-status-pill.is-attention,
+  .calendar-marker-event,
+  .workflow-next-action,
+  .precedent-retrieval-neutral
+) {
+  background: #2a2416;
+  color: #e6c57a;
+  border-color: #8a6a20;
+}
+
+body.theme-dark :is(
+  .calendar-publication-card.is-conflict,
+  .form-input.error,
+  .form-textarea.error,
+  .form-select.error
+) {
+  background: #2a161c;
+  color: #f0a0b0;
+  border-color: #8a3048;
+}
+
+body.theme-dark .calendar-marker-info {
+  background: #15222c;
+  color: #9fd0ea;
+  border-color: #1e5f80;
+}
+
+body.theme-dark :is(
+  .key-dates-nav-btn,
+  .key-dates-add-btn,
+  .key-dates-remove-btn,
+  .key-dates-chip,
+  .key-dates-day
+):hover:not(:disabled) {
+  background: #241820;
+  border-color: #ff6b9d;
+  color: var(--ink);
+}
+
+body.theme-dark .key-dates-day.is-selected,
+body.theme-dark .wizard-step-tab.active,
+body.theme-dark .calendar-mode-btn.is-active {
+  background: #ff6b9d;
+  border-color: #ff6b9d;
+  color: #ffffff;
+}
+
+body.theme-dark .modal-header {
+  background: var(--bg-header);
+  border-bottom-color: var(--line);
+}
+
+body.theme-dark .modal-close {
+  background: var(--bg-control);
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+body.theme-dark .modal-close:hover {
+  background: #ff6b9d;
+  border-color: #ff6b9d;
+  color: #ffffff;
+}
+
+body.theme-dark .download-dropdown-menu button:hover,
+body.theme-dark .download-dropdown-menu li {
+  background: transparent;
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+body.theme-dark .download-dropdown-menu button:hover {
+  background: #1c1e28;
+}
+
+body.theme-dark :is(
+  .plan-filter-input,
+  .plan-view-toggle-btn,
+  .plan-table,
+  .plan-calendar-intro,
+  .plan-calendar-mobile-move,
+  .plan-calendar-mobile-empty,
+  .plan-calendar-mobile-selection,
+  .plan-calendar-day,
+  .plan-calendar-lane,
+  .plan-calendar-card,
+  .key-dates-item,
+  .precedent-retrieval-pill,
+  .precedent-technical-details,
+  .structure-tree,
+  .modal-footer,
+  .btn-secondary
+) {
+  background: var(--bg-raised);
+  border-color: var(--line);
+  color: var(--ink);
+  box-shadow: 4px 4px 0 0 var(--shadow);
+}
+
+body.theme-dark .plan-table th,
+body.theme-dark .plan-calendar-mobile-field select {
+  background: var(--bg-inset);
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+body.theme-dark .plan-table td,
+body.theme-dark .plan-table th {
+  border-bottom-color: var(--line);
+}
+
+body.theme-dark .plan-view-toggle-btn.active {
+  background: var(--bg-control);
+  border-color: #222433;
+  color: var(--ink);
+}
+
+body.theme-dark .btn-secondary:hover,
+body.theme-dark .key-dates-item.is-active {
+  background: #241820;
+  border-color: #ff6b9d;
+  color: var(--ink);
+}
+
+body.theme-dark .history-delete-btn,
+body.theme-dark .history-delete-btn:hover {
+  background: #2a161c;
+  border-color: #8a3048;
+  color: #f0a0b0;
+}
+
+body.theme-dark .plan-history-constraint-msg,
+body.theme-dark .marker-key-date {
+  background: #2a2416;
+  border-color: #8a6a20;
+  color: #e6c57a;
+}
+
+body.theme-dark .marker-holiday {
+  background: #13261c;
+  border-color: #1f6b45;
+  color: #8fdbb0;
+}
+
+body.theme-dark .precedent-modal-score {
+  background: #2a1822;
+  border-color: #ff6b9d;
+  color: #ff8fb3;
+}
+
+body.theme-dark :is(.submit-button, .btn-edit, .primary-btn, .btn-primary) {
+  background: var(--bg-control);
+  border-color: #222433;
+}
+
+body.theme-dark .submit-button.primary:hover:not(:disabled),
+body.theme-dark .submit-button.secondary:hover:not(:disabled) {
+  background: #222433;
+  border-color: #222433;
+}
+
+body.theme-dark .quick-actions,
+body.theme-dark .onboarding-master,
+body.theme-dark .process-indicator {
+  background: #101218;
+  box-shadow: none;
+}
+
+body.theme-dark .action-btn:not(:hover):not(.danger),
+body.theme-dark .onboarding-master-mode-option:not(.is-active):not(:hover),
+body.theme-dark .onboarding-master-btn:not(:hover):not(.primary),
+body.theme-dark .demo-horizon-select {
+  background: var(--bg-control);
+  border-color: #222433;
+}
+
+body.theme-dark .submit-button.secondary,
+body.theme-dark .secondary-btn {
+  box-shadow: 4px 4px 0 0 #101218;
+}
+
+body.theme-dark .ui-panel,
+body.theme-dark .ui-metric,
+body.theme-dark .precedent-empty-state {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+body.theme-dark .spinner {
+  border-color: #2a2c38;
+  border-top-color: #d4d2de;
+}
+
+body.theme-dark .page-header,
+body.theme-dark .evolution-settings-subblock,
+body.theme-dark .post-header,
+body.theme-dark .post-metrics {
+  border-color: var(--line);
+}
+
+@media (max-width: 768px) {
+  body.theme-dark .app-container {
+    box-shadow:
+      4px 4px 0 0 #161822,
+      8px 8px 0 0 rgba(0, 0, 0, 0.45);
+  }
+}
+
+@media (max-width: 480px) {
+  body.theme-dark .app-container {
+    box-shadow:
+      2px 2px 0 0 #161822,
+      4px 4px 0 0 rgba(0, 0, 0, 0.4);
+  }
+}

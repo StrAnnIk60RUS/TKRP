@@ -41,3 +41,67 @@ test('fillPlanWithBestPublication returns empty plan for empty inputs', async ()
   assert.equal(result.ctaTargetCount, 0);
   assert.equal(result.ctaAssignedCount, 0);
 });
+
+test('fillPlanWithBestPublication propagates GA-evolved tone gene into final publication', async () => {
+  process.env.TEST_MODE = 'true';
+  const evolvedFeatureMap = {
+    has_cta: 0,
+    creativity: 0.5,
+    tone_onehot_0: 0,
+    tone_onehot_1: 0,
+    tone_onehot_2: 0,
+    tone_onehot_3: 1,
+    tone_onehot_4: 0
+  };
+  const publicationResults = [
+    {
+      optimizedPublication: {
+        publication_id: 'pub_001',
+        platform: 'telegram',
+        topic: 'Автоматизация CRM',
+        format: 'text',
+        objective: 'inform',
+        tone: 'expert',
+        ontology_features: evolvedFeatureMap
+      },
+      featureMap: evolvedFeatureMap,
+      predictedLikes: 100,
+      predictedShares: 10,
+      predictedViews: 1000,
+      fitness: 0.4
+    }
+  ];
+  const result = await fillPlanWithBestPublication(BASE_PUBLICATIONS, publicationResults, {}, {});
+  assert.equal(result.publications[0].tone, 'inspiring');
+  assert.equal(result.publications[0].media_prompt, '');
+});
+
+test('fillPlanWithBestPublication keeps the LLM media prompt on visual posts', async () => {
+  process.env.TEST_MODE = 'true';
+  const publication = { ...BASE_PUBLICATIONS[0], format: 'image', platform: 'instagram' };
+  const evolvedFeatureMap = {
+    has_cta: 0,
+    creativity: 0.5,
+    tone_onehot_0: 0,
+    tone_onehot_1: 0,
+    tone_onehot_2: 0,
+    tone_onehot_3: 1,
+    tone_onehot_4: 0
+  };
+  const publicationResults = [
+    {
+      optimizedPublication: {
+        ...publication,
+        ontology_features: evolvedFeatureMap
+      },
+      featureMap: evolvedFeatureMap,
+      predictedLikes: 100,
+      predictedShares: 10,
+      predictedViews: 1000,
+      fitness: 0.4
+    }
+  ];
+  const result = await fillPlanWithBestPublication([publication], publicationResults, {}, {});
+  assert.equal(result.publications[0].media_prompt, 'Test media prompt');
+  assert.equal(result.publications[0].media, null);
+});

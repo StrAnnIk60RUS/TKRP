@@ -21,7 +21,7 @@ import {
   savePlanSnapshot
 } from '../../../features/content-plan/model/planStorage'
 import { exportToExcel, exportToPdf } from '../../../shared/lib/contentPlanExport'
-import { platformOptions } from '../../../features/project-form/ui/projectForm/formConfig'
+import { useInstagramAccess } from '../../../shared/lib/useInstagramAccess'
 import AuthGate from '../../../shared/ui/AuthGate'
 import { isUserAuthenticated } from '../../../shared/ui/AuthGate'
 import './ContentPlanPage.css'
@@ -61,7 +61,7 @@ const sanitizeExportBasename = (name) => {
 }
 
 const getPlatformsFromPublications = (pubs) => {
-  const allowed = new Set(['vk', 'linkedin'])
+  const allowed = new Set(['vk', 'linkedin', 'instagram'])
   const set = new Set()
   pubs.forEach((p) => {
     if (allowed.has(p?.platform)) set.add(p.platform)
@@ -80,7 +80,7 @@ const sortPublicationsByDate = (pubs) =>
 
 const normalizeText = (value) => (typeof value === 'string' ? value.toLowerCase() : '')
 const clamp01 = (value) => Math.max(0, Math.min(1, Number(value) || 0))
-const PLATFORM_UI_LABELS = { vk: 'VK', linkedin: 'LinkedIn' }
+const PLATFORM_UI_LABELS = { vk: 'VK', linkedin: 'LinkedIn', instagram: 'Instagram' }
 const METRICS_NORMALIZATION_TOLERANCE_RATIO = 0.05
 
 const toFiniteNumberOrNull = (value) => {
@@ -161,6 +161,8 @@ const matchesFilters = (publication, filters) => {
 const ContentPlanPage = () => {
   const navigate = useNavigate()
   const { isDeveloper } = useUserRole()
+  const allowInstagram = useInstagramAccess()
+  const editorPlatforms = allowInstagram ? ['vk', 'linkedin', 'instagram'] : ['vk', 'linkedin']
   const [contentPlan, setContentPlan] = useState(null)
   const [loading, setLoading] = useState(true)
   const [optimizationMeta, setOptimizationMeta] = useState(null)
@@ -462,13 +464,16 @@ const ContentPlanPage = () => {
     })
 
     try {
-      await savePlanSnapshot(nextPlan, { type: 'draft', optimization: null })
+      const ok = await savePlanSnapshot(nextPlan, { type: 'draft', optimization: null })
+      if (!ok) return false
       setContentPlan(nextPlan)
       setOptimizationMeta(null)
       setPlanHistory(getPlanHistory())
       setPublicationToEdit(null)
+      return true
     } catch (e) {
       console.error('Не удалось сохранить редактирование поста:', e)
+      return false
     }
   }
 
@@ -644,9 +649,9 @@ const ContentPlanPage = () => {
             <button
               className="secondary-btn"
               onClick={() => setIsPlanEditOpen(true)}
-              title="Редактировать параметры плана"
+              title="Правит сроки, прогноз и заметки. Пайплайн заново не запускается"
             >
-              Редактировать параметры
+              Сроки и заметки
             </button>
             <div className="download-dropdown">
               <button
@@ -734,16 +739,6 @@ const ContentPlanPage = () => {
       </div>
 
       <div className="content-plan-content">
-        <PlanHistoryPanel
-          history={planHistory}
-          onLoad={handleLoadHistoryEntry}
-          onDelete={handleDeleteHistoryEntry}
-          currentPlanId={contentPlan.plan_id}
-          currentPlanType={currentPlanType}
-          currentSavedAt={currentSavedAt}
-          currentSummary={currentSummary}
-        />
-
         <section className="plan-section">
           <h2 className="section-title">Сводка контент-плана</h2>
           <PlanSummaryBar
@@ -790,7 +785,7 @@ const ContentPlanPage = () => {
               plan={safePlan}
               publications={filteredPublications}
               keyDates={safePlan?.notes || ''}
-              platformOptions={platformOptions.map((item) => item.value)}
+              platformOptions={editorPlatforms}
               onMovePublication={handleMovePublication}
             />
           )}
@@ -828,11 +823,22 @@ const ContentPlanPage = () => {
             </>
           )}
         </section>
+
+        <PlanHistoryPanel
+          history={planHistory}
+          onLoad={handleLoadHistoryEntry}
+          onDelete={handleDeleteHistoryEntry}
+          currentPlanId={contentPlan.plan_id}
+          currentPlanType={currentPlanType}
+          currentSavedAt={currentSavedAt}
+          currentSummary={currentSummary}
+        />
       </div>
 
       {!!publicationToEdit && (
         <PostEditModal
           publication={publicationToEdit}
+          platforms={editorPlatforms}
           onSave={handleSavePostEdit}
           onCancel={() => setPublicationToEdit(null)}
         />
