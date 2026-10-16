@@ -1,0 +1,85 @@
+@startuml
+title Логическая модель данных (7 таблиц)
+
+entity embedding_model_version as emv {
+  * id : UUID
+  --
+  model_name
+  vector_dimension
+  provider
+  released_at
+}
+
+entity llm_model_version as llmv {
+  * id : UUID
+  --
+  model_name
+  provider
+  context_window_max_tokens
+  released_at
+}
+
+entity semantic_enrichment_session as ses {
+  * id : UUID
+  --
+  llm_model_version_id : UUID
+  started_at
+  finished_at
+  status
+  enrichment_config_json
+  usage_aggregate_json
+  batches_total
+}
+
+entity ingestion_run as ir {
+  * id : UUID
+  --
+  run_id
+  semantic_enrichment_session_id : UUID
+  created_at
+  source
+  dedup_stats_json
+  embedding_stats_json
+}
+
+entity publication as pub {
+  * id : BIGSERIAL
+  --
+  publication_id
+  ingestion_run_id : UUID
+  embedding_model_version_id : UUID
+  publication_model
+  embedding
+}
+
+entity content_plan as cp {
+  * id : BIGSERIAL
+  --
+  plan_id
+  ingestion_run_id : UUID
+  embedding_model_version_id : UUID
+  content_plan_model
+  ontology_support
+  embedding
+}
+
+entity rag_retrieval_log as rrl {
+  * id : UUID
+  --
+  embedding_model_version_id : UUID
+  rag_query_text
+  filter_json
+  top_k
+  context_quality_score
+  created_at
+}
+
+llmv ||--o{ ses
+ses |o--o| ir
+ir ||--o{ pub
+ir ||--o{ cp
+emv ||--o{ pub
+emv ||--o{ cp
+emv ||--o{ rrl
+
+@enduml

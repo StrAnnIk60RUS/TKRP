@@ -1,0 +1,74 @@
+.auth-gate {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 32px;
+  border: 2px solid #2d2d44;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.auth-gate h2 {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: #1a1a2e;
+  margin-bottom: 12px;
+}
+
+.auth-gate-subtitle {
+  font-size: 1rem;
+  color: #2d2d44;
+  line-height: 1.6;
+  margin-bottom: 24px;
+}
+
+.auth-gate-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.auth-gate-btn {
+  padding: 12px 24px;
+  border: 2px solid #2d2d44;
+  border-radius: 8px;
+  background: #2d2d44;
+  color: #ffffff !important;
+  text-decoration: none;
+  font-weight: 700;
+  font-size: 0.95rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  transition: all 0.15s;
+}
+
+.auth-gate-btn-login:hover {
+  background: #ff6b9d;
+  border-color: #ff6b9d;
+  color: #ffffff !important;
+}
+
+.auth-gate-btn-register:hover {
+  background: #f8b500;
+  border-color: #f8b500;
+  color: #1a1a2e !important;
+}
+
+.auth-gate-btn:focus-visible {
+  outline: 2px solid #ff6b9d;
+  outline-offset: 2px;
+}
+
+@media (max-width: 560px) {
+  .auth-gate {
+    padding: 20px;
+  }
+
+  .auth-gate-actions {
+    flex-direction: column;
+  }
+
+  .auth-gate-btn {
+    width: 100%;
+  }
+}

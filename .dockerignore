@@ -1,0 +1,16 @@
+node_modules
+apps/api/node_modules
+dist
+.git
+**/.git
+data/runtime
+*.log
+.env
+.DS_Store
+Thumbs.db
+.idea
+.vscode
+coverage
+.venv
+venv
+__pycache__

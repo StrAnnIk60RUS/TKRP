@@ -1,0 +1,65 @@
+@startuml subsystem-bam-component-backend
+' UML-диаграмма компонентов: бэкенд, хранилище, внешний провайдер
+
+!theme plain
+skinparam shadowing false
+skinparam roundcorner 8
+skinparam componentStyle rectangle
+skinparam component {
+  BackgroundColor #FFFFFF
+  BorderColor #334155
+  FontSize 11
+}
+skinparam node {
+  BackgroundColor #FEE2E2
+  BorderColor #B91C1C
+}
+skinparam database {
+  BackgroundColor #F3F4F6
+  BorderColor #4B5563
+}
+skinparam package {
+  BackgroundColor #F8FAFC
+  BorderColor #64748B
+}
+
+title Рисунок — Диаграмма компонентов подсистемы\n(бэкенд, слой данных, OpenRouter)
+
+package "Маршруты REST API" <<routes>> #FFF7ED {
+  component [enrichmentRoutes] as ER
+  component [precedentRoutes] as PR
+  component [planRoutes] as PLR
+}
+
+package "Доменные сервисы" <<domain>> #E8F4FC {
+  component [precedentRepository] as Repo
+  component [draftPlanGenerationPipeline] as Draft
+  component [openrouter.js] as OR
+  component [embeddingService] as Emb
+}
+
+package "Слой данных" <<storage>> #F3F4F6 {
+  database "data/precedents\nкорпус прецедентов" as PrecStore
+  database "data/runtime/api\nоперативные снимки" as Runtime
+}
+
+node "OpenRouter\nвнешний провайдер" as Ext <<external>> #FEE2E2
+
+ER -down-> OR : дополнение чата и обогащение пакетов
+ER -down-> Repo : сохранение обогащённых прецедентов
+
+PR -down-> Repo : семантический поиск и сводка корпуса
+
+PLR -down-> Repo : контекст прецедентов для генерации
+PLR -down-> Draft : двухэтапная генерация черновика
+PLR -down-> Runtime : сохранение оперативных снимков
+
+Draft -down-> OR : каркас плана и публикации
+
+Repo -down-> Emb : векторизация и семантический поиск
+Repo -down-> PrecStore : чтение и запись корпуса
+
+OR -down-> Ext : внешний вызов дополнения чата
+Emb -down-> Ext : внешний вызов векторизации текстов
+
+@enduml

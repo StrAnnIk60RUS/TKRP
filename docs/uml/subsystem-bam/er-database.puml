@@ -1,0 +1,122 @@
+@startuml subsystem-bam-er-database
+' Диаграмма сущность–связь подсистемы БЯМ / RAG
+' Рендер: PlantUML → PNG/SVG для вставки в статью или тезисы
+
+!theme plain
+skinparam shadowing false
+skinparam roundcorner 8
+skinparam linetype ortho
+skinparam entity {
+  BackgroundColor #F8FAFC
+  BorderColor #334155
+  FontSize 11
+}
+skinparam arrow {
+  Color #475569
+}
+
+title Рисунок — Логическая модель данных подсистемы БЯМ и RAG\n(PostgreSQL + pgvector)
+
+entity "embedding_model_version" as emv {
+  * **id** : UUID <<PK>>
+  --
+  model_name : VARCHAR(256)
+  vector_dimension : INT
+  provider : VARCHAR(128)
+  released_at : TIMESTAMPTZ
+}
+
+entity "llm_model_version" as llmv {
+  * **id** : UUID <<PK>>
+  --
+  model_name : VARCHAR(256)
+  provider : VARCHAR(128)
+  context_window_max_tokens : INT
+  released_at : TIMESTAMPTZ
+}
+
+entity "semantic_enrichment_session" as ses {
+  * **id** : UUID <<PK>>
+  --
+  # llm_model_version_id : UUID <<FK>>
+  started_at : TIMESTAMPTZ
+  finished_at : TIMESTAMPTZ
+  status : VARCHAR(32)
+  enrichment_config_json : JSONB
+  usage_aggregate_json : JSONB
+  batches_total : INT
+}
+
+entity "ingestion_run" as ir {
+  * **id** : UUID <<PK>>
+  --
+  run_id : VARCHAR(128) <<UK>>
+  # semantic_enrichment_session_id : UUID <<FK>>
+  created_at : TIMESTAMPTZ
+  source : VARCHAR(64)
+  competitors_count : INT
+  publications_processed : INT
+  content_plans_processed : INT
+  publications_inserted : INT
+  publications_updated : INT
+  content_plans_inserted : INT
+  content_plans_updated : INT
+  dedup_stats_json : JSONB
+  embedding_stats_json : JSONB
+}
+
+entity "publication" as pub {
+  * **id** : BIGSERIAL <<PK>>
+  --
+  publication_id : VARCHAR(512) <<UK>>
+  # ingestion_run_id : UUID <<FK>>
+  # embedding_model_version_id : UUID <<FK>>
+  competitor_id : VARCHAR(256)
+  competitor_name : VARCHAR(256)
+  platform : VARCHAR(64)
+  source_url : TEXT
+  publication_model : JSONB
+  raw_content : TEXT
+  raw_metrics : JSONB
+  engagement_rate : REAL
+  embedding : vector(1536)
+  embedded_at : TIMESTAMPTZ
+}
+
+entity "content_plan" as cp {
+  * **id** : BIGSERIAL <<PK>>
+  --
+  plan_id : VARCHAR(512) <<UK>>
+  # ingestion_run_id : UUID <<FK>>
+  # embedding_model_version_id : UUID <<FK>>
+  competitor_id : VARCHAR(256)
+  competitor_name : VARCHAR(256)
+  platform : VARCHAR(64)
+  content_plan_model : JSONB
+  ontology_support : JSONB
+  embedding : vector(1536)
+  embedded_at : TIMESTAMPTZ
+}
+
+entity "rag_retrieval_log" as rrl {
+  * **id** : UUID <<PK>>
+  --
+  # embedding_model_version_id : UUID <<FK>>
+  rag_query_text : TEXT
+  filter_json : JSONB
+  top_k : INT
+  context_quality_score : REAL
+  top_publication_refs_json : JSONB
+  top_content_plan_refs_json : JSONB
+  created_at : TIMESTAMPTZ
+}
+
+llmv ||--o{ ses : «использует версию БЯМ»
+ses |o--o| ir : «сеанс обогащения»
+ir ||--o{ pub : «загружает»
+ir ||--o{ cp : «загружает»
+emv ||--o{ pub : «векторизация»
+emv ||--o{ cp : «векторизация»
+emv ||--o{ rrl : «модель запроса»
+
+@enduml

@@ -1,0 +1,144 @@
+@startuml subsystem-bam-class-diagram
+' Диаграмма классов подсистемы БЯМ / RAG
+' Логические классы ↔ модули JavaScript репозитория TKRP
+
+!theme plain
+skinparam shadowing false
+skinparam roundcorner 6
+skinparam classAttributeIconSize 0
+skinparam classFontSize 11
+skinparam class {
+  BackgroundColor #FFFFFF
+  BorderColor #334155
+  ArrowColor #475569
+}
+skinparam package {
+  BackgroundColor #F1F5F9
+  BorderColor #64748B
+}
+
+title Рисунок — Диаграмма классов подсистемы БЯМ и RAG
+
+package "Слой доступа к данным и внешним представлениям" #E8F4FC {
+  class PrecedentCorpusRepository {
+    - precedentsRoot : Path
+    - publicationsStorePath : Path
+    - contentPlansStorePath : Path
+    - metadataPath : Path
+    - ingestionRunsPath : Path
+    --
+    + readStorage() : StorageSnapshot
+    + persistPrecedents(enrichedData, options) : PersistResult
+    + searchPrecedents(query, options) : RagResults
+    + getPrecedentsSummary() : CorpusSummary
+  }
+
+  class OpenRouterEmbeddingsClient {
+    - embeddingModel : String
+    - maxBatchSize : Integer
+    - timeoutMs : Integer
+    --
+    + embedTexts(texts, options) : Vector[]
+    + cosineSimilarity(vecA, vecB) : Real
+    + normalizeCosineToUnitInterval(similarity) : Real
+    + getEmbeddingConfig() : EmbeddingConfig
+  }
+}
+
+package "Слой бизнес-логики: обогащение и генерация с RAG" #FFF7ED {
+  class OpenRouterChatGateway {
+    - chatCompletionsUrl : URL
+    - apiKeyRef : String
+    - chatModel : String
+    --
+    + callOpenRouterChat(systemPrompt, userPrompt, options) : ChatResponse
+    + enrichWithEngagementRate(competitorsData) : CompetitorsData
+    + computePostEngagementMetrics(metrics) : EngagementMetrics
+    + enrichCompetitorsData(competitorsData) : EnrichmentResult
+  }
+
+  class SemanticEnrichmentAssembler {
+    - maxPostsPerBatch : Integer
+    - maxPayloadBytes : Integer
+    - maxRequestBytes : Integer
+    - ALLOWED_ENRICHMENT_OBJECTIVES : String[]
+    --
+    + buildSemanticEnrichmentBatches(data, config) : Batch[]
+    + summarizeEnrichmentLimits(data, config) : LimitSummary
+    + buildSemanticUserPrompt(batch, options) : String
+    + validateAndNormalizeSemanticBatchResult(...) : BatchResult
+    + mergeSemanticBatchResults(base, maps) : CompetitorsData
+    + validateNormalizedEnrichmentResult(data) : void
+    + buildSourcePostId(competitor, cIdx, pIdx) : String
+  }
+
+  class CompetitorContentNormalizer {
+    + normalizeCompetitorsContentData(data) : NormalizedCorpus
+    + normalizePublicationModel(post, competitor, index) : PublicationModel
+    + normalizeContentPlanModel(competitor) : ContentPlanModel
+  }
+
+  class RagAugmentedDraftPlanGenerator {
+    + buildCompactRagContext(ragResults) : CompactContext
+    + generateSkeleton(...) : PlanSkeleton
+    + generateMonthlyPublications(...) : MonthlyPublications
+    + generateDraftPlanBatched(params) : DraftPlan
+    + sanitizeUserFacingSummary(...) : String
+    + averagePrecedentKpi(context) : KpiEstimate
+  }
+
+  class PlanDraftGenerationCoordinator {
+    - ragLimitDefault : Integer = 8
+    --
+    + orchestrateGenerate(req, res) : void
+    + buildRagQueryFromForm(formInput) : String
+    + buildAudienceSegmentsFromForm(formInput) : String[]
+  }
+}
+
+package "Слой интерфейса и адаптеров" #F0FDF4 {
+  class EnrichmentEndpointController {
+    + handlePostEnrich() : HttpResponse
+  }
+
+  class CompetitorEnrichmentWorkbench {
+    - competitorsPayload : CompetitorsData
+    - enrichmentStatus : EnrichmentStatus
+    - isEnrichmentServerAvailable : Boolean
+    --
+    + handleEnrichCompetitorsData() : void
+    + handleRemoveCompetitorsData() : void
+  }
+
+  class DraftPlanGenerateApiAdapter {
+    - baseUrl : URL
+    --
+    + generateDraftContentPlan(payload) : DraftPlanResponse
+  }
+}
+
+PrecedentCorpusRepository --> OpenRouterEmbeddingsClient : <<use>>\nвекторизация при поиске
+
+OpenRouterChatGateway --> SemanticEnrichmentAssembler : <<use>>\nпакеты и лимиты
+SemanticEnrichmentAssembler ..> OpenRouterChatGateway : <<call>>\nзапрос к БЯМ
+OpenRouterChatGateway --> CompetitorContentNormalizer : <<use>>\nпосле слияния пакетов
+
+RagAugmentedDraftPlanGenerator --> OpenRouterChatGateway : <<use>>\nкаркас и публикации
+RagAugmentedDraftPlanGenerator ..> PrecedentCorpusRepository : <<data>>\nконтекст через координатор
+
+PlanDraftGenerationCoordinator --> PrecedentCorpusRepository : <<use>>\nsearchPrecedents()
+PlanDraftGenerationCoordinator --> RagAugmentedDraftPlanGenerator : <<use>>\ngenerateDraftPlanBatched()
+
+EnrichmentEndpointController --> OpenRouterChatGateway : <<use>>\nenrichCompetitorsData()
+EnrichmentEndpointController --> PrecedentCorpusRepository : <<use>>\npersistPrecedents()
+
+CompetitorEnrichmentWorkbench ..> EnrichmentEndpointController : <<HTTP>>\nPOST /api/enrich
+DraftPlanGenerateApiAdapter ..> PlanDraftGenerationCoordinator : <<HTTP>>\nPOST /api/plan/generate
+
+note bottom of RagAugmentedDraftPlanGenerator
+  Генератор не вызывает репозиторий напрямую:
+  ragResults формирует координатор
+  после searchPrecedents()
+end note
+
+@enduml

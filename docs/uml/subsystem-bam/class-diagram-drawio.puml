@@ -1,0 +1,112 @@
+@startuml
+title Диаграмма классов подсистемы БЯМ и RAG
+
+package "Доступ к данным" {
+  class PrecedentCorpusRepository {
+    - precedentsRoot
+    - publicationsStorePath
+    - contentPlansStorePath
+    - metadataPath
+    - ingestionRunsPath
+    --
+    + readStorage()
+    + persistPrecedents()
+    + searchPrecedents()
+    + getPrecedentsSummary()
+  }
+
+  class OpenRouterEmbeddingsClient {
+    - embeddingModel
+    - maxBatchSize
+    - timeoutMs
+    --
+    + embedTexts()
+    + cosineSimilarity()
+    + normalizeCosineToUnitInterval()
+    + getEmbeddingConfig()
+  }
+}
+
+package "Бизнес-логика" {
+  class OpenRouterChatGateway {
+    - chatCompletionsUrl
+    - apiKeyRef
+    - chatModel
+    --
+    + callOpenRouterChat()
+    + enrichWithEngagementRate()
+    + computePostEngagementMetrics()
+    + enrichCompetitorsData()
+  }
+
+  class SemanticEnrichmentAssembler {
+    - maxPostsPerBatch
+    - maxPayloadBytes
+    - maxRequestBytes
+    --
+    + buildSemanticEnrichmentBatches()
+    + summarizeEnrichmentLimits()
+    + buildSemanticUserPrompt()
+    + validateAndNormalizeSemanticBatchResult()
+    + mergeSemanticBatchResults()
+    + buildSourcePostId()
+  }
+
+  class CompetitorContentNormalizer {
+    + normalizeCompetitorsContentData()
+    + normalizePublicationModel()
+    + normalizeContentPlanModel()
+  }
+
+  class RagAugmentedDraftPlanGenerator {
+    + buildCompactRagContext()
+    + generateSkeleton()
+    + generateMonthlyPublications()
+    + generateDraftPlanBatched()
+    + averagePrecedentKpi()
+  }
+
+  class PlanDraftGenerationCoordinator {
+    - ragLimitDefault
+    --
+    + orchestrateGenerate()
+    + buildRagQueryFromForm()
+    + buildAudienceSegmentsFromForm()
+  }
+}
+
+package "Интерфейс" {
+  class EnrichmentEndpointController {
+    + handlePostEnrich()
+  }
+
+  class CompetitorEnrichmentWorkbench {
+    - competitorsPayload
+    - enrichmentStatus
+    - isEnrichmentServerAvailable
+    --
+    + handleEnrichCompetitorsData()
+    + handleRemoveCompetitorsData()
+  }
+
+  class DraftPlanGenerateApiAdapter {
+    - baseUrl
+    --
+    + generateDraftContentPlan()
+  }
+}
+
+PrecedentCorpusRepository --> OpenRouterEmbeddingsClient
+OpenRouterChatGateway --> SemanticEnrichmentAssembler
+SemanticEnrichmentAssembler ..> OpenRouterChatGateway
+OpenRouterChatGateway --> CompetitorContentNormalizer
+RagAugmentedDraftPlanGenerator --> OpenRouterChatGateway
+RagAugmentedDraftPlanGenerator ..> PrecedentCorpusRepository
+PlanDraftGenerationCoordinator --> PrecedentCorpusRepository
+PlanDraftGenerationCoordinator --> RagAugmentedDraftPlanGenerator
+EnrichmentEndpointController --> OpenRouterChatGateway
+EnrichmentEndpointController --> PrecedentCorpusRepository
+CompetitorEnrichmentWorkbench ..> EnrichmentEndpointController
+DraftPlanGenerateApiAdapter ..> PlanDraftGenerationCoordinator
+
+@enduml

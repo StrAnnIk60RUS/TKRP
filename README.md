@@ -1,228 +1,320 @@
-# TKRP
+# TKRP — Project Context for AI
 
-Локальный R&D-сервис для генерации и оптимизации контент-планов IT-проектов на основе данных конкурентов, RAG-поиска прецедентов, LLM-enrichment и ML-оценки вовлеченности.
+**Быстрый запуск из архива (без Git):** см. [ЗАПУСК.md](ЗАПУСК.md).
 
-## Что внутри
-- `src/`: React + Vite интерфейс мастера генерации.
-- `server/`: Express API, orchestration LLM/RAG/GA и интеграция с Python.
-- `parser/`: Python-парсер VK/LinkedIn.
-- `server/ml/`: Python-модель для предсказания `engagement_rate`.
+## 1) Purpose and Product Scope
 
-## Локальный запуск
-1. Установить Node.js 20+ и Python 3.11+.
-2. Установить зависимости:
+`TKRP` is a local R&D system for generating and optimizing content plans for products, services, and brands using:
 
-```bash
-npm ci
-npm ci --prefix server
-pip install -r requirements.txt
-```
+- competitor data ingestion (publications + observed content plans),
+- LLM enrichment and draft generation,
+- retrieval (RAG) over local precedents,
+- ML surrogate models for engagement prediction,
+- two-stage genetic optimization (plan-level + post-level).
 
-3. Скопировать `.env.example` в `.env` и заполнить как минимум:
-   - API-ключ для LLM (см. `.env.example`)
-   - `VITE_ENRICHMENT_API_URL`
-   - при необходимости `VK_COOKIE` / `LINKEDIN_COOKIE`
+Main business goal: produce a better content plan than a raw LLM draft by combining precedent-based context, predictive scoring, and constrained evolutionary search across different verticals.
 
-4. Запустить проект:
+---
 
-```bash
-npm run dev
-```
+## 2) High-Level Architecture
 
-Frontend: `http://localhost:5173`
+Top-level structure:
 
-Backend health: `http://localhost:3001/health`
+- `apps/web` — React + Vite frontend.
+- `apps/api` — Express backend + orchestration layer.
+- `tools/parser` — Python parser utilities.
+- `tools/ml` — Python ML scripts (training + prediction).
+- `tools/scripts` — repository-level checks/automation.
+- `data/input/examples` — fixture input JSONs.
+- `data/precedents` — local precedent storage.
+- `data/ml` — trained model artifacts.
+- `data/runtime` — runtime temp/state files.
+- `docs` — architecture and domain docs.
+- `dist/web` — production frontend build output.
 
-## Основные команды
-- `npm run dev`: frontend + backend одновременно.
-- `npm run build`: production build фронтенда.
-- `npm run lint`: быстрые репозиторные проверки безопасности.
-- `npm run test`: Node-based unit/smoke tests.
-- `npm run check`: lint + test + build.
+Key architecture rules (from project docs):
 
-## Безопасность и эксплуатация
-- По умолчанию CORS ограничен localhost-origin'ами; внешний доступ настраивается через `CORS_ALLOWED_ORIGINS`.
-- Для удаленного использования задайте `SERVER_API_KEY` и отдельно `ADMIN_API_KEY` для чувствительных endpoint'ов.
-- Cookie для VK/LinkedIn больше не должны храниться в коде: используйте переменные окружения.
-- Parser и ML запускаются через `PYTHON_BIN`, а их timeout настраивается через `PARSER_TIMEOUT_MS` и `ML_SCRIPT_TIMEOUT_MS`.
+- Frontend follows `app / pages / features / shared`.
+- Backend follows `app / modules / shared`.
+- Shared layers must not depend on feature/domain layers in reverse.
+- Runtime JSON must stay in `data/runtime`, not near source code.
 
-## Хранение данных
-- Прецеденты теперь сохраняются в `server/data/precedents-store/` как коллекции `metadata`, `ingestion_runs`, `publications`, `content_plans`.
-- Поверх базы прецедентов доступен отдельный этап агрегации онтологии: JSON-слой (`/api/precedents/ontology`), Excel-export и Turtle/RDF-export.
-- История сгенерированных планов хранится в `localStorage` браузера и доступна на странице просмотра плана.
+---
 
-## CI
-В `.github/workflows/ci.yml` добавлен минимальный pipeline:
-- установка Node и Python зависимостей
-- `npm run lint`
-- `npm run test`
-- `npm run build`
+## 3) Technology Stack
 
-## Ограничения
-- Хранилище прецедентов все еще локальное, без полноценной внешней БД.
-- Parser зависит от доступности VK/LinkedIn и валидных cookie.
-- ML-модель использует локальные артефакты и должна периодически перепроверяться по качеству.
-# Автоматизация продвижения IT-проектов
+### Frontend
+- React 18
+- Vite 5
+- React Router
+- jsPDF / xlsx for export flows
 
-Веб-приложение для создания контент-планов продвижения IT-проектов с использованием ИИ и эволюционных алгоритмов.
+### Backend
+- Node.js (ESM)
+- Express
+- Axios, CORS, dotenv
+- Optional PostgreSQL client dependency present (`pg`)
 
-## 🚀 Быстрый старт
+### Python tools
+- Parser scripts (`tools/parser`)
+- ML model script (`tools/ml/engagement_model.py`) producing `joblib` artifacts
 
-### Установка зависимостей
+---
 
-```bash
-npm install
-```
+## 4) Main Runtime Flows
 
-### Запуск приложения в режиме разработки
+## 4.1 Competitor Ingestion and Precedent Persistence
+1. Competitor source data is parsed/enriched.
+2. Backend persists precedents into local storage (`publications`, `content_plans`).
+3. Embeddings are generated for retrieval (when needed).
+4. Data is available for RAG retrieval and ML dataset construction.
 
-```bash
-npm run dev
-```
+## 4.2 Draft Generation (RAG -> LLM)
+1. User fills project form in frontend.
+2. Backend builds retrieval query from form context.
+3. Relevant precedents are fetched and reliability-scored.
+4. LLM generates a draft skeleton and publications for planning horizon.
+5. Draft is normalized/repaired and sent to optimization pipeline.
 
-Приложение будет доступно по адресу: `http://localhost:5173`
+Optional planning context fields that can improve cross-vertical quality:
 
-### Сборка для продакшена
+- `content_vertical` or `industry` — business/domain vertical.
+- `brandVoice` — preferred brand voice/style hint.
 
-```bash
-npm run build
-```
+## 4.3 Two-Stage Evolutionary Optimization
+- **Stage 1 (plan evolution):** optimize slot-level structure (`topic`, `format`, `objective`, `tone`, `cta`, `creativity`) for whole-plan fitness.
+- **Stage 2 (post evolution):** optimize per-post feature vectors for better predicted likes while preserving realism and slot intent.
 
-### Просмотр собранного приложения
+Long-running optimization can be run asynchronously without blocking the HTTP request:
+- `POST /api/plan/optimize:async` — enqueues the job, returns `202` with `{ job_id, status, status_url }`;
+- `GET /api/plan/jobs/:jobId` — job status/result (`queued|running|done|failed`);
+- `GET /api/plan/jobs` — job list + queue stats.
 
-```bash
-npm run preview
-```
+The synchronous `POST /api/plan/optimize` remains unchanged (frontend depends on it).
+Queue settings: `JOB_QUEUE_MAX_CONCURRENCY`, `JOB_RESULT_TTL_MS`, `JOB_QUEUE_MAX_RETAINED`.
 
-## 📋 Функциональность
+## 4.4 Prediction and Scoring
+- Post-level and plan-level predictions are produced by local surrogate ML models.
+- Fitness combines predicted likes with ontology/reliability consistency bonuses and structural penalties.
 
-### Текущая версия (тестовый интерфейс)
+---
 
-- ✅ Многошаговый мастер (wizard) для ввода данных о производителе, IT‑проекте, целевой аудитории и ограничениях контент‑плана
-- ✅ Валидация ключевых полей формы
-- ✅ **Автосохранение черновиков** формы в `localStorage`
-- ✅ **Загрузка примеров** для быстрого заполнения
-- ✅ **Toast‑уведомления** вместо `alert`
-- ✅ Интеграция с backend‑сервером обогащения:
-  - парсинг конкурентов по URL (VK, LinkedIn) через Python‑парсер
-  - обогащение постов через LLM
-  - нормализация данных до формальных моделей публикаций и контент‑планов
-- ✅ Накопление **базы прецедентов** (публикации и контент‑планы конкурентов)
-- ✅ **RAG‑поиск** по базе прецедентов (по описанию проекта, аудитории, платформам)
-- ✅ Генерация **чернового контент‑плана** (RAG → LLM) по данным формы и найденным прецедентам
-- ✅ Просмотр и скачивание текущего чернового контент‑плана в JSON на отдельной странице
-- ✅ Прогресс‑бар и современный адаптивный UI
+## 5) ML System (Surrogate Models)
 
-### Планируемый функционал
+Two local models are used:
 
-- 🔄 Расширение онтологического слоя и адаптивного управления базой прецедентов
-- 🔄 Семантический поиск прецедентов на основе эмбеддингов (vector search)
-- 🔄 Полноценная реализация **двухуровневого эволюционного алгоритма** для оптимизации характеристик публикаций и состава контент‑плана
-- 🔄 Визуализация траектории улучшения плана (итерации/поколения, KPI)
+1. `post_likes_model.joblib` — predicts likes for a single post from engineered features.
+2. `content_plan_likes_model.joblib` — predicts total likes for a content plan from plan-level features.
 
-## 🛠️ Технологии
+Artifacts location: `data/ml/`
 
-- **React 18** - UI библиотека
-- **Vite** - Сборщик и dev-сервер
-- **CSS3** - Стилизация
+Typical metadata files include feature dimension/name consistency information.
 
-## 📝 Структура проекта
+Training behavior:
 
-```
-TKRP/
-├── src/
-│   ├── components/
-│   │   ├── ProjectForm.jsx      # Основная форма
-│   │   └── ProjectForm.css      # Стили формы
-│   ├── App.jsx                  # Главный компонент
-│   ├── App.css                  # Стили приложения
-│   ├── main.jsx                 # Точка входа
-│   └── index.css                # Глобальные стили
-├── index.html                   # HTML шаблон
-├── package.json                 # Зависимости
-├── vite.config.js              # Конфигурация Vite
-└── README.md                    # Документация
-```
+- lazy/ensure train when model artifact is absent,
+- optional auto-train after ingestion (if enabled),
+- manual train/retrain endpoints exist in ML routes.
 
-## 📖 Использование
+Python model pipeline (high level):
 
-1. Заполните форму с информацией о проекте
-2. Укажите целевую аудиторию
-3. Задайте параметры контент-плана
-4. Выберите форматы контента и платформы
-5. Нажмите "Создать контент-план"
-6. JSON файл с данными автоматически скачается
+- build feature matrix `X` and target `y`,
+- non-negative target handling with log-transform (`log1p`/`expm1`),
+- feature scaling (`StandardScaler`),
+- MLP regressor training,
+- save model + metadata.
 
-### Примеры (быстрое заполнение)
+---
 
-Приложение умеет загружать готовые примеры из директории `public/examples/`.
+## 6) Data and Storage
 
-- **Годовой пример (12 месяцев)**: `public/examples/example_year_plan.json`
-  - В UI на шаге генерации нажмите **«ЗАГРУЗИТЬ ПРИМЕР (НА ГОД)»**.
-  - Пример задаёт горизонт планирования на 1 год и минимум ~2 публикации в неделю (104 публикации).
+Current primary storage is local JSON-based precedent/runtime storage under `data/*`.
 
-### Формат выходного файла
+Logical datasets:
 
-После заполнения формы скачивается JSON файл со следующей структурой:
+- `publications` (competitor posts + metrics + embedding-related fields),
+- `content_plans` (observed competitor plans),
+- ingestion run logs,
+- runtime draft/state files.
 
-```json
-{
-  "project_info": {
-    "name": "Название проекта",
-    "activity_specification": "Специфика деятельности",
-    "description": "Описание проекта"
-  },
-  "target_audience": {
-    "gender": "any",
-    "age_range": {
-      "min": 25,
-      "max": 40
-    },
-    "social_status": "middle_class"
-  },
-  "content_plan_parameters": {
-    "timeline": {
-      "start_date": "2024-02-01",
-      "end_date": "2024-03-31"
-    },
-    "min_publications": 30,
-    "max_cost_per_publication": 5000,
-    "content_formats": ["text", "video"],
-    "video_requirements": "Описание требований к ролику",
-    "platforms": ["vk", "linkedin"]
-  },
-  "metadata": {
-    "created_at": "2024-01-15T10:30:00.000Z",
-    "version": "1.0"
-  }
-}
-```
+Important note:
+- Project docs include a recommended migration path to PostgreSQL + pgvector, but this is described as target architecture guidance rather than guaranteed default runtime everywhere.
 
-Этот файл готов для передачи в модуль обработки LLM для генерации контент-плана.
+---
 
-## ✅ Валидация
+## 7) Core Backend Domains (`apps/api/src/modules`)
 
-Форма включает валидацию следующих полей:
+- `enrichment` — parser + enrichment pipeline orchestration.
+- `planning` — draft generation, persistence, hierarchical GA optimization.
+- `precedents` — storage, search, ontology aggregation/export, reliability scoring.
+- `ml` — train/predict orchestration and Python bridge.
 
-- **Название проекта**: минимум 3 символа
-- **Специфика деятельности**: минимум 10 символов
-- **Описание**: минимум 20 символов
-- **Возраст**: от 13 до 100 лет, максимум >= минимума
-- **Даты**: дата начала не в прошлом, дата окончания >= даты начала
-- **Количество публикаций**: от 1 до 1000
-- **Стоимость**: от 0 до 1,000,000
-- **Форматы контента**: минимум один выбран
-- **Платформы**: минимум одна выбрана
-- **Описание ролика**: обязательно, если выбран формат "Ролик"
+Cross-cutting concerns are in `apps/api/src/shared` (security, runtime helpers, utils).
 
-## 🎨 Особенности дизайна
+---
 
-- Градиентный фон
-- Современные карточки с тенями
-- Плавные анимации
-- Адаптивная верстка для мобильных устройств
-- Визуальная обратная связь при ошибках валидации
+## 8) Core Frontend Domains (`apps/web/src`)
 
-## 📄 Лицензия
+- `app` — bootstrap/router/providers/global setup.
+- `pages` — route-level screens.
+- `features/project-form` — user input + GA config shaping.
+- `features/content-plan` — plan presentation/history/export flows.
+- `shared` — reusable UI/components/api/helpers.
 
-Университетский проект
+Frontend persists some user history in browser storage (project state/history behavior depends on current feature implementation).
+
+---
+
+## 9) Security and Operations
+
+Key operational constraints from repository docs:
+
+- CORS defaults are localhost-oriented unless configured.
+- Sensitive endpoints can require server/admin API keys.
+- Python execution path/timeouts are configurable through environment variables.
+- VK/LinkedIn cookies must come from environment variables, never hardcoded.
+
+---
+
+## 10) Commands
+
+From root:
+
+- `npm install` — installs root and `apps/api` dependencies (`postinstall` runs `npm install --prefix apps/api`). Set `SKIP_POSTINSTALL=1` to skip the API install step.
+- `npm run setup` — one-shot bootstrap: `npm install`, `pip install -r requirements.txt`, copy `.env.example` → `.env` if missing. See [docs/local-developer-setup.md](docs/local-developer-setup.md) for Docker / Dev Container.
+- `npm run dev` — run frontend + backend concurrently.
+- `npm run ml:retrain` — retrain ML models on current local precedent dataset.
+- `npm run ml:retrain:full` — re-embed precedents with wrong dimensions, then retrain models.
+- `npm run build` — frontend production build into `dist/web`.
+- `npm run preview` — preview frontend build.
+- `npm run lint` — repository lint/check scripts.
+- `npm run test` — frontend/backend tests.
+- `npm run check` — lint + test + build.
+
+Backend-only (in `apps/api`):
+- `npm run dev` — watch mode backend.
+- `npm run start` — run backend server.
+- `npm run test` — backend tests.
+
+---
+
+## 10.1) ML Retraining Quickstart
+
+Use this when the feature engineering / scoring logic changes and existing model artifacts become stale.
+
+1. Start API server (`npm run dev` from repo root, or `npm run dev --prefix apps/api`).
+2. Ensure your admin/server API key is available in env if endpoint protection is enabled (`ADMIN_API_KEY` or `SERVER_API_KEY`).
+3. Run:
+   - `npm run ml:retrain` for regular retraining on current dataset.
+   - `npm run ml:retrain:full` if you also need `reembed-and-train`.
+
+The command prints JSON with endpoint response and elapsed time.
+
+---
+
+## 11) Environment and Dependencies
+
+Minimum local requirements (documented):
+
+- Node.js 20+
+- Python 3.11+
+
+Typical required env values include:
+
+- `OPENROUTER_API_KEY`
+- `VITE_ENRICHMENT_API_URL`
+- optional parser cookies (`VK_COOKIE`, `LINKEDIN_COOKIE`)
+- optional security config (`SERVER_API_KEY`, `ADMIN_API_KEY`)
+- optional CORS and python timeout/path settings
+- ontology enrichment flags:
+  - `ONTOLOGY_LLM_ENRICHMENT_MODE=off|shadow|active` (default `off`)
+  - `ONTOLOGY_LLM_HIGH_CONFIDENCE_THRESHOLD` (default `0.85`)
+  - `ONTOLOGY_LLM_MOCK_CANDIDATES_JSON` (optional deterministic test payload)
+- controlled scoring rollout flags:
+  - `ONTOLOGY_SCORING_ROLLOUT_PERCENT` (default `0`)
+  - `ONTOLOGY_SCORING_MAX_ENRICH_ERRORS` (default `0`, auto-disable threshold)
+- async job queue flags: `JOB_QUEUE_MAX_CONCURRENCY`, `JOB_RESULT_TTL_MS`, `JOB_QUEUE_MAX_RETAINED`
+- plan snapshot flags: `PLAN_SNAPSHOT_MAX_PAYLOAD_BYTES`, `PLAN_SNAPSHOT_TTL_MS`
+- python worker resilience flags: `PYWORKER_REQUEST_TIMEOUT_MS`, `PYWORKER_MAX_RETRIES`,
+  `PYWORKER_BACKOFF_BASE_MS`, `PYWORKER_BREAKER_MAX_FAILURES`, `PYWORKER_BREAKER_COOLDOWN_MS`
+- `/health` reports `job_queue` stats and `storage_metrics` (storage operation latencies).
+
+---
+
+## 12) Fitness Logic (Important for AI Reasoning)
+
+Plan-level score is conceptually:
+
+`score = predicted_plan_likes + composite_bonus - penalties`
+
+Where bonuses may include:
+- audience alignment,
+- objective coverage,
+- format mix fit,
+- ontology consistency,
+- novelty/calendar consistency,
+- reliability prior from retrieval context.
+
+Typical penalties:
+- posts-per-week deviation from target,
+- topic repetition / low diversity,
+- CTA overuse or drift from expected share,
+- extrapolation penalties from bounded prediction logic.
+
+Post-level score similarly balances:
+- predicted post likes,
+- alignment with slot context (tone/cta intent),
+- realism/quality penalties against base feature profile.
+
+---
+
+## 13) Known Constraints and Risks
+
+- Local precedent store is not a full DBMS (transaction/scaling limits).
+- Parser quality depends on source accessibility and valid cookies.
+- Surrogate models require periodic retraining/validation as data drifts.
+- Retrieval and scoring quality strongly depends on precedent coverage and reliability.
+
+---
+
+## 14) File/Entry-Point Map for AI Navigation
+
+Frontend:
+- `apps/web/src/app`
+- `apps/web/src/pages`
+- `apps/web/src/features`
+- `apps/web/src/shared`
+
+Backend:
+- `apps/api/src/app/apiRoutes.js`
+- `apps/api/src/modules`
+- `apps/api/src/shared`
+
+ML and tools:
+- `tools/ml/engagement_model.py`
+- `tools/parser/*`
+
+Documentation:
+- `docs/architecture.md`
+- `docs/evolution-and-ml-how-it-works.md`
+- `docs/evolution-and-ml-how-it-works-customer.md`
+- `docs/database-architecture.md`
+
+---
+
+## 15) AI Usage Guidance
+
+When using this repository as model context, prioritize these assumptions:
+
+1. This is a hybrid system: generation + retrieval + predictive optimization.
+2. Final plan quality is not pure LLM output; it is constrained by ML + GA scoring.
+3. Precedent quality and schema consistency directly affect downstream behavior.
+4. Always distinguish:
+   - draft generation stage,
+   - plan evolution stage,
+   - post evolution stage.
+5. If behavior seems unstable, inspect:
+   - model artifact presence/version,
+   - feature dimension/name alignment,
+   - precedent freshness/reliability,
+   - GA configuration from project form.

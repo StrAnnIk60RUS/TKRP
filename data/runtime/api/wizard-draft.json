@@ -1,0 +1,52 @@
+{
+  "draft": {
+    "formData": {
+      "producerName": " ООО «ТехноСофт»",
+      "producerActivitySpecification": "Разработка ПО и SaaS-сервисов для автоматизации тестирования API, контроля качества и совместной работы команд разработки. Интеграции с Postman, CI/CD, Git, Jira и другими инструментами QA-процессов.",
+      "projectName": "Postman Draft Test",
+      "projectDescription": "Сервис/плагин для проверки сохранения черновика мастера в Postman. Автоматически воспроизводит сценарии заполнения, переключения шагов, закрытия и повторного открытия, синхронизации и показывает, сохранились ли данные без потерь.",
+      "projectGoals": "Обеспечить надёжное сохранение черновиков в Postman.\n\nСократить ручные проверки QA-команд.\n\nУскорить релизы и регрессионное тестирование.\n\nСнизить количество багов, связанных с потерей данных.\n\nПовысить доверие к процессу тестирования API.",
+      "projectFeatures": "Автотесты сценариев сохранения черновиков.\n\nПроверка локальных и облачных черновиков.\n\nЛогирование и отчёты о результатах.\n\nИнтеграция с CI/CD.\n\nГибкая настройка правил проверки.\n\nКомандный доступ и совместная работа.",
+      "projectBenefits": "Меньше потерь данных и рутинных проверок.\n\nЭкономия времени QA-специалистов.\n\nПрозрачность результатов тестирования.\n\nБыстрый старт и простая интеграция с Postman.\n\nМасштабируемость под команды любого размера.\n\nСнижение рисков при релизах API.",
+      "consumerCategory": "B2B",
+      "consumerDemographics": "Возраст: 28–45 лет.\n\nПол: преимущественно мужчины, но решение принимают и женщины — руководители QA, продукта, IT.\n\nОбразование: высшее техническое, IT, QA, менеджмент, инженерия.\n\nДоход: личный — выше среднего; компания — малый, средний и крупный бизнес с бюджетом на IT/QA.\n\nДолжности: CTO, IT-директор, руководитель QA, DevOps-инженер, product manager, senior QA, backend-разработчик.\n\nОтрасли: IT, SaaS, финтех, телеком, e-commerce, госсектор.\n\nРазмер компаний: от 10 до 1000+ сотрудников.\n\nГеография: Россия, СНГ, русскоязычный B2B.\n\n",
+      "consumerPurchaseGoal": "Автоматизировать проверку сохранения черновиков в Postman.\n\nСократить ручное тестирование и время регрессии.\n\nПредотвратить потерю данных и баги при релизах.\n\nУскорить онбординг новых QA-специалистов.\n\nПовысить прозрачность и надёжность процессов контроля качества.\n\nВстроить проверки в CI/CD и стандартизировать QA-процессы.",
+      "consumerLifestyle": "Работают в гибридном или удалённом формате.\n\nЧитают профессиональные сообщества: Habr, Telegram, VC.ru, LinkedIn.\n\nЦенят время, безопасность данных, интеграции и автоматизацию.\n\nПринимают решения на основе кейсов, ROI, демо и отзывов коллег.\n\nПосещают вебинары, конференции, следят за обновлениями Postman и инструментов QA.\n\nПоведение: ищут решение перед релизом, после инцидента с потерей данных или при масштабировании команды.\n\nСравнивают аналоги, запрашивают пилот, тестируют бесплатную версию.",
+      "contentPlanStartDate": "2026-10-01",
+      "contentPlanEndDate": "2026-10-31",
+      "publicationFrequency": "2-3_per_week",
+      "publicationDayMode": "spread",
+      "keyDates": "Ключевые даты\n\n12.11.2026 — Всемирный день качества / Всемирный день юзабилити\n\n27.11.2026 — Black Friday\n\n30.11.2026 — Cyber Monday\n\n04.12.2026 — День информатики в России\n\n31.12.2026 — Новый год и итоги года",
+      "contentFormats": [
+        "text"
+      ],
+      "videoDescription": "",
+      "platforms": [
+        "vk"
+      ],
+      "evoPopulationSize": "32",
+      "evoGenerations": "40",
+      "evoStagnationGenerations": "12",
+      "evoTournamentSize": "3",
+      "evoEliteSize": "6",
+      "evoCrossoverProbability": "0.75",
+      "evoMutationProbability": "0.12",
+      "evoRandomSeed": "",
+      "evoSelectionMethod": "tournament",
+      "evoCrossoverMethod": "one_point",
+      "evoMutationMethod": "random_replace",
+      "evoPostPopulationSize": "48",
+      "evoPostGenerations": "50",
+      "evoPostStagnationGenerations": "12",
+      "evoPostTournamentSize": "4",
+      "evoPostEliteSize": "3",
+      "evoPostCrossoverProbability": "0.9",
+      "evoPostMutationProbability": "0.12",
+      "evoPostSelectionMethod": "tournament",
+      "evoPostCrossoverMethod": "one_point",
+      "evoPostMutationMethod": "random_replace"
+    },
+    "updated_at": "2026-10-08T16:44:27.065Z"
+  },
+  "updated_at": "2026-10-08T16:44:27.066Z"
+}

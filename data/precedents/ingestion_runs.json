@@ -1,0 +1,1058 @@
+[
+  {
+    "run_id": "ingest_1773090587998",
+    "created_at": "2026-03-09T21:09:47.998Z",
+    "source": "api_enrich",
+    "competitors_count": 1,
+    "publications_processed": 1,
+    "content_plans_processed": 1,
+    "inserted_publications": 1,
+    "updated_publications": 0,
+    "inserted_content_plans": 1,
+    "updated_content_plans": 0
+  },
+  {
+    "run_id": "ingest_1773092494954",
+    "created_at": "2026-03-09T21:41:34.954Z",
+    "source": "demo_seed",
+    "competitors_count": 2,
+    "publications_processed": 3,
+    "content_plans_processed": 2,
+    "inserted_publications": 3,
+    "updated_publications": 0,
+    "inserted_content_plans": 2,
+    "updated_content_plans": 0
+  },
+  {
+    "run_id": "ingest_1773093016592",
+    "created_at": "2026-03-09T21:50:16.592Z",
+    "source": "demo_seed",
+    "competitors_count": 2,
+    "publications_processed": 3,
+    "content_plans_processed": 2,
+    "inserted_publications": 0,
+    "updated_publications": 3,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 2
+  },
+  {
+    "run_id": "ingest_1773093019493",
+    "created_at": "2026-03-09T21:50:19.493Z",
+    "source": "demo_seed",
+    "competitors_count": 2,
+    "publications_processed": 3,
+    "content_plans_processed": 2,
+    "inserted_publications": 0,
+    "updated_publications": 3,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 2
+  },
+  {
+    "run_id": "ingest_1773093119837",
+    "created_at": "2026-03-09T21:51:59.837Z",
+    "source": "demo_seed",
+    "competitors_count": 2,
+    "publications_processed": 3,
+    "content_plans_processed": 2,
+    "inserted_publications": 0,
+    "updated_publications": 3,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 2
+  },
+  {
+    "run_id": "ingest_1773093296100",
+    "created_at": "2026-03-09T21:54:56.100Z",
+    "source": "demo_seed",
+    "competitors_count": 2,
+    "publications_processed": 3,
+    "content_plans_processed": 2,
+    "inserted_publications": 0,
+    "updated_publications": 3,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 2
+  },
+  {
+    "run_id": "ingest_1773093300376",
+    "created_at": "2026-03-09T21:55:00.376Z",
+    "source": "demo_seed",
+    "competitors_count": 2,
+    "publications_processed": 3,
+    "content_plans_processed": 2,
+    "inserted_publications": 0,
+    "updated_publications": 3,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 2
+  },
+  {
+    "run_id": "ingest_1773093322496",
+    "created_at": "2026-03-09T21:55:22.496Z",
+    "source": "demo_seed",
+    "competitors_count": 2,
+    "publications_processed": 3,
+    "content_plans_processed": 2,
+    "inserted_publications": 0,
+    "updated_publications": 3,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 2
+  },
+  {
+    "run_id": "ingest_1773093336648",
+    "created_at": "2026-03-09T21:55:36.648Z",
+    "source": "demo_seed",
+    "competitors_count": 2,
+    "publications_processed": 3,
+    "content_plans_processed": 2,
+    "inserted_publications": 0,
+    "updated_publications": 3,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 2
+  },
+  {
+    "run_id": "ingest_1773093442734",
+    "created_at": "2026-03-09T21:57:22.734Z",
+    "source": "demo_seed",
+    "competitors_count": 2,
+    "publications_processed": 3,
+    "content_plans_processed": 2,
+    "inserted_publications": 0,
+    "updated_publications": 3,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 2
+  },
+  {
+    "run_id": "ingest_1773142539262",
+    "created_at": "2026-03-10T11:35:39.262Z",
+    "source": "api_enrich",
+    "competitors_count": 1,
+    "publications_processed": 10,
+    "content_plans_processed": 1,
+    "inserted_publications": 10,
+    "updated_publications": 0,
+    "inserted_content_plans": 1,
+    "updated_content_plans": 0
+  },
+  {
+    "run_id": "ingest_1773146251138",
+    "created_at": "2026-03-10T12:37:31.138Z",
+    "source": "api_enrich",
+    "competitors_count": 1,
+    "publications_processed": 10,
+    "content_plans_processed": 1,
+    "inserted_publications": 9,
+    "updated_publications": 1,
+    "inserted_content_plans": 1,
+    "updated_content_plans": 0
+  },
+  {
+    "run_id": "ingest_1773147168269",
+    "created_at": "2026-03-10T12:52:48.269Z",
+    "source": "demo_seed",
+    "competitors_count": 2,
+    "publications_processed": 3,
+    "content_plans_processed": 2,
+    "inserted_publications": 0,
+    "updated_publications": 3,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 2
+  },
+  {
+    "run_id": "ingest_1773147173487",
+    "created_at": "2026-03-10T12:52:53.487Z",
+    "source": "demo_seed",
+    "competitors_count": 2,
+    "publications_processed": 3,
+    "content_plans_processed": 2,
+    "inserted_publications": 0,
+    "updated_publications": 3,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 2
+  },
+  {
+    "run_id": "ingest_1773148456782",
+    "created_at": "2026-03-10T13:14:16.782Z",
+    "source": "demo_seed",
+    "competitors_count": 2,
+    "publications_processed": 3,
+    "content_plans_processed": 2,
+    "inserted_publications": 0,
+    "updated_publications": 3,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 2
+  },
+  {
+    "run_id": "ingest_1773148696372",
+    "created_at": "2026-03-10T13:18:16.372Z",
+    "source": "api_enrich",
+    "competitors_count": 1,
+    "publications_processed": 1,
+    "content_plans_processed": 1,
+    "inserted_publications": 1,
+    "updated_publications": 0,
+    "inserted_content_plans": 1,
+    "updated_content_plans": 0
+  },
+  {
+    "run_id": "ingest_1773221503768",
+    "created_at": "2026-03-11T09:31:43.768Z",
+    "source": "demo_seed",
+    "competitors_count": 2,
+    "publications_processed": 3,
+    "content_plans_processed": 2,
+    "inserted_publications": 0,
+    "updated_publications": 3,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 2
+  },
+  {
+    "run_id": "ingest_1773311913494",
+    "created_at": "2026-03-12T10:38:33.494Z",
+    "source": "api_enrich",
+    "competitors_count": 1,
+    "publications_processed": 10,
+    "content_plans_processed": 1,
+    "inserted_publications": 9,
+    "updated_publications": 1,
+    "inserted_content_plans": 1,
+    "updated_content_plans": 0
+  },
+  {
+    "run_id": "ingest_1773734664414",
+    "created_at": "2026-03-17T08:04:24.414Z",
+    "source": "demo_seed",
+    "competitors_count": 2,
+    "publications_processed": 3,
+    "content_plans_processed": 2,
+    "inserted_publications": 0,
+    "updated_publications": 3,
+    "inserted_content_plans": 1,
+    "updated_content_plans": 1,
+    "embedding": {
+      "publications_embedded": 33,
+      "content_plans_embedded": 8,
+      "embedding_model": "text-embedding-3-small",
+      "embedding_error": null
+    }
+  },
+  {
+    "run_id": "ingest_1773852924127",
+    "created_at": "2026-03-18T16:55:24.127Z",
+    "source": "api_enrich",
+    "competitors_count": 1,
+    "publications_processed": 10,
+    "content_plans_processed": 1,
+    "inserted_publications": 10,
+    "updated_publications": 0,
+    "inserted_content_plans": 1,
+    "updated_content_plans": 0,
+    "embedding": {
+      "publications_embedded": 10,
+      "content_plans_embedded": 1,
+      "embedding_model": "text-embedding-3-small",
+      "embedding_error": null
+    }
+  },
+  {
+    "run_id": "ingest_1773852944974",
+    "created_at": "2026-03-18T16:55:44.974Z",
+    "source": "demo_seed",
+    "competitors_count": 2,
+    "publications_processed": 3,
+    "content_plans_processed": 2,
+    "inserted_publications": 0,
+    "updated_publications": 3,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 2,
+    "embedding": {
+      "publications_embedded": 0,
+      "content_plans_embedded": 0,
+      "embedding_model": null,
+      "embedding_error": null
+    }
+  },
+  {
+    "run_id": "ingest_1773856943680",
+    "created_at": "2026-03-18T18:02:23.680Z",
+    "source": "api_enrich",
+    "competitors_count": 1,
+    "publications_processed": 93,
+    "content_plans_processed": 1,
+    "inserted_publications": 83,
+    "updated_publications": 10,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 1,
+    "embedding": {
+      "publications_embedded": 83,
+      "content_plans_embedded": 0,
+      "embedding_model": "text-embedding-3-small",
+      "embedding_error": null
+    }
+  },
+  {
+    "run_id": "ingest_1773858561268",
+    "created_at": "2026-03-18T18:29:21.268Z",
+    "source": "api_enrich",
+    "competitors_count": 1,
+    "publications_processed": 10,
+    "content_plans_processed": 1,
+    "inserted_publications": 0,
+    "updated_publications": 10,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 1,
+    "embedding": {
+      "publications_embedded": 0,
+      "content_plans_embedded": 0,
+      "embedding_model": null,
+      "embedding_error": null
+    }
+  },
+  {
+    "run_id": "ingest_1773908052651",
+    "created_at": "2026-03-19T08:14:12.651Z",
+    "source": "demo_seed",
+    "competitors_count": 2,
+    "publications_processed": 3,
+    "content_plans_processed": 2,
+    "inserted_publications": 0,
+    "updated_publications": 3,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 2,
+    "embedding": {
+      "publications_embedded": 0,
+      "content_plans_embedded": 0,
+      "embedding_model": null,
+      "embedding_error": null
+    }
+  },
+  {
+    "run_id": "ingest_1773908301452",
+    "created_at": "2026-03-19T08:18:21.452Z",
+    "source": "api_enrich",
+    "competitors_count": 1,
+    "publications_processed": 10,
+    "content_plans_processed": 1,
+    "inserted_publications": 0,
+    "updated_publications": 10,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 1,
+    "embedding": {
+      "publications_embedded": 0,
+      "content_plans_embedded": 0,
+      "embedding_model": null,
+      "embedding_error": null
+    }
+  },
+  {
+    "run_id": "ingest_1774026880419",
+    "created_at": "2026-03-20T17:14:40.419Z",
+    "source": "demo_seed",
+    "competitors_count": 2,
+    "publications_processed": 3,
+    "content_plans_processed": 2,
+    "inserted_publications": 0,
+    "updated_publications": 3,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 2,
+    "embedding": {
+      "publications_embedded": 0,
+      "content_plans_embedded": 0,
+      "embedding_model": null,
+      "embedding_error": null
+    }
+  },
+  {
+    "run_id": "ingest_1774031311440",
+    "created_at": "2026-03-20T18:28:31.440Z",
+    "source": "api_enrich",
+    "competitors_count": 1,
+    "publications_processed": 10,
+    "content_plans_processed": 1,
+    "inserted_publications": 0,
+    "updated_publications": 10,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 1,
+    "dedup": {
+      "publications_skipped_duplicates": 0,
+      "content_plans_skipped_duplicates": 0,
+      "dedup_enabled": true,
+      "dedup_error": null
+    },
+    "embedding": {
+      "publications_embedded": 10,
+      "content_plans_embedded": 1,
+      "embedding_model": "intfloat/multilingual-e5-large",
+      "embedding_error": null
+    }
+  },
+  {
+    "run_id": "ingest_1774031530762",
+    "created_at": "2026-03-20T18:32:10.762Z",
+    "source": "api_enrich",
+    "competitors_count": 1,
+    "publications_processed": 10,
+    "content_plans_processed": 1,
+    "inserted_publications": 0,
+    "updated_publications": 0,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 0,
+    "dedup": {
+      "publications_skipped_duplicates": 10,
+      "content_plans_skipped_duplicates": 1,
+      "dedup_enabled": true,
+      "dedup_error": null
+    },
+    "embedding": {
+      "publications_embedded": 10,
+      "content_plans_embedded": 1,
+      "embedding_model": "intfloat/multilingual-e5-large",
+      "embedding_error": null
+    }
+  },
+  {
+    "run_id": "ingest_1774032850850",
+    "created_at": "2026-03-20T18:54:10.850Z",
+    "source": "api_enrich",
+    "competitors_count": 1,
+    "publications_processed": 10,
+    "content_plans_processed": 1,
+    "inserted_publications": 0,
+    "updated_publications": 0,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 0,
+    "dedup": {
+      "publications_skipped_duplicates": 10,
+      "content_plans_skipped_duplicates": 1,
+      "dedup_enabled": true,
+      "dedup_error": null
+    },
+    "embedding": {
+      "publications_embedded": 10,
+      "content_plans_embedded": 1,
+      "embedding_model": "intfloat/multilingual-e5-large",
+      "embedding_error": null
+    }
+  },
+  {
+    "run_id": "ingest_1774032867366",
+    "created_at": "2026-03-20T18:54:27.366Z",
+    "source": "demo_seed",
+    "competitors_count": 2,
+    "publications_processed": 3,
+    "content_plans_processed": 2,
+    "inserted_publications": 0,
+    "updated_publications": 3,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 2,
+    "dedup": {
+      "publications_skipped_duplicates": 0,
+      "content_plans_skipped_duplicates": 0,
+      "dedup_enabled": true,
+      "dedup_error": null
+    },
+    "embedding": {
+      "publications_embedded": 3,
+      "content_plans_embedded": 2,
+      "embedding_model": "intfloat/multilingual-e5-large",
+      "embedding_error": null
+    }
+  },
+  {
+    "run_id": "ingest_1774298420877",
+    "created_at": "2026-03-23T20:40:20.877Z",
+    "source": "demo_seed",
+    "competitors_count": 2,
+    "publications_processed": 3,
+    "content_plans_processed": 2,
+    "inserted_publications": 0,
+    "updated_publications": 0,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 0,
+    "dedup": {
+      "publications_skipped_duplicates": 3,
+      "content_plans_skipped_duplicates": 2,
+      "dedup_enabled": true,
+      "dedup_error": null
+    },
+    "embedding": {
+      "publications_embedded": 3,
+      "content_plans_embedded": 2,
+      "embedding_model": "intfloat/multilingual-e5-large",
+      "embedding_error": null
+    }
+  },
+  {
+    "run_id": "ingest_1774299389563",
+    "created_at": "2026-03-23T20:56:29.563Z",
+    "source": "demo_seed",
+    "competitors_count": 2,
+    "publications_processed": 3,
+    "content_plans_processed": 2,
+    "inserted_publications": 0,
+    "updated_publications": 0,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 0,
+    "dedup": {
+      "publications_skipped_duplicates": 3,
+      "content_plans_skipped_duplicates": 2,
+      "dedup_enabled": true,
+      "dedup_error": null
+    },
+    "embedding": {
+      "publications_embedded": 3,
+      "content_plans_embedded": 2,
+      "embedding_model": "intfloat/multilingual-e5-large",
+      "embedding_error": null
+    }
+  },
+  {
+    "run_id": "ingest_1774300629811",
+    "created_at": "2026-03-23T21:17:09.811Z",
+    "source": "demo_seed",
+    "competitors_count": 2,
+    "publications_processed": 3,
+    "content_plans_processed": 2,
+    "inserted_publications": 0,
+    "updated_publications": 0,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 0,
+    "dedup": {
+      "publications_skipped_duplicates": 3,
+      "content_plans_skipped_duplicates": 2,
+      "dedup_enabled": true,
+      "dedup_error": null
+    },
+    "embedding": {
+      "publications_embedded": 3,
+      "content_plans_embedded": 2,
+      "embedding_model": "intfloat/multilingual-e5-large",
+      "embedding_error": null
+    }
+  },
+  {
+    "run_id": "ingest_1774368452266",
+    "created_at": "2026-03-24T16:07:32.266Z",
+    "source": "api_enrich",
+    "competitors_count": 1,
+    "publications_processed": 10,
+    "content_plans_processed": 1,
+    "inserted_publications": 0,
+    "updated_publications": 0,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 0,
+    "dedup": {
+      "publications_skipped_duplicates": 10,
+      "content_plans_skipped_duplicates": 1,
+      "dedup_enabled": true,
+      "dedup_error": null
+    },
+    "embedding": {
+      "publications_embedded": 10,
+      "content_plans_embedded": 1,
+      "embedding_model": "intfloat/multilingual-e5-large",
+      "embedding_error": null
+    }
+  },
+  {
+    "run_id": "ingest_1774368639837",
+    "created_at": "2026-03-24T16:10:39.837Z",
+    "source": "api_enrich",
+    "competitors_count": 1,
+    "publications_processed": 10,
+    "content_plans_processed": 1,
+    "inserted_publications": 0,
+    "updated_publications": 0,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 0,
+    "dedup": {
+      "publications_skipped_duplicates": 10,
+      "content_plans_skipped_duplicates": 1,
+      "dedup_enabled": true,
+      "dedup_error": null
+    },
+    "embedding": {
+      "publications_embedded": 10,
+      "content_plans_embedded": 1,
+      "embedding_model": "intfloat/multilingual-e5-large",
+      "embedding_error": null
+    }
+  },
+  {
+    "run_id": "ingest_1774554915221",
+    "created_at": "2026-03-26T19:55:15.221Z",
+    "source": "api_enrich",
+    "competitors_count": 10,
+    "publications_processed": 367,
+    "content_plans_processed": 10,
+    "inserted_publications": 0,
+    "updated_publications": 305,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 3,
+    "dedup": {
+      "publications_skipped_duplicates": 62,
+      "content_plans_skipped_duplicates": 7,
+      "dedup_enabled": true,
+      "dedup_error": null
+    },
+    "embedding": {
+      "publications_embedded": 367,
+      "content_plans_embedded": 10,
+      "embedding_model": "intfloat/multilingual-e5-large",
+      "embedding_error": null
+    }
+  },
+  {
+    "run_id": "ingest_1774555833737",
+    "created_at": "2026-03-26T20:10:33.737Z",
+    "source": "api_enrich",
+    "competitors_count": 10,
+    "publications_processed": 367,
+    "content_plans_processed": 10,
+    "inserted_publications": 0,
+    "updated_publications": 0,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 0,
+    "dedup": {
+      "publications_skipped_duplicates": 367,
+      "content_plans_skipped_duplicates": 10,
+      "dedup_enabled": true,
+      "dedup_error": null
+    },
+    "embedding": {
+      "publications_embedded": 367,
+      "content_plans_embedded": 10,
+      "embedding_model": "intfloat/multilingual-e5-large",
+      "embedding_error": null
+    }
+  },
+  {
+    "run_id": "ingest_1774556364962",
+    "created_at": "2026-03-26T20:19:24.962Z",
+    "source": "api_enrich",
+    "competitors_count": 10,
+    "publications_processed": 10,
+    "content_plans_processed": 10,
+    "inserted_publications": 1,
+    "updated_publications": 0,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 0,
+    "dedup": {
+      "publications_skipped_duplicates": 9,
+      "content_plans_skipped_duplicates": 10,
+      "dedup_enabled": true,
+      "dedup_error": null
+    },
+    "embedding": {
+      "publications_embedded": 10,
+      "content_plans_embedded": 10,
+      "embedding_model": "intfloat/multilingual-e5-large",
+      "embedding_error": null
+    }
+  },
+  {
+    "run_id": "ingest_1774556483688",
+    "created_at": "2026-03-26T20:21:23.688Z",
+    "source": "api_enrich",
+    "competitors_count": 10,
+    "publications_processed": 10,
+    "content_plans_processed": 10,
+    "inserted_publications": 9,
+    "updated_publications": 0,
+    "inserted_content_plans": 10,
+    "updated_content_plans": 0,
+    "dedup": {
+      "publications_skipped_duplicates": 1,
+      "content_plans_skipped_duplicates": 0,
+      "dedup_enabled": true,
+      "dedup_error": null
+    },
+    "embedding": {
+      "publications_embedded": 10,
+      "content_plans_embedded": 10,
+      "embedding_model": "intfloat/multilingual-e5-large",
+      "embedding_error": null
+    }
+  },
+  {
+    "run_id": "ingest_1774556924806",
+    "created_at": "2026-03-26T20:28:44.806Z",
+    "source": "api_enrich",
+    "competitors_count": 10,
+    "publications_processed": 367,
+    "content_plans_processed": 10,
+    "inserted_publications": 357,
+    "updated_publications": 0,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 0,
+    "dedup": {
+      "publications_skipped_duplicates": 10,
+      "content_plans_skipped_duplicates": 10,
+      "dedup_enabled": true,
+      "dedup_error": null
+    },
+    "embedding": {
+      "publications_embedded": 367,
+      "content_plans_embedded": 10,
+      "embedding_model": "intfloat/multilingual-e5-large",
+      "embedding_error": null
+    }
+  },
+  {
+    "run_id": "ingest_1774872337139",
+    "created_at": "2026-03-30T12:05:37.139Z",
+    "source": "api_enrich",
+    "competitors_count": 1,
+    "publications_processed": 1,
+    "content_plans_processed": 1,
+    "inserted_publications": 0,
+    "updated_publications": 0,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 0,
+    "dedup": {
+      "publications_skipped_duplicates": 1,
+      "content_plans_skipped_duplicates": 1,
+      "dedup_enabled": true,
+      "dedup_error": null
+    },
+    "embedding": {
+      "publications_embedded": 1,
+      "content_plans_embedded": 1,
+      "embedding_model": "intfloat/multilingual-e5-large",
+      "embedding_error": null
+    }
+  },
+  {
+    "run_id": "ingest_1776248148131",
+    "created_at": "2026-04-15T10:15:48.131Z",
+    "source": "api_enrich",
+    "competitors_count": 10,
+    "publications_processed": 367,
+    "content_plans_processed": 10,
+    "inserted_publications": 119,
+    "updated_publications": 0,
+    "inserted_content_plans": 10,
+    "updated_content_plans": 0,
+    "dedup": {
+      "publications_skipped_duplicates": 248,
+      "content_plans_skipped_duplicates": 0,
+      "dedup_enabled": true,
+      "dedup_error": null
+    },
+    "embedding": {
+      "publications_embedded": 367,
+      "content_plans_embedded": 10,
+      "embedding_model": "intfloat/multilingual-e5-large",
+      "embedding_error": null
+    }
+  },
+  {
+    "run_id": "ingest_1778359781125",
+    "created_at": "2026-05-09T20:49:41.125Z",
+    "source": "api_enrich",
+    "competitors_count": 1,
+    "publications_processed": 0,
+    "content_plans_processed": 1,
+    "inserted_publications": 0,
+    "updated_publications": 0,
+    "inserted_content_plans": 1,
+    "updated_content_plans": 0,
+    "dedup": {
+      "publications_skipped_duplicates": 0,
+      "content_plans_skipped_duplicates": 0,
+      "dedup_enabled": true,
+      "dedup_error": null
+    },
+    "embedding": {
+      "publications_embedded": 0,
+      "content_plans_embedded": 1,
+      "embedding_model": "intfloat/multilingual-e5-large",
+      "embedding_error": null
+    }
+  },
+  {
+    "run_id": "ingest_1778359806226",
+    "created_at": "2026-05-09T20:50:06.226Z",
+    "source": "api_enrich",
+    "competitors_count": 1,
+    "publications_processed": 0,
+    "content_plans_processed": 1,
+    "inserted_publications": 0,
+    "updated_publications": 0,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 0,
+    "dedup": {
+      "publications_skipped_duplicates": 0,
+      "content_plans_skipped_duplicates": 1,
+      "dedup_enabled": true,
+      "dedup_error": null
+    },
+    "embedding": {
+      "publications_embedded": 0,
+      "content_plans_embedded": 1,
+      "embedding_model": "intfloat/multilingual-e5-large",
+      "embedding_error": null
+    }
+  },
+  {
+    "run_id": "ingest_1778364891824",
+    "created_at": "2026-05-09T22:14:51.824Z",
+    "source": "api_enrich",
+    "competitors_count": 1,
+    "publications_processed": 1,
+    "content_plans_processed": 1,
+    "inserted_publications": 1,
+    "updated_publications": 0,
+    "inserted_content_plans": 1,
+    "updated_content_plans": 0,
+    "dedup": {
+      "publications_skipped_duplicates": 0,
+      "content_plans_skipped_duplicates": 0,
+      "dedup_enabled": true,
+      "dedup_error": null
+    },
+    "embedding": {
+      "publications_embedded": 1,
+      "content_plans_embedded": 1,
+      "embedding_model": "intfloat/multilingual-e5-large",
+      "embedding_error": null
+    }
+  },
+  {
+    "run_id": "ingest_1779041643493",
+    "created_at": "2026-05-17T18:14:03.493Z",
+    "source": "api_enrich",
+    "competitors_count": 1,
+    "publications_processed": 1,
+    "content_plans_processed": 1,
+    "inserted_publications": 1,
+    "updated_publications": 0,
+    "inserted_content_plans": 1,
+    "updated_content_plans": 0,
+    "dedup": {
+      "publications_skipped_duplicates": 0,
+      "content_plans_skipped_duplicates": 0,
+      "dedup_enabled": true,
+      "dedup_error": null
+    },
+    "embedding": {
+      "publications_embedded": 1,
+      "content_plans_embedded": 1,
+      "embedding_model": "intfloat/multilingual-e5-large",
+      "embedding_error": null
+    }
+  },
+  {
+    "run_id": "ingest_1779041657792",
+    "created_at": "2026-05-17T18:14:17.792Z",
+    "source": "api_enrich",
+    "competitors_count": 1,
+    "publications_processed": 1,
+    "content_plans_processed": 1,
+    "inserted_publications": 0,
+    "updated_publications": 0,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 0,
+    "dedup": {
+      "publications_skipped_duplicates": 1,
+      "content_plans_skipped_duplicates": 1,
+      "dedup_enabled": true,
+      "dedup_error": null
+    },
+    "embedding": {
+      "publications_embedded": 1,
+      "content_plans_embedded": 1,
+      "embedding_model": "intfloat/multilingual-e5-large",
+      "embedding_error": null
+    }
+  },
+  {
+    "run_id": "ingest_1779041665192",
+    "created_at": "2026-05-17T18:14:25.192Z",
+    "source": "api_enrich",
+    "competitors_count": 1,
+    "publications_processed": 3,
+    "content_plans_processed": 1,
+    "inserted_publications": 3,
+    "updated_publications": 0,
+    "inserted_content_plans": 1,
+    "updated_content_plans": 0,
+    "dedup": {
+      "publications_skipped_duplicates": 0,
+      "content_plans_skipped_duplicates": 0,
+      "dedup_enabled": true,
+      "dedup_error": null
+    },
+    "embedding": {
+      "publications_embedded": 3,
+      "content_plans_embedded": 1,
+      "embedding_model": "intfloat/multilingual-e5-large",
+      "embedding_error": null
+    }
+  },
+  {
+    "run_id": "ingest_1779041685189",
+    "created_at": "2026-05-17T18:14:45.189Z",
+    "source": "api_enrich",
+    "competitors_count": 1,
+    "publications_processed": 1,
+    "content_plans_processed": 1,
+    "inserted_publications": 0,
+    "updated_publications": 0,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 0,
+    "dedup": {
+      "publications_skipped_duplicates": 1,
+      "content_plans_skipped_duplicates": 1,
+      "dedup_enabled": true,
+      "dedup_error": null
+    },
+    "embedding": {
+      "publications_embedded": 1,
+      "content_plans_embedded": 1,
+      "embedding_model": "intfloat/multilingual-e5-large",
+      "embedding_error": null
+    }
+  },
+  {
+    "run_id": "ingest_1779041691299",
+    "created_at": "2026-05-17T18:14:51.299Z",
+    "source": "api_enrich",
+    "competitors_count": 1,
+    "publications_processed": 1,
+    "content_plans_processed": 1,
+    "inserted_publications": 0,
+    "updated_publications": 0,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 0,
+    "dedup": {
+      "publications_skipped_duplicates": 1,
+      "content_plans_skipped_duplicates": 1,
+      "dedup_enabled": true,
+      "dedup_error": null
+    },
+    "embedding": {
+      "publications_embedded": 1,
+      "content_plans_embedded": 1,
+      "embedding_model": "intfloat/multilingual-e5-large",
+      "embedding_error": null
+    }
+  },
+  {
+    "run_id": "ingest_1779041699015",
+    "created_at": "2026-05-17T18:14:59.015Z",
+    "source": "api_enrich",
+    "competitors_count": 1,
+    "publications_processed": 3,
+    "content_plans_processed": 1,
+    "inserted_publications": 0,
+    "updated_publications": 0,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 0,
+    "dedup": {
+      "publications_skipped_duplicates": 3,
+      "content_plans_skipped_duplicates": 1,
+      "dedup_enabled": true,
+      "dedup_error": null
+    },
+    "embedding": {
+      "publications_embedded": 3,
+      "content_plans_embedded": 1,
+      "embedding_model": "intfloat/multilingual-e5-large",
+      "embedding_error": null
+    }
+  },
+  {
+    "run_id": "ingest_1779041742769",
+    "created_at": "2026-05-17T18:15:42.769Z",
+    "source": "api_enrich",
+    "competitors_count": 1,
+    "publications_processed": 1,
+    "content_plans_processed": 1,
+    "inserted_publications": 0,
+    "updated_publications": 0,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 0,
+    "dedup": {
+      "publications_skipped_duplicates": 1,
+      "content_plans_skipped_duplicates": 1,
+      "dedup_enabled": true,
+      "dedup_error": null
+    },
+    "embedding": {
+      "publications_embedded": 1,
+      "content_plans_embedded": 1,
+      "embedding_model": "intfloat/multilingual-e5-large",
+      "embedding_error": null
+    }
+  },
+  {
+    "run_id": "ingest_1779041763582",
+    "created_at": "2026-05-17T18:16:03.582Z",
+    "source": "api_enrich",
+    "competitors_count": 1,
+    "publications_processed": 3,
+    "content_plans_processed": 1,
+    "inserted_publications": 0,
+    "updated_publications": 0,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 0,
+    "dedup": {
+      "publications_skipped_duplicates": 3,
+      "content_plans_skipped_duplicates": 1,
+      "dedup_enabled": true,
+      "dedup_error": null
+    },
+    "embedding": {
+      "publications_embedded": 3,
+      "content_plans_embedded": 1,
+      "embedding_model": "intfloat/multilingual-e5-large",
+      "embedding_error": null
+    }
+  },
+  {
+    "run_id": "ingest_1779041780772",
+    "created_at": "2026-05-17T18:16:20.772Z",
+    "source": "demo_seed",
+    "competitors_count": 2,
+    "publications_processed": 3,
+    "content_plans_processed": 2,
+    "inserted_publications": 0,
+    "updated_publications": 0,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 0,
+    "dedup": {
+      "publications_skipped_duplicates": 3,
+      "content_plans_skipped_duplicates": 2,
+      "dedup_enabled": true,
+      "dedup_error": null
+    },
+    "embedding": {
+      "publications_embedded": 3,
+      "content_plans_embedded": 2,
+      "embedding_model": "intfloat/multilingual-e5-large",
+      "embedding_error": null
+    }
+  },
+  {
+    "run_id": "ingest_1779041798109",
+    "created_at": "2026-05-17T18:16:38.109Z",
+    "source": "demo_seed",
+    "competitors_count": 2,
+    "publications_processed": 3,
+    "content_plans_processed": 2,
+    "inserted_publications": 0,
+    "updated_publications": 0,
+    "inserted_content_plans": 0,
+    "updated_content_plans": 0,
+    "dedup": {
+      "publications_skipped_duplicates": 3,
+      "content_plans_skipped_duplicates": 2,
+      "dedup_enabled": true,
+      "dedup_error": null
+    },
+    "embedding": {
+      "publications_embedded": 3,
+      "content_plans_embedded": 2,
+      "embedding_model": "intfloat/multilingual-e5-large",
+      "embedding_error": null
+    }
+  }
+]

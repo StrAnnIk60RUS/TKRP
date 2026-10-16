@@ -1,0 +1,93 @@
+{
+  "target_names": [
+    "total_likes",
+    "total_shares",
+    "total_views"
+  ],
+  "n_targets": 3,
+  "model_type": "MultiOutputRegressor(MLPRegressor)",
+  "feature_names": [
+    "unique_topics",
+    "unique_tones",
+    "avg_creativity",
+    "cta_share",
+    "posts_count",
+    "duration_days",
+    "format_entropy",
+    "objective_entropy",
+    "audience_coverage",
+    "platform_coverage",
+    "topic_recurrence",
+    "timeline_density"
+  ],
+  "feature_set_version": "v2",
+  "ontology_features_enabled": false,
+  "n_features": 12,
+  "feature_stats": {
+    "unique_topics": {
+      "mean": 29.65,
+      "std": 29.18265752120598
+    },
+    "unique_tones": {
+      "mean": 3.9,
+      "std": 1.6093476939431082
+    },
+    "avg_creativity": {
+      "mean": 0.2598533141248994,
+      "std": 0.16433030899777726
+    },
+    "cta_share": {
+      "mean": 0.10953680871973555,
+      "std": 0.11597546944876777
+    },
+    "posts_count": {
+      "mean": 30.85,
+      "std": 30.028777863909145
+    },
+    "duration_days": {
+      "mean": 30.85,
+      "std": 30.028777863909145
+    },
+    "format_entropy": {
+      "mean": 0.4513089494119006,
+      "std": 0.3817873941634613
+    },
+    "objective_entropy": {
+      "mean": 0.7397958728372866,
+      "std": 0.3181736479727014
+    },
+    "audience_coverage": {
+      "mean": 0.95,
+      "std": 0.21794494717703367
+    },
+    "platform_coverage": {
+      "mean": 0.4416666666666666,
+      "std": 0.23731718109830235
+    },
+    "topic_recurrence": {
+      "mean": 0.0270630081300813,
+      "std": 0.04406884653973507
+    },
+    "timeline_density": {
+      "mean": 0.0,
+      "std": 0.0
+    }
+  },
+  "target_summary": {
+    "total_likes": {
+      "min": 0.0,
+      "max": 2048.0,
+      "mean": 367.9
+    },
+    "total_shares": {
+      "min": 0.0,
+      "max": 334.0,
+      "mean": 51.3
+    },
+    "total_views": {
+      "min": 0.0,
+      "max": 257041.0,
+      "mean": 34145.4
+    }
+  }
+}

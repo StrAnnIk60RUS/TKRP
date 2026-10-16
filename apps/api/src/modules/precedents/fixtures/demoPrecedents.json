@@ -1,0 +1,216 @@
+{
+  "competitors": [
+    {
+      "competitor_id": "demo_saasops_cloud",
+      "name": "SaaSOps Cloud",
+      "platform": "linkedin",
+      "content_strategy": {
+        "posting_frequency": "3-4 в неделю",
+        "dominant_tone": "экспертный",
+        "best_performing_topic": "кейсы автоматизации",
+        "avg_readability": 2,
+        "dominant_formats": ["text_post", "image_post"],
+        "core_audience_segments": ["B2B", "IT-руководители"],
+        "main_objectives": ["educate", "inform", "convert"]
+      },
+      "ontology_support": {
+        "classes": ["it_project", "audience_segment", "publication_topic", "case_study"],
+        "entities": ["SaaS automation", "B2B", "workflow automation", "cloud migration"],
+        "relations": ["topic->audience", "format->objective", "case_study->evidence"]
+      },
+      "content_plan_model": {
+        "plan_id": "demo_plan_sensors",
+        "plan_type": "observed_competitor_content_plan",
+        "platform": "linkedin",
+        "audience_segments": ["B2B", "IT-руководители"],
+        "planning_horizon_days": 30,
+        "posting_frequency_per_week": 3.5,
+        "total_publications": 4,
+        "kpi_estimate": {
+          "avg_engagement_rate": 0.042,
+          "best_engagement_rate": 0.068,
+          "estimated_conversion_potential": 0.15
+        },
+        "publication_schedule": [
+          { "publication_id": "demo_pub_1", "planned_at": "2026-03-01", "topic": "автоматизация заявок", "format": "text_post", "objective": "educate", "quality_score": 0.85 },
+          { "publication_id": "demo_pub_2", "planned_at": "2026-03-08", "topic": "обзор SaaS-автоматизации", "format": "text_post", "objective": "inform", "quality_score": 0.9 }
+        ]
+      },
+      "posts": [
+        {
+          "content": "Как SaaS-автоматизация сократила время обработки заявок на 23%. Кейс внедрения в B2B-сегменте.",
+          "datetime": "2026-03-01T10:00:00",
+          "metrics": { "likes": 45, "comments": 8, "shares": 12, "views": 1200 },
+          "engagement_rate": 0.054,
+          "content_category": "case_study",
+          "tone": "expert",
+          "topic": "автоматизация заявок",
+          "target_audience": ["B2B", "IT-руководители"],
+          "publication_model": {
+            "publication_id": "demo_pub_1",
+            "source_type": "competitor_post",
+            "platform": "linkedin",
+            "type": "case_study",
+            "topic": "автоматизация заявок",
+            "audience_segments": ["B2B", "IT-руководители"],
+            "format": "text_post",
+            "content_category": "case_study",
+            "tone": "expert",
+            "funnel_stage": "consideration",
+            "objective": "educate",
+            "summary": "Кейс внедрения SaaS-автоматизации, снижение времени на обработку заявок",
+            "key_entities": ["SaaS", "B2B", "внедрение", "автоматизация"],
+            "kpi_estimate": {
+              "expected_engagement_rate": 0.05,
+              "expected_conversion_potential": 0.1,
+              "expected_lead_generation_potential": 0.08,
+              "expected_reach_potential": 0.3
+            },
+            "spcj": {
+              "scale": "0..1",
+              "dimensions": {
+                "audience_relevance": 0.9,
+                "educational_value": 0.85,
+                "evidence_strength": 0.8,
+                "clarity": 0.9,
+                "engagement_potential": 0.6,
+                "brand_fit": 0.7,
+                "timeliness": 0.8,
+                "cta_strength": 0.4
+              },
+              "vector": [0.9, 0.85, 0.8, 0.9, 0.6, 0.7, 0.8, 0.4]
+            }
+          }
+        },
+        {
+          "content": "5 причин перейти на SaaS-автоматизацию в 2026. Экспертный обзор для технических директоров.",
+          "datetime": "2026-03-08T09:00:00",
+          "metrics": { "likes": 62, "comments": 15, "shares": 20, "views": 1800 },
+          "engagement_rate": 0.054,
+          "content_category": "expert_review",
+          "tone": "expert",
+          "topic": "обзор SaaS-автоматизации",
+          "target_audience": ["B2B"],
+          "publication_model": {
+            "publication_id": "demo_pub_2",
+            "source_type": "competitor_post",
+            "platform": "linkedin",
+            "type": "expert_review",
+            "topic": "обзор SaaS-автоматизации",
+            "audience_segments": ["B2B"],
+            "format": "text_post",
+            "content_category": "expert_review",
+            "tone": "expert",
+            "funnel_stage": "awareness",
+            "objective": "inform",
+            "summary": "Обзор преимуществ SaaS-автоматизации для технических директоров",
+            "key_entities": ["SaaS", "B2B", "обзор", "внедрение"],
+            "kpi_estimate": {
+              "expected_engagement_rate": 0.055,
+              "expected_conversion_potential": 0.12,
+              "expected_lead_generation_potential": 0.1,
+              "expected_reach_potential": 0.35
+            },
+            "spcj": {
+              "scale": "0..1",
+              "dimensions": {
+                "audience_relevance": 0.85,
+                "educational_value": 0.9,
+                "evidence_strength": 0.7,
+                "clarity": 0.95,
+                "engagement_potential": 0.65,
+                "brand_fit": 0.75,
+                "timeliness": 0.85,
+                "cta_strength": 0.35
+              },
+              "vector": [0.85, 0.9, 0.7, 0.95, 0.65, 0.75, 0.85, 0.35]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "competitor_id": "demo_workflow_vk",
+      "name": "Workflow Pro",
+      "platform": "vk",
+      "content_strategy": {
+        "posting_frequency": "2-3 в неделю",
+        "dominant_tone": "дружеский",
+        "best_performing_topic": "лайфхаки и обзоры",
+        "avg_readability": 1,
+        "dominant_formats": ["text_post", "image_post"],
+        "core_audience_segments": ["B2B", "разработчики"],
+        "main_objectives": ["educate", "engage"]
+      },
+      "ontology_support": {
+        "classes": ["it_project", "audience_segment", "how_to"],
+        "entities": ["workflow", "автоматизация", "облако", "интеграция"],
+        "relations": ["topic->audience", "format->how_to"]
+      },
+      "content_plan_model": {
+        "plan_id": "demo_plan_vk",
+        "plan_type": "observed_competitor_content_plan",
+        "platform": "vk",
+        "audience_segments": ["B2B", "разработчики"],
+        "planning_horizon_days": 14,
+        "posting_frequency_per_week": 2.5,
+        "total_publications": 2,
+        "kpi_estimate": {
+          "avg_engagement_rate": 0.038,
+          "best_engagement_rate": 0.05,
+          "estimated_conversion_potential": 0.08
+        },
+        "publication_schedule": [
+          { "publication_id": "demo_pub_3", "planned_at": "2026-03-05", "topic": "интеграции без кода", "format": "text_post", "objective": "educate", "quality_score": 0.75 }
+        ]
+      },
+      "posts": [
+        {
+          "content": "Лайфхак: как быстро запустить интеграции без кода. Краткая инструкция для разработчиков.",
+          "datetime": "2026-03-05T14:00:00",
+          "metrics": { "likes": 28, "comments": 5, "shares": 6, "views": 900 },
+          "engagement_rate": 0.043,
+          "content_category": "how_to",
+          "tone": "friendly",
+          "topic": "интеграции без кода",
+          "target_audience": ["разработчики", "B2B"],
+          "publication_model": {
+            "publication_id": "demo_pub_3",
+            "source_type": "competitor_post",
+            "platform": "vk",
+            "type": "how_to",
+            "topic": "интеграции без кода",
+            "audience_segments": ["разработчики", "B2B"],
+            "format": "text_post",
+            "content_category": "how_to",
+            "tone": "friendly",
+            "funnel_stage": "consideration",
+            "objective": "educate",
+            "summary": "Инструкция по запуску облачных интеграций без кода для разработчиков",
+            "key_entities": ["workflow", "автоматизация", "облако", "интеграция"],
+            "kpi_estimate": {
+              "expected_engagement_rate": 0.04,
+              "expected_conversion_potential": 0.06,
+              "expected_lead_generation_potential": 0.05,
+              "expected_reach_potential": 0.25
+            },
+            "spcj": {
+              "scale": "0..1",
+              "dimensions": {
+                "audience_relevance": 0.85,
+                "educational_value": 0.9,
+                "evidence_strength": 0.5,
+                "clarity": 0.85,
+                "engagement_potential": 0.7,
+                "brand_fit": 0.6,
+                "timeliness": 0.75,
+                "cta_strength": 0.3
+              },
+              "vector": [0.85, 0.9, 0.5, 0.85, 0.7, 0.6, 0.75, 0.3]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

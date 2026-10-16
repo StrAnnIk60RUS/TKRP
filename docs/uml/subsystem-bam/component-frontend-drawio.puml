@@ -1,0 +1,28 @@
+@startuml
+title Диаграмма компонентов (фронтенд)
+
+package "Фронтенд" {
+  component [ProjectForm] as PF
+  component [useCompetitorsPipeline] as UCP
+  component [enrichmentService] as ES
+}
+
+package "Граница REST API" {
+  component [POST /api/enrich] as IEnrich
+  component [POST /api/precedents/search] as ISearch
+  component [GET /api/precedents/summary] as ISummary
+  component [POST /api/plan/generate] as IPlan
+  component [POST /api/plan/generate-batched] as IPlanB
+}
+
+PF --> UCP : шаг конкурентов
+PF --> ES : поиск прецедентов и генерация черновика
+UCP --> ES : инициация обогащения
+
+ES --> IEnrich : запрос семантического обогащения
+ES --> ISearch : семантический поиск прецедентов
+ES --> ISummary : сводка корпуса
+ES --> IPlan : генерация чернового плана
+ES --> IPlanB : генерация черновика пакетами
+
+@enduml
