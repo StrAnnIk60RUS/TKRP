@@ -77,6 +77,7 @@ body.theme-dark :is(
   .workflow-result-card,
   .workflow-checklist-item,
   .precedent-card,
+  .plan-history-card,
   .precedent-workflow-section-embedded,
   .ontology-preview-panel,
   .ontology-preview-metric,
@@ -374,11 +375,25 @@ body.theme-dark .key-dates-item.is-active {
   color: var(--ink);
 }
 
+body.theme-dark .plan-history-card .precedent-card-title {
+  color: var(--ink, #f1f5f9);
+}
+
+body.theme-dark .plan-history-card .precedent-card-body,
+body.theme-dark .plan-history-card .precedent-card-body div {
+  color: var(--ink-muted, #94a3b8);
+}
+
+body.theme-dark .plan-history-card.is-current {
+  border-color: #3b82f6;
+  box-shadow: 4px 4px 0 0 #1e3a5f;
+}
+
 body.theme-dark .history-delete-btn,
 body.theme-dark .history-delete-btn:hover {
-  background: #2a161c;
-  border-color: #8a3048;
-  color: #f0a0b0;
+  background: #201416;
+  border-color: #ef4444;
+  color: #fca5a5;
 }
 
 body.theme-dark .plan-history-constraint-msg,
@@ -701,3 +716,91 @@ body.theme-dark .plan-calendar-mobile-empty {
       4px 4px 0 0 rgba(0, 0, 0, 0.4);
   }
 }
+
+/* Dark theme rules for UX guided flow & quick-start components */
+body.theme-dark .ux-step-guide-banner {
+  background: #181622;
+  border-color: #ff6b9d;
+  box-shadow: 4px 4px 0 0 #f8b500;
+}
+
+body.theme-dark .ux-step-guide-kicker {
+  background: #ff6b9d;
+  color: #0c0e14;
+}
+
+body.theme-dark .ux-step-guide-title,
+body.theme-dark .ux-quick-start-title,
+body.theme-dark .ux-timeline-presets-label {
+  color: #ffffff;
+}
+
+body.theme-dark .ux-step-guide-goal {
+  color: var(--ink);
+}
+
+body.theme-dark .ux-step-guide-next-hint,
+body.theme-dark .ux-quick-start-subtitle {
+  color: var(--ink-muted);
+}
+
+body.theme-dark .ux-step-guide-quick-btn,
+body.theme-dark .ux-checklist-action-btn {
+  background: #ff6b9d;
+  border-color: #ff6b9d;
+  color: #0c0e14 !important;
+  box-shadow: 3px 3px 0 0 #000000;
+}
+
+body.theme-dark .ux-step-guide-quick-btn:hover,
+body.theme-dark .ux-checklist-action-btn:hover {
+  background: #f8b500;
+  border-color: #f8b500;
+  color: #0c0e14 !important;
+}
+
+body.theme-dark .ux-preset-chip,
+body.theme-dark .ux-inline-select-all-btn {
+  background: var(--bg-control);
+  border-color: var(--line);
+  color: var(--ink);
+  box-shadow: 3px 3px 0 0 var(--shadow);
+}
+
+body.theme-dark .ux-preset-chip:hover:not(:disabled),
+body.theme-dark .ux-inline-select-all-btn:hover:not(:disabled) {
+  background: #ff6b9d;
+  border-color: #ff6b9d;
+  color: #0c0e14 !important;
+  box-shadow: 4px 4px 0 0 #f8b500;
+}
+
+body.theme-dark .ux-timeline-presets-row {
+  background: var(--bg-inset);
+  border-color: var(--line);
+}
+
+body.theme-dark .ux-schedule-preview {
+  background: #13261c;
+  border-color: #1f6b45;
+  color: #8fdbb0;
+}
+
+body.theme-dark .ux-optional-badge {
+  background: var(--bg-inset);
+  border-color: var(--line);
+  color: var(--ink-muted);
+}
+
+body.theme-dark .wizard-step-tab.is-completed:not(.active) {
+  background: #13261c;
+  border-color: #1f6b45;
+  color: #8fdbb0;
+}
+
+body.theme-dark .wizard-step-tab.is-attention:not(.active) {
+  background: #2a2416;
+  border-color: #8a6a20;
+  color: #e6c57a;
+}
+

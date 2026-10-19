@@ -12,8 +12,11 @@ import FieldHint from './projectForm/FieldHint'
 import DraftPlanWorkflowPanel from './projectForm/DraftPlanWorkflowPanel'
 import TechnicalDetailsPanel from './projectForm/TechnicalDetailsPanel'
 import OperationStatusPanel from './projectForm/OperationStatusPanel'
+import OnboardingMaster from './projectForm/OnboardingMaster'
 import { initialWizardState, wizardReducer } from './projectForm/wizardState'
 import { useCompetitorsPipeline } from '../model/useCompetitorsPipeline'
+import { buildRetrievalBadge } from '../lib/precedentPresentationUtils'
+import { getCurrentUserId } from '../../../shared/api/authService'
 import {
   getAggregatedOntology,
   getPrecedentsSummary,
@@ -30,6 +33,7 @@ import PrecedentDetailsModal from './precedents/PrecedentDetailsModal'
 import { useUserRole } from '../../../app/providers/UserRoleContext'
 import { useInstagramAccess } from '../../../shared/lib/useInstagramAccess'
 import {
+  STEP_META,
   consumerCategoryOptions,
   contentFormatOptions,
   demoHorizonExampleOptions,
@@ -48,6 +52,7 @@ import {
   buildReviewChecklist,
   buildSafeFormInputForGeneration,
   buildSuggestedPrecedentQuery,
+  buildTimelineRange,
   competitorsStepRequirementMet,
   hasLocalCompetitorsInForm,
   hasPersistedPrecedentsInDb,
@@ -60,6 +65,24 @@ import {
 } from './projectForm/formUtils'
 import { buildRiskSummary } from './projectForm/riskSummaryUtils'
 import './ProjectForm.css'
+
+const getLocalDraftStorageKey = () => {
+  const userId = getCurrentUserId()
+  return userId ? `projectFormDraft:${userId}` : 'projectFormDraft'
+}
+
+const FIELD_LABELS_RU = {
+  producerName: 'Наименование производителя',
+  producerActivitySpecification: 'Специфика деятельности',
+  projectName: 'Наименование IT-проекта',
+  projectDescription: 'Описание IT-проекта',
+  consumerCategory: 'Категория потребителя',
+  contentPlanStartDate: 'Дата начала',
+  contentPlanEndDate: 'Дата окончания',
+  publicationFrequency: 'Частота публикаций',
+  contentFormats: 'Формат публикаций',
+  platforms: 'Платформы'
+}
 
 const PUBLICATION_FREQUENCY_TO_WEEKLY = {
   daily: 7,
@@ -176,25 +199,10 @@ const ProjectForm = () => {
 
   const precedentRetrieval = precedentSearchResults?.retrieval || null
 
-  const retrievalBadge = useMemo(() => {
-    const type = precedentRetrieval?.type
-    if (type === 'embedding_cosine') {
-      return isDeveloper
-        ? {
-            label: 'Поиск по смыслу',
-            hint: precedentRetrieval?.embedding_model ? `${precedentRetrieval.embedding_model}` : 'эмбеддинги',
-            tone: 'success'
-          }
-        : { label: 'Поиск по смыслу', hint: '', tone: 'success' }
-    }
-    if (type === 'token_overlap_fallback') {
-      return isDeveloper
-        ? { label: 'Поиск по ключевым словам', hint: 'запасной режим', tone: 'neutral' }
-        : { label: 'Поиск по ключевым словам', hint: '', tone: 'neutral' }
-    }
-    if (!type) return null
-    return { label: type, hint: '', tone: 'neutral' }
-  }, [precedentRetrieval, isDeveloper])
+  const retrievalBadge = useMemo(
+    () => buildRetrievalBadge(precedentRetrieval, { isDeveloper }),
+    [precedentRetrieval, isDeveloper]
+  )
 
   const filledRequired = useMemo(() => {
     return requiredFields.filter(field => {
@@ -245,6 +253,16 @@ const ProjectForm = () => {
   const setSelectedPrecedentItem = (payload) => dispatch({ type: 'SET_SELECTED_PRECEDENT', payload })
   const setDemoHorizonExample = (payload) => dispatch({ type: 'SET_DEMO_HORIZON', payload })
   const setIsEditMode = (payload) => dispatch({ type: 'SET_EDIT_MODE', payload })
+
+  const goToStepById = useCallback(
+    (stepId) => {
+      const idx = wizardStepIds.indexOf(stepId)
+      if (idx >= 0) {
+        dispatch({ type: 'SET_CURRENT_STEP', payload: idx + 1 })
+      }
+    },
+    [wizardStepIds]
+  )
 
   useEffect(() => {
     window.scrollTo(0, 0)
@@ -331,23 +349,36 @@ const ProjectForm = () => {
   const explainabilitySignals = useMemo(() => {
     const competitorsStepOk = competitorsStepRequirementMet(competitorsData, precedentsSummary)
     const hasLocalCompetitors = hasLocalCompetitorsInForm(competitorsData)
+    const projectBasicDone = Boolean(
+      formData.producerName?.trim() &&
+        formData.producerActivitySpecification?.trim() &&
+        formData.projectName?.trim() &&
+        formData.projectDescription?.trim()
+    )
+    const datesAndFreqDone = Boolean(
+      formData.contentPlanStartDate && formData.contentPlanEndDate && formData.publicationFrequency
+    )
     return [
       {
         key: 'project_description',
-        label: 'Описание проекта',
-        done: Boolean(formData.projectDescription?.trim())
+        label: projectBasicDone
+          ? `Проект: ${formData.projectName} (${formData.producerName})`
+          : 'Сведения о проекте и производителе (Шаг 2)',
+        done: projectBasicDone
       },
       {
         key: 'audience',
-        label: `Аудитория: ${consumerCategoryLabelMap[formData.consumerCategory] || formData.consumerCategory || 'не указана'}`,
-        done: Boolean(formData.consumerCategory)
+        label: `Аудитория и сроки: ${
+          consumerCategoryLabelMap[formData.consumerCategory] || formData.consumerCategory || 'не выбрана'
+        }${datesAndFreqDone ? ` · ${formData.contentPlanStartDate} — ${formData.contentPlanEndDate}` : ' · укажите даты и частоту'}`,
+        done: Boolean(formData.consumerCategory) && datesAndFreqDone
       },
       {
         key: 'platforms',
         label: `Платформы: ${
           formData.platforms.length
             ? formData.platforms.map((platform) => platformLabelMap[platform] || platform).join(', ')
-            : 'не указаны'
+            : 'не выбраны'
         }`,
         done: formData.platforms.length > 0
       },
@@ -356,7 +387,7 @@ const ProjectForm = () => {
         label: `Форматы: ${
           formData.contentFormats.length
             ? formData.contentFormats.map((format) => contentFormatLabelMap[format] || format).join(', ')
-            : 'не указаны'
+            : 'не выбраны'
         }`,
         done: formData.contentFormats.length > 0
       },
@@ -365,8 +396,8 @@ const ProjectForm = () => {
         label: competitorsStepOk
           ? hasLocalCompetitors
             ? 'Есть данные конкурентов в форме'
-            : 'База прецедентов уже есть — парсинг/обогащение сейчас не нужны'
-          : 'Нужны данные конкурентов в форме или непустая база прецедентов',
+            : 'База прецедентов готова к использованию'
+          : 'Нужна база примеров (прецедентов) или ссылки на конкурентов (Шаг 1)',
         done: competitorsStepOk
       }
     ]
@@ -389,13 +420,13 @@ const ProjectForm = () => {
 
       const reasonsForSearch = []
       if (!backendOk) reasonsForSearch.push('Сервер недоступен')
-      if (!requiredFieldsDone) reasonsForSearch.push('Обязательные поля формы не заполнены')
+      if (!requiredFieldsDone) reasonsForSearch.push('Заполните обязательные поля на шагах 2 и 3')
       if (!competitorsDone) {
-        reasonsForSearch.push('Нет данных конкурентов в форме и база прецедентов пуста')
+        reasonsForSearch.push('Загрузите демо-базу прецедентов или добавьте конкурентов на шаге 1')
       }
 
       const reasonsForGenerate = [...reasonsForSearch]
-      if (!precedentsDone) reasonsForGenerate.push('Прецеденты не подобраны')
+      if (!precedentsDone) reasonsForGenerate.push('База прецедентов пуста (нажмите «Обновить демо-базу прецедентов» на шаге 1)')
 
       const canSearch = backendOk && requiredFieldsDone && competitorsDone
       const canGen =
@@ -440,29 +471,35 @@ const ProjectForm = () => {
       precedentSearchResults ||
       (precedentsSummary?.publications_count || 0) + (precedentsSummary?.content_plans_count || 0) > 0
     )
+    const projectStepIdx = wizardStepIds.indexOf('project') + 1
+    const audienceStepIdx = wizardStepIds.indexOf('audience') + 1
     const statusById = {
-      competitors:
-        isParsingFromUrls || isEnriching
-          ? 'in_progress'
-          : competitorsStepDone
-            ? 'completed'
-            : hasCompetitorUrls
-              ? 'in_progress'
-              : 'pending',
       project: projectCompleted
         ? 'completed'
         : projectStarted
-          ? currentStep > 2
+          ? currentStep > projectStepIdx
             ? 'attention'
             : 'in_progress'
-          : 'pending',
+          : currentStep === projectStepIdx
+            ? 'in_progress'
+            : 'pending',
       audience: audienceCompleted
         ? 'completed'
         : audienceStarted
-          ? currentStep > 3
+          ? currentStep > audienceStepIdx
             ? 'attention'
             : 'in_progress'
-          : 'pending',
+          : currentStep === audienceStepIdx
+            ? 'in_progress'
+            : 'pending',
+      competitors:
+        isParsingFromUrls || isEnriching || isSeedingPrecedents
+          ? 'in_progress'
+          : competitorsStepDone
+            ? 'completed'
+            : hasCompetitorUrls || currentStepId === 'competitors'
+              ? 'in_progress'
+              : 'pending',
       precedents:
         isSearchingPrecedents || isSeedingPrecedents
           ? 'in_progress'
@@ -510,11 +547,17 @@ const ProjectForm = () => {
   ])
 
   useEffect(() => {
+    if (isEnrichmentServerAvailable === null) return
+    restoreDraftCancelledRef.current = false
+
     const restoreLocalDraft = () => {
       if (restoreDraftCancelledRef.current) return
       if (hasRestoredDraftRef.current) return
 
-      const savedDraft = localStorage.getItem('projectFormDraft')
+      const scopedKey = getLocalDraftStorageKey()
+      const savedDraft =
+        localStorage.getItem(scopedKey) ||
+        (scopedKey !== 'projectFormDraft' ? localStorage.getItem('projectFormDraft') : null)
       if (!savedDraft) {
         hasRestoredDraftRef.current = true
         return
@@ -533,6 +576,7 @@ const ProjectForm = () => {
     const restoreDraft = async () => {
       // Всегда пробуем локальный черновик; серверный — только когда backend подтвержден как доступный.
       if (restoreDraftCancelledRef.current) return
+      if (hasRestoredDraftRef.current) return
       if (isEnrichmentServerAvailable !== true) {
         restoreLocalDraft()
         return
@@ -555,6 +599,10 @@ const ProjectForm = () => {
     }
 
     restoreDraft()
+
+    return () => {
+      restoreDraftCancelledRef.current = true
+    }
   }, [isEnrichmentServerAvailable, dispatch])
 
   useEffect(() => {
@@ -596,13 +644,16 @@ const ProjectForm = () => {
   }, [competitorsData, isEnrichmentServerAvailable])
 
   useEffect(() => {
+    if (!hasRestoredDraftRef.current) return
+
     const hasData = Object.values(formData).some(val => 
       Array.isArray(val) ? val.length > 0 : val !== '' && val !== null
     )
     
     if (hasData) {
       const timeoutId = setTimeout(() => {
-        localStorage.setItem('projectFormDraft', JSON.stringify(formData))
+        const scopedKey = getLocalDraftStorageKey()
+        localStorage.setItem(scopedKey, JSON.stringify(formData))
         if (isEnrichmentServerAvailable === true) {
           saveServerDraft({ formData }).catch((error) => {
             console.error('Ошибка сохранения server-side черновика:', error)
@@ -799,6 +850,42 @@ const ProjectForm = () => {
     await loadExample(exampleName)
   }
 
+  const handleApplyTimelinePreset = (months) => {
+    const range = buildTimelineRange(months)
+    setFormData((prev) => ({
+      ...prev,
+      contentPlanStartDate: range.startDate,
+      contentPlanEndDate: range.endDate,
+      publicationFrequency: prev.publicationFrequency || '3-4_per_week'
+    }))
+    setErrors((prev) => ({
+      ...prev,
+      contentPlanStartDate: '',
+      contentPlanEndDate: '',
+      publicationFrequency: ''
+    }))
+  }
+
+  const handleSelectAllFormats = () => {
+    const allValues = contentFormatOptions.map((o) => o.value)
+    const allSelected = allValues.every((v) => formData.contentFormats.includes(v))
+    setFormData((prev) => ({
+      ...prev,
+      contentFormats: allSelected ? [] : allValues
+    }))
+    setErrors((prev) => ({ ...prev, contentFormats: '' }))
+  }
+
+  const handleSelectAllPlatforms = () => {
+    const allValues = visiblePlatformOptions.map((o) => o.value)
+    const allSelected = allValues.every((v) => formData.platforms.includes(v))
+    setFormData((prev) => ({
+      ...prev,
+      platforms: allSelected ? [] : allValues
+    }))
+    setErrors((prev) => ({ ...prev, platforms: '' }))
+  }
+
   const handleGenerateDraftPlan = async () => {
     const formValidation = validateFormData(formData)
     if (!formValidation.isValid) {
@@ -808,7 +895,7 @@ const ProjectForm = () => {
       )
       const firstErrorMessage = Object.values(formValidation.errors)[0]
       addToast(firstErrorMessage ? `Ошибка заполнения: ${firstErrorMessage}` : 'Перед генерацией заполните обязательные поля формы', 'error')
-      return
+      return null
     }
 
     let effectivePrecedentsSummary = precedentsSummary
@@ -837,16 +924,17 @@ const ProjectForm = () => {
 
     if (!isDeveloper && !hasWorkflowPrecedents) {
       addToast(
-        'Перед генерацией нужны прецеденты в базе: демо, поиск или данные с прошлых запусков. Парсинг и обогащение на шаге 1 не обязательны, если база уже заполнена.',
+        'Перед генерацией нужны прецеденты в базе: загрузите демо-базу на шаге «Конкуренты и база» или запустите поиск.',
         'error'
       )
-      return
+      return null
     }
 
     const safeFormInput = buildSafeFormInputForGeneration(formData)
 
     addToast('Генерация чернового контент-плана по данным формы и прецедентам...', 'info')
     setOperationTelemetry({ backend: 'running', python: 'running', llm: 'running' })
+    let generatedResponse = null
     try {
       await runTrackedOperation('generatingPlan', async (signal) => {
         const response = await generateDraftContentPlan(
@@ -859,6 +947,7 @@ const ProjectForm = () => {
           { signal }
         )
 
+        generatedResponse = response
         setDraftPlanResult(response)
         setOptimizationResult(null)
         // Если LLM вернул черновой контент-план, сохраняем его для страницы просмотра
@@ -877,22 +966,27 @@ const ProjectForm = () => {
       })
       addToast('Черновой контент-план успешно сгенерирован', 'success')
       setOperationTelemetry({ backend: 'success', python: 'success', llm: 'success' })
+      return generatedResponse
     } catch (error) {
       console.error('Ошибка генерации чернового плана:', error)
       addToast(`Ошибка генерации: ${error.message}`, 'error')
       setOperationTelemetry({ backend: 'error', python: 'error', llm: 'error' })
+      return null
     }
   }
 
-  const handleOptimizeDraftPlan = async () => {
-    const draft = draftPlanResult?.draft?.draft_content_plan
+  const handleOptimizeDraftPlan = async (overrideDraftResponse = null) => {
+    const activeDraftResponse =
+      overrideDraftResponse && overrideDraftResponse.draft ? overrideDraftResponse : draftPlanResult
+    const draft = activeDraftResponse?.draft?.draft_content_plan
     if (!draft) {
       addToast('Сначала сформируйте черновой контент-план', 'error')
-      return
+      return null
     }
 
-    const precedentPubs = Array.isArray(precedentSearchResults?.publications)
-      ? precedentSearchResults.publications.filter(Boolean)
+    const activeRag = activeDraftResponse?.rag || precedentSearchResults
+    const precedentPubs = Array.isArray(activeRag?.publications)
+      ? activeRag.publications.filter(Boolean)
       : []
 
     const planGaConfig = buildPlanGaConfigFromForm(formData)
@@ -924,32 +1018,32 @@ const ProjectForm = () => {
 
     if (!horizonDays || horizonDays <= 0) {
       addToast('Для эволюции нужна положительная длительность контент-плана', 'error')
-      return
+      return null
     }
 
     if (!derivedPostsPerWeek || derivedPostsPerWeek <= 0) {
       addToast('Выберите частоту публикаций или скорректируйте горизонт планирования', 'error')
-      return
+      return null
     }
 
     const lockedFields = {
-    platforms: formData.platforms,           // выбранные платформы
-    formats: formData.contentFormats,        // выбранные форматы
-    publicationFrequency: formData.publicationFrequency,
-    publicationDayMode: formData.publicationDayMode,
-    // если пользователь захочет зафиксировать конкретные поля
-    topic: false,
-    format: false,
-    objective: false,
-    tone: false,
-    has_cta: null,
-    creativity: null
-};
+      platforms: formData.platforms,           // выбранные платформы
+      formats: formData.contentFormats,        // выбранные форматы
+      publicationFrequency: formData.publicationFrequency,
+      publicationDayMode: formData.publicationDayMode,
+      // если пользователь захочет зафиксировать конкретные поля
+      topic: false,
+      format: false,
+      objective: false,
+      tone: false,
+      has_cta: null,
+      creativity: null
+    }
 
     const payload = {
       draft_content_plan: draft,
       form_input: buildSafeFormInputForGeneration(formData),
-      ragResults: precedentSearchResults || null,
+      ragResults: activeRag || null,
       pinned_publications: buildPinnedPublications(competitorsData),
       locked_fields: lockedFields,
       stage1: {
@@ -977,9 +1071,11 @@ const ProjectForm = () => {
 
     addToast('Запуск эволюционной оптимизации...', 'info')
     setOperationTelemetry({ backend: 'running', python: 'running', llm: 'running' })
+    let optResponse = null
     try {
       await runTrackedOperation('optimizingPlan', async (signal) => {
         const response = await optimizeDraftContentPlan(payload, { signal })
+        optResponse = response
         setOptimizationResult(response)
 
         if (response?.optimized_content_plan) {
@@ -999,11 +1095,23 @@ const ProjectForm = () => {
       })
       addToast('Оптимизация завершена: план обновлён', 'success')
       setOperationTelemetry({ backend: 'success', python: 'success', llm: 'success' })
+      return optResponse
     } catch (error) {
       console.error('Ошибка оптимизации:', error)
       addToast(`Ошибка оптимизации: ${error.message}`, 'error')
       setOperationTelemetry({ backend: 'error', python: 'error', llm: 'error' })
+      return null
     }
+  }
+
+  const handleGenerateAndOptimizePlan = async () => {
+    if (isSmm && canSearchPrecedents && !precedentSearchResults?.publications?.length) {
+      const searchOk = await handleSearchPrecedents()
+      if (!searchOk) return
+    }
+    const generated = await handleGenerateDraftPlan()
+    if (!generated?.draft?.draft_content_plan) return
+    await handleOptimizeDraftPlan(generated)
   }
 
   const hasError = (fieldName) => touched[fieldName] && errors[fieldName]
@@ -1032,6 +1140,8 @@ const ProjectForm = () => {
     setCurrentStep(stepNumber)
   }
 
+  const currentStepMeta = STEP_META[currentStepId] || null
+
   return (
     <>
       <ToastContainer toasts={toasts} removeToast={removeToast} />
@@ -1046,23 +1156,24 @@ const ProjectForm = () => {
       )}
 
       <form className="project-form">
-        {/* Прогресс-бар */}
+        {/* Прогресс-бар и гид по текущему шагу */}
         <WizardHeader
           currentStep={currentStep}
           wizardSteps={wizardSteps}
           onStepClick={goToStep}
           stepStatuses={stepStatuses}
+          stepMeta={currentStepMeta}
         />
 
         {visibleErrorEntries.length > 0 && (
           <section className="form-section" role="alert" aria-live="polite">
-            <h2 className="section-title">Ошибки формы</h2>
+            <h2 className="section-title">Проверьте поля формы</h2>
             <div className="workflow-checklist">
               {visibleErrorEntries.map(([fieldName, message]) => (
                 <div key={fieldName} className="workflow-checklist-item is-pending">
-                  <span className="workflow-checklist-mark">•</span>
+                  <span className="workflow-checklist-mark">!</span>
                   <span>
-                    {fieldName}: {message}
+                    <strong>{FIELD_LABELS_RU[fieldName] || fieldName}:</strong> {message}
                   </span>
                 </div>
               ))}
@@ -1070,395 +1181,484 @@ const ProjectForm = () => {
           </section>
         )}
 
-        {currentStep === 1 && (
-          <>
-            <CompetitorsStep
-              competitorUrls={competitorUrls}
-              competitorsData={competitorsData}
-              competitorsFileName={competitorsFileName}
-              postsLimit={postsLimit}
-              isParsingFromUrls={isParsingFromUrls}
-              isEnriching={isEnriching}
-              isProcessing={isProcessing}
-              isEnrichmentServerAvailable={isEnrichmentServerAvailable}
-              canEnrich={canEnrich}
-              showEnrichButton={isDeveloper}
-              precedentsAlreadyInDb={hasPersistedPrecedentsInDb(precedentsSummary)}
-              allowInstagram={allowInstagram}
-              onUrlChange={handleCompetitorUrlChange}
-              onAddUrl={handleAddCompetitorUrl}
-              onRemoveUrl={handleRemoveCompetitorUrl}
-              onPostsLimitChange={handlePostsLimitChange}
-              onParseFromUrls={handleParseCompetitorsFromUrls}
-              onEnrichUploaded={handleEnrichCompetitorsData}
-              onRemoveData={handleRemoveCompetitorsData}
-            />
+        {/* ШАГ 1: КОНКУРЕНТЫ И БАЗА ПРИМЕРОВ */}
+        {currentStepId === 'competitors' && (
+          <CompetitorsStep
+            competitorUrls={competitorUrls}
+            competitorsData={competitorsData}
+            competitorsFileName={competitorsFileName}
+            postsLimit={postsLimit}
+            isParsingFromUrls={isParsingFromUrls}
+            isEnriching={isEnriching}
+            isSeedingPrecedents={isSeedingPrecedents}
+            isProcessing={isProcessing}
+            isEnrichmentServerAvailable={isEnrichmentServerAvailable}
+            canEnrich={canEnrich}
+            showEnrichButton={isDeveloper}
+            precedentsAlreadyInDb={hasPersistedPrecedentsInDb(precedentsSummary)}
+            precedentsSummary={precedentsSummary}
+            allowInstagram={allowInstagram}
+            onUrlChange={handleCompetitorUrlChange}
+            onAddUrl={handleAddCompetitorUrl}
+            onRemoveUrl={handleRemoveCompetitorUrl}
+            onPostsLimitChange={handlePostsLimitChange}
+            onParseFromUrls={handleParseCompetitorsFromUrls}
+            onEnrichUploaded={handleEnrichCompetitorsData}
+            onRemoveData={handleRemoveCompetitorsData}
+            onSeedDemoPrecedents={handleSeedDemoPrecedents}
+            onSkipToNextStep={goToNextStep}
+          />
+        )}
 
+        {/* ШАГ 2: О ПРОЕКТЕ И ПРОИЗВОДИТЕЛЕ */}
+        {currentStepId === 'project' && (
+          <>
+            <OnboardingMaster
+              isCompact
+              onApplyTemplate={(templateData) => {
+                setFormData((prev) => ({ ...prev, ...templateData }))
+                setIsEditMode(true)
+                addToast('Шаблон типа проекта применён', 'success')
+              }}
+            />
+            {/* Сведения о производителе */}
+            <section className="form-section">
+              <h2 className="section-title">Сведения о производителе</h2>
+              
+              <div className="form-group">
+                <label htmlFor="producerName" className="form-label">
+                  Наименование производителя <span className="required">*</span>
+                </label>
+                <input
+                  type="text"
+                  id="producerName"
+                  name="producerName"
+                  value={formData.producerName}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  className={`form-input ${hasError('producerName') ? 'error' : ''}`}
+                  placeholder="Например: ООО ТехноСофт"
+                  disabled={!isEditMode}
+                />
+                {hasError('producerName') && <span className="error-message">{errors.producerName}</span>}
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="producerActivitySpecification" className="form-label">
+                  Специфика деятельности <span className="required">*</span>
+                </label>
+                <AutoResizeTextarea
+                  id="producerActivitySpecification"
+                  name="producerActivitySpecification"
+                  value={formData.producerActivitySpecification}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  className={`form-textarea ${hasError('producerActivitySpecification') ? 'error' : ''}`}
+                  placeholder="Опишите сферу деятельности производителя"
+                  rows="3"
+                  disabled={!isEditMode}
+                />
+                {hasError('producerActivitySpecification') && <span className="error-message">{errors.producerActivitySpecification}</span>}
+              </div>
+            </section>
+
+            {/* Сведения об IT-проекте */}
+            <section className="form-section">
+              <h2 className="section-title">Сведения об IT-проекте</h2>
+              
+              <div className="form-group">
+                <label htmlFor="projectName" className="form-label">
+                  Наименование IT-проекта <span className="required">*</span>
+                </label>
+                <input
+                  type="text"
+                  id="projectName"
+                  name="projectName"
+                  value={formData.projectName}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  className={`form-input ${hasError('projectName') ? 'error' : ''}`}
+                  placeholder="Например: CloudAnalytics Pro"
+                  disabled={!isEditMode}
+                />
+                {hasError('projectName') && <span className="error-message">{errors.projectName}</span>}
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="projectDescription" className="form-label">
+                  Описание IT-проекта <span className="required">*</span>
+                </label>
+                <AutoResizeTextarea
+                  id="projectDescription"
+                  name="projectDescription"
+                  value={formData.projectDescription}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  className={`form-textarea ${hasError('projectDescription') ? 'error' : ''}`}
+                  placeholder="Основное описание проекта"
+                  rows="4"
+                  disabled={!isEditMode}
+                />
+                {hasError('projectDescription') && <span className="error-message">{errors.projectDescription}</span>}
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="projectGoals" className="form-label">
+                  Цели проекта <span className="ux-optional-badge">необязательно</span>
+                </label>
+                <AutoResizeTextarea
+                  id="projectGoals"
+                  name="projectGoals"
+                  value={formData.projectGoals}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  className="form-textarea"
+                  placeholder="Какие цели преследует проект?"
+                  rows="3"
+                  disabled={!isEditMode}
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="projectFeatures" className="form-label">
+                  Особенности проекта <span className="ux-optional-badge">необязательно</span>
+                </label>
+                <AutoResizeTextarea
+                  id="projectFeatures"
+                  name="projectFeatures"
+                  value={formData.projectFeatures}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  className="form-textarea"
+                  placeholder="Ключевые особенности и функции"
+                  rows="3"
+                  disabled={!isEditMode}
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="projectBenefits" className="form-label">
+                  Преимущества проекта <span className="ux-optional-badge">необязательно</span>
+                </label>
+                <AutoResizeTextarea
+                  id="projectBenefits"
+                  name="projectBenefits"
+                  value={formData.projectBenefits}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  className="form-textarea"
+                  placeholder="Какие преимущества дает проект?"
+                  rows="3"
+                  disabled={!isEditMode}
+                />
+              </div>
+            </section>
           </>
         )}
 
-        {/* Сведения о производителе */}
-        {currentStep === 2 && <section className="form-section">
-          <h2 className="section-title">Сведения о производителе</h2>
-          
-          <div className="form-group">
-            <label htmlFor="producerName" className="form-label">
-              Наименование производителя <span className="required">*</span>
-            </label>
-            <input
-              type="text"
-              id="producerName"
-              name="producerName"
-              value={formData.producerName}
-              onChange={handleChange}
-              onBlur={handleBlur}
-              className={`form-input ${hasError('producerName') ? 'error' : ''}`}
-              placeholder="Например: ООО ТехноСофт"
-              disabled={!isEditMode}
-            />
-            {hasError('producerName') && <span className="error-message">{errors.producerName}</span>}
-          </div>
+        {/* ШАГ 2: АУДИТОРИЯ И ПАРАМЕТРЫ КОНТЕНТ-ПЛАНА */}
+        {currentStepId === 'audience' && (
+          <>
+            {/* Профиль потребителя */}
+            <section className="form-section">
+              <h2 className="section-title">Профиль потребителя</h2>
+              
+              <div className="form-group">
+                <label htmlFor="consumerCategory" className="form-label">
+                  Категория потребителя <span className="required">*</span>
+                </label>
+                <select
+                  id="consumerCategory"
+                  name="consumerCategory"
+                  value={formData.consumerCategory}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  className={`form-select ${hasError('consumerCategory') ? 'error' : ''}`}
+                  disabled={!isEditMode}
+                >
+                  <option value="">Выберите категорию</option>
+                  {consumerCategoryOptions.map(option => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+                {hasError('consumerCategory') && <span className="error-message">{errors.consumerCategory}</span>}
+              </div>
 
-          <div className="form-group">
-            <label htmlFor="producerActivitySpecification" className="form-label">
-              Специфика деятельности <span className="required">*</span>
-            </label>
-            <AutoResizeTextarea
-              id="producerActivitySpecification"
-              name="producerActivitySpecification"
-              value={formData.producerActivitySpecification}
-              onChange={handleChange}
-              onBlur={handleBlur}
-              className={`form-textarea ${hasError('producerActivitySpecification') ? 'error' : ''}`}
-              placeholder="Опишите сферу деятельности производителя"
-              rows="3"
-              disabled={!isEditMode}
-            />
-            {hasError('producerActivitySpecification') && <span className="error-message">{errors.producerActivitySpecification}</span>}
-          </div>
-        </section>}
+              <div className="form-group">
+                <label htmlFor="consumerDemographics" className="form-label">
+                  Социально-демографические характеристики <span className="ux-optional-badge">необязательно</span>
+                </label>
+                <AutoResizeTextarea
+                  id="consumerDemographics"
+                  name="consumerDemographics"
+                  value={formData.consumerDemographics}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  className="form-textarea"
+                  placeholder="Возраст, пол, образование, доход и т.д."
+                  rows="3"
+                  disabled={!isEditMode}
+                />
+              </div>
 
-        {/* Сведения об IT-проекте */}
-        {currentStep === 2 && <section className="form-section">
-          <h2 className="section-title">Сведения об IT-проекте</h2>
-          
-          <div className="form-group">
-            <label htmlFor="projectName" className="form-label">
-              Наименование IT-проекта <span className="required">*</span>
-            </label>
-            <input
-              type="text"
-              id="projectName"
-              name="projectName"
-              value={formData.projectName}
-              onChange={handleChange}
-              onBlur={handleBlur}
-              className={`form-input ${hasError('projectName') ? 'error' : ''}`}
-              placeholder="Например: CloudAnalytics Pro"
-              disabled={!isEditMode}
-            />
-            {hasError('projectName') && <span className="error-message">{errors.projectName}</span>}
-          </div>
+              <div className="form-group">
+                <label htmlFor="consumerPurchaseGoal" className="form-label">
+                  Цель приобретения <span className="ux-optional-badge">необязательно</span>
+                </label>
+                <AutoResizeTextarea
+                  id="consumerPurchaseGoal"
+                  name="consumerPurchaseGoal"
+                  value={formData.consumerPurchaseGoal}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  className="form-textarea"
+                  placeholder="Зачем потребитель приобретает продукт?"
+                  rows="3"
+                  disabled={!isEditMode}
+                />
+              </div>
 
-          <div className="form-group">
-            <label htmlFor="projectDescription" className="form-label">
-              Описание IT-проекта <span className="required">*</span>
-            </label>
-            <AutoResizeTextarea
-              id="projectDescription"
-              name="projectDescription"
-              value={formData.projectDescription}
-              onChange={handleChange}
-              onBlur={handleBlur}
-              className={`form-textarea ${hasError('projectDescription') ? 'error' : ''}`}
-              placeholder="Основное описание проекта"
-              rows="4"
-              disabled={!isEditMode}
-            />
-            {hasError('projectDescription') && <span className="error-message">{errors.projectDescription}</span>}
-          </div>
+              <div className="form-group">
+                <label htmlFor="consumerLifestyle" className="form-label">
+                  Стиль жизни и другие характеристики <span className="ux-optional-badge">необязательно</span>
+                </label>
+                <AutoResizeTextarea
+                  id="consumerLifestyle"
+                  name="consumerLifestyle"
+                  value={formData.consumerLifestyle}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  className="form-textarea"
+                  placeholder="Стиль жизни, интересы, поведенческие особенности"
+                  rows="3"
+                  disabled={!isEditMode}
+                />
+              </div>
+            </section>
 
-          <div className="form-group">
-            <label htmlFor="projectGoals" className="form-label">
-              Цели проекта
-            </label>
-            <AutoResizeTextarea
-              id="projectGoals"
-              name="projectGoals"
-              value={formData.projectGoals}
-              onChange={handleChange}
-              onBlur={handleBlur}
-              className="form-textarea"
-              placeholder="Какие цели преследует проект?"
-              rows="3"
-              disabled={!isEditMode}
-            />
-          </div>
+            {/* Сведения о контент-плане */}
+            <section className="form-section">
+              <h2 className="section-title">Сведения о контент-плане</h2>
 
-          <div className="form-group">
-            <label htmlFor="projectFeatures" className="form-label">
-              Особенности проекта
-            </label>
-            <AutoResizeTextarea
-              id="projectFeatures"
-              name="projectFeatures"
-              value={formData.projectFeatures}
-              onChange={handleChange}
-              onBlur={handleBlur}
-              className="form-textarea"
-              placeholder="Ключевые особенности и функции"
-              rows="3"
-              disabled={!isEditMode}
-            />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="projectBenefits" className="form-label">
-              Преимущества проекта
-            </label>
-            <AutoResizeTextarea
-              id="projectBenefits"
-              name="projectBenefits"
-              value={formData.projectBenefits}
-              onChange={handleChange}
-              onBlur={handleBlur}
-              className="form-textarea"
-              placeholder="Какие преимущества дает проект?"
-              rows="3"
-              disabled={!isEditMode}
-            />
-          </div>
-        </section>}
-
-        {/* Профиль потребителя */}
-        {currentStep === 3 && <section className="form-section">
-          <h2 className="section-title">Профиль потребителя</h2>
-          
-          <div className="form-group">
-            <label htmlFor="consumerCategory" className="form-label">
-              Категория потребителя <span className="required">*</span>
-            </label>
-            <select
-              id="consumerCategory"
-              name="consumerCategory"
-              value={formData.consumerCategory}
-              onChange={handleChange}
-              onBlur={handleBlur}
-              className={`form-select ${hasError('consumerCategory') ? 'error' : ''}`}
-              disabled={!isEditMode}
-            >
-              <option value="">Выберите категорию</option>
-              {consumerCategoryOptions.map(option => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
-            {hasError('consumerCategory') && <span className="error-message">{errors.consumerCategory}</span>}
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="consumerDemographics" className="form-label">
-              Социально-демографические характеристики
-            </label>
-            <AutoResizeTextarea
-              id="consumerDemographics"
-              name="consumerDemographics"
-              value={formData.consumerDemographics}
-              onChange={handleChange}
-              onBlur={handleBlur}
-              className="form-textarea"
-              placeholder="Возраст, пол, образование, доход и т.д."
-              rows="3"
-              disabled={!isEditMode}
-            />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="consumerPurchaseGoal" className="form-label">
-              Цель приобретения
-            </label>
-            <AutoResizeTextarea
-              id="consumerPurchaseGoal"
-              name="consumerPurchaseGoal"
-              value={formData.consumerPurchaseGoal}
-              onChange={handleChange}
-              onBlur={handleBlur}
-              className="form-textarea"
-              placeholder="Зачем потребитель приобретает продукт?"
-              rows="3"
-              disabled={!isEditMode}
-            />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="consumerLifestyle" className="form-label">
-              Стиль жизни и другие характеристики
-            </label>
-            <AutoResizeTextarea
-              id="consumerLifestyle"
-              name="consumerLifestyle"
-              value={formData.consumerLifestyle}
-              onChange={handleChange}
-              onBlur={handleBlur}
-              className="form-textarea"
-              placeholder="Стиль жизни, интересы, поведенческие особенности"
-              rows="3"
-              disabled={!isEditMode}
-            />
-          </div>
-        </section>}
-
-        {/* Сведения о контент-плане */}
-        {currentStep === 3 && <section className="form-section">
-          <h2 className="section-title">Сведения о контент-плане</h2>
-          
-          <div className="form-row">
-            <div className="form-group">
-              <label htmlFor="contentPlanStartDate" className="form-label">
-                Дата начала <span className="required">*</span>
-              </label>
-              <input
-                type="date"
-                id="contentPlanStartDate"
-                name="contentPlanStartDate"
-                value={formData.contentPlanStartDate}
-                onChange={handleChange}
-                onBlur={handleBlur}
-                className={`form-input ${hasError('contentPlanStartDate') ? 'error' : ''}`}
-                disabled={!isEditMode}
-              />
-              {hasError('contentPlanStartDate') && <span className="error-message">{errors.contentPlanStartDate}</span>}
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="contentPlanEndDate" className="form-label">
-                Дата окончания <span className="required">*</span>
-              </label>
-              <input
-                type="date"
-                id="contentPlanEndDate"
-                name="contentPlanEndDate"
-                value={formData.contentPlanEndDate}
-                onChange={handleChange}
-                onBlur={handleBlur}
-                className={`form-input ${hasError('contentPlanEndDate') ? 'error' : ''}`}
-                disabled={!isEditMode}
-              />
-              {hasError('contentPlanEndDate') && <span className="error-message">{errors.contentPlanEndDate}</span>}
-            </div>
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="publicationFrequency" className="form-label">
-              Частота публикаций <span className="required">*</span>
-            </label>
-            <select
-              id="publicationFrequency"
-              name="publicationFrequency"
-              value={formData.publicationFrequency}
-              onChange={handleChange}
-              onBlur={handleBlur}
-              className={`form-select ${hasError('publicationFrequency') ? 'error' : ''}`}
-              disabled={!isEditMode}
-            >
-              <option value="">Выберите частоту</option>
-              {frequencyOptions.map(option => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
-            {hasError('publicationFrequency') && <span className="error-message">{errors.publicationFrequency}</span>}
-            <small className="form-hint">
-              Одно значение для чернового плана и для эволюции: средняя интенсивность задаётся выбранным вариантом.
-            </small>
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Режим дат публикации</label>
-            <div className="publication-day-mode-toggle" role="radiogroup" aria-label="Режим дат публикации">
-              {publicationDayModeOptions.map((option) => {
-                const isActive = formData.publicationDayMode === option.value
-                return (
-                  <label
-                    key={option.value}
-                    className={`publication-day-mode-option ${isActive ? 'is-active' : ''}`}
+              <div className="ux-timeline-presets-row">
+                <span className="ux-timeline-presets-label">Быстрый выбор периода (с завтрашнего дня):</span>
+                <div className="ux-preset-chips">
+                  <button
+                    type="button"
+                    className="ux-preset-chip"
+                    onClick={() => handleApplyTimelinePreset(1)}
+                    disabled={!isEditMode}
                   >
-                    <input
-                      type="radio"
-                      name="publicationDayMode"
-                      value={option.value}
-                      checked={isActive}
-                      onChange={handleChange}
-                      onBlur={handleBlur}
-                      disabled={!isEditMode}
-                    />
-                    <span className="publication-day-mode-option-title">{option.label}</span>
-                    <span className="publication-day-mode-option-hint">{option.hint}</span>
+                    На 1 месяц
+                  </button>
+                  <button
+                    type="button"
+                    className="ux-preset-chip"
+                    onClick={() => handleApplyTimelinePreset(3)}
+                    disabled={!isEditMode}
+                  >
+                    На 3 месяца (рекомендуется)
+                  </button>
+                  <button
+                    type="button"
+                    className="ux-preset-chip"
+                    onClick={() => handleApplyTimelinePreset(6)}
+                    disabled={!isEditMode}
+                  >
+                    На 6 месяцев
+                  </button>
+                  <button
+                    type="button"
+                    className="ux-preset-chip"
+                    onClick={() => handleApplyTimelinePreset(12)}
+                    disabled={!isEditMode}
+                  >
+                    На 1 год
+                  </button>
+                </div>
+              </div>
+              
+              <div className="form-row">
+                <div className="form-group">
+                  <label htmlFor="contentPlanStartDate" className="form-label">
+                    Дата начала <span className="required">*</span>
                   </label>
-                )
-              })}
-            </div>
-            <small className="form-hint">
-              Если результат не подойдет, даты потом можно вручную поправить в календаре плана.
-            </small>
-          </div>
-
-          <div className="form-group">
-            <div className="form-label">Ключевые даты</div>
-            <KeyDatesEditor
-              id="keyDates"
-              value={formData.keyDates}
-              startDate={formData.contentPlanStartDate}
-              endDate={formData.contentPlanEndDate}
-              disabled={!isEditMode}
-              onChange={(keyDates) => setFormData((prev) => ({ ...prev, keyDates }))}
-            />
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">
-              Формат публикаций <span className="required">*</span>
-            </label>
-            <div className="checkbox-group">
-              {contentFormatOptions.map(option => (
-                <label key={option.value} className="checkbox-label">
                   <input
-                    type="checkbox"
-                    name="contentFormats"
-                    value={option.value}
-                    checked={formData.contentFormats.includes(option.value)}
+                    type="date"
+                    id="contentPlanStartDate"
+                    name="contentPlanStartDate"
+                    value={formData.contentPlanStartDate}
                     onChange={handleChange}
                     onBlur={handleBlur}
+                    className={`form-input ${hasError('contentPlanStartDate') ? 'error' : ''}`}
                     disabled={!isEditMode}
                   />
-                  <span>{option.label}</span>
-                </label>
-              ))}
-            </div>
-            {hasError('contentFormats') && <span className="error-message">{errors.contentFormats}</span>}
-          </div>
+                  {hasError('contentPlanStartDate') && <span className="error-message">{errors.contentPlanStartDate}</span>}
+                </div>
 
-          <div className="form-group">
-            <label className="form-label">
-              Платформы <span className="required">*</span>
-            </label>
-            <div className="checkbox-group">
-              {visiblePlatformOptions.map(option => (
-                <label key={option.value} className="checkbox-label">
+                <div className="form-group">
+                  <label htmlFor="contentPlanEndDate" className="form-label">
+                    Дата окончания <span className="required">*</span>
+                  </label>
                   <input
-                    type="checkbox"
-                    name="platforms"
-                    value={option.value}
-                    checked={formData.platforms.includes(option.value)}
+                    type="date"
+                    id="contentPlanEndDate"
+                    name="contentPlanEndDate"
+                    value={formData.contentPlanEndDate}
                     onChange={handleChange}
                     onBlur={handleBlur}
+                    className={`form-input ${hasError('contentPlanEndDate') ? 'error' : ''}`}
                     disabled={!isEditMode}
                   />
-                  <span>{option.label}</span>
+                  {hasError('contentPlanEndDate') && <span className="error-message">{errors.contentPlanEndDate}</span>}
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="publicationFrequency" className="form-label">
+                  Частота публикаций <span className="required">*</span>
                 </label>
-              ))}
-            </div>
-            {hasError('platforms') && <span className="error-message">{errors.platforms}</span>}
-          </div>
-        </section>}
+                <select
+                  id="publicationFrequency"
+                  name="publicationFrequency"
+                  value={formData.publicationFrequency}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  className={`form-select ${hasError('publicationFrequency') ? 'error' : ''}`}
+                  disabled={!isEditMode}
+                >
+                  <option value="">Выберите частоту</option>
+                  {frequencyOptions.map(option => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+                {hasError('publicationFrequency') && <span className="error-message">{errors.publicationFrequency}</span>}
+                <small className="form-hint">
+                  Одно значение для чернового плана и для эволюции: средняя интенсивность задаётся выбранным вариантом.
+                </small>
+                {recommendedPublications !== null && (
+                  <div className="ux-schedule-preview" role="status">
+                    По выбранному расписанию будет запланировано <strong>~{recommendedPublications} публикаций</strong> на каждую площадку
+                  </div>
+                )}
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Режим дат публикации</label>
+                <div className="publication-day-mode-toggle" role="radiogroup" aria-label="Режим дат публикации">
+                  {publicationDayModeOptions.map((option) => {
+                    const isActive = formData.publicationDayMode === option.value
+                    return (
+                      <label
+                        key={option.value}
+                        className={`publication-day-mode-option ${isActive ? 'is-active' : ''}`}
+                      >
+                        <input
+                          type="radio"
+                          name="publicationDayMode"
+                          value={option.value}
+                          checked={isActive}
+                          onChange={handleChange}
+                          onBlur={handleBlur}
+                          disabled={!isEditMode}
+                        />
+                        <span className="publication-day-mode-option-title">{option.label}</span>
+                        <span className="publication-day-mode-option-hint">{option.hint}</span>
+                      </label>
+                    )
+                  })}
+                </div>
+                <small className="form-hint">
+                  Если результат не подойдет, даты потом можно вручную поправить в календаре плана.
+                </small>
+              </div>
+
+              <div className="form-group">
+                <div className="form-label">
+                  Ключевые даты и инфоповоды <span className="ux-optional-badge">необязательно</span>
+                </div>
+                <KeyDatesEditor
+                  id="keyDates"
+                  value={formData.keyDates}
+                  startDate={formData.contentPlanStartDate}
+                  endDate={formData.contentPlanEndDate}
+                  disabled={!isEditMode}
+                  onChange={(keyDates) => setFormData((prev) => ({ ...prev, keyDates }))}
+                />
+              </div>
+
+              <div className="form-group">
+                <div className="ux-label-with-action">
+                  <label className="form-label">
+                    Формат публикаций <span className="required">*</span>
+                  </label>
+                  <button
+                    type="button"
+                    className="ux-inline-select-all-btn"
+                    onClick={handleSelectAllFormats}
+                    disabled={!isEditMode}
+                  >
+                    {contentFormatOptions.every((o) => formData.contentFormats.includes(o.value))
+                      ? 'Снять выделение'
+                      : 'Выбрать все форматы'}
+                  </button>
+                </div>
+                <div className="checkbox-group">
+                  {contentFormatOptions.map(option => (
+                    <label key={option.value} className="checkbox-label">
+                      <input
+                        type="checkbox"
+                        name="contentFormats"
+                        value={option.value}
+                        checked={formData.contentFormats.includes(option.value)}
+                        onChange={handleChange}
+                        onBlur={handleBlur}
+                        disabled={!isEditMode}
+                      />
+                      <span>{option.label}</span>
+                    </label>
+                  ))}
+                </div>
+                {hasError('contentFormats') && <span className="error-message">{errors.contentFormats}</span>}
+              </div>
+
+              <div className="form-group">
+                <div className="ux-label-with-action">
+                  <label className="form-label">
+                    Платформы <span className="required">*</span>
+                  </label>
+                  <button
+                    type="button"
+                    className="ux-inline-select-all-btn"
+                    onClick={handleSelectAllPlatforms}
+                    disabled={!isEditMode}
+                  >
+                    {visiblePlatformOptions.every((o) => formData.platforms.includes(o.value))
+                      ? 'Снять выделение'
+                      : 'Выбрать все площадки'}
+                  </button>
+                </div>
+                <div className="checkbox-group">
+                  {visiblePlatformOptions.map(option => (
+                    <label key={option.value} className="checkbox-label">
+                      <input
+                        type="checkbox"
+                        name="platforms"
+                        value={option.value}
+                        checked={formData.platforms.includes(option.value)}
+                        onChange={handleChange}
+                        onBlur={handleBlur}
+                        disabled={!isEditMode}
+                      />
+                      <span>{option.label}</span>
+                    </label>
+                  ))}
+                </div>
+                {hasError('platforms') && <span className="error-message">{errors.platforms}</span>}
+              </div>
+            </section>
+          </>
+        )}
 
         {currentStepId === 'optimize' && isExtendedMode && <section className="form-section evolution-settings-section">
           <details className="ui-details">
@@ -1940,7 +2140,7 @@ const ProjectForm = () => {
               demoHorizonExample={demoHorizonExample}
               onLoadHorizonExample={handleLoadHorizonExample}
               onSeedDemoPrecedents={handleSeedDemoPrecedents}
-              showDemoButtons={isDeveloper}
+              showDemoButtons={true}
               onExportOntologyToExcel={handleExportOntologyToExcel}
               onLoadOntology={handleLoadOntology}
               onSearchPrecedents={handleSearchPrecedents}
@@ -1962,28 +2162,28 @@ const ProjectForm = () => {
 
         {currentStepId === 'draft' && (
           <>
-            {isSmm && (
-              <WorkflowSummaryPanel
-                filledRequired={filledRequired}
-                requiredCount={requiredFields.length}
-                progress={progress}
-                competitorsCount={competitorsData?.competitors?.length || 0}
-                precedentsSummary={precedentsSummary}
-                isEnrichmentServerAvailable={isEnrichmentServerAvailable}
-                hasDraftPlan={Boolean(draftPlanResult?.draft?.draft_content_plan)}
-                hasOptimizedPlan={Boolean(optimizationResult?.optimized_content_plan)}
-                publicationDayMode={formData.publicationDayMode}
-                explainabilitySignals={explainabilitySignals}
-                riskSummary={riskSummary}
-              />
-            )}
+            <WorkflowSummaryPanel
+              filledRequired={filledRequired}
+              requiredCount={requiredFields.length}
+              progress={progress}
+              competitorsCount={competitorsData?.competitors?.length || 0}
+              precedentsSummary={precedentsSummary}
+              isEnrichmentServerAvailable={isEnrichmentServerAvailable}
+              hasDraftPlan={Boolean(draftPlanResult?.draft?.draft_content_plan)}
+              hasOptimizedPlan={Boolean(optimizationResult?.optimized_content_plan)}
+              publicationDayMode={formData.publicationDayMode}
+              explainabilitySignals={explainabilitySignals}
+              riskSummary={riskSummary}
+            />
             <DraftPlanWorkflowPanel
               phase="draft"
               draftPlanResult={draftPlanResult}
               optimizationResult={optimizationResult}
               onGenerateDraftPlan={handleGenerateDraftPlan}
               onGenerateWithPrecedents={handleSearchAndGenerateDraftPlan}
-              onOptimizeDraftPlan={handleOptimizeDraftPlan}
+              onGenerateAndOptimizePlan={handleGenerateAndOptimizePlan}
+              onOptimizeDraftPlan={() => handleOptimizeDraftPlan()}
+              onGoToOptimizeStep={() => goToStepById('optimize')}
               onOpenPlan={() => navigate('/content-plan')}
               isGeneratingDraftPlan={isGeneratingDraftPlan}
               isOptimizingPlan={isOptimizingPlan}
@@ -2007,7 +2207,8 @@ const ProjectForm = () => {
               draftPlanResult={draftPlanResult}
               optimizationResult={optimizationResult}
               onGenerateDraftPlan={handleGenerateDraftPlan}
-              onOptimizeDraftPlan={handleOptimizeDraftPlan}
+              onGenerateAndOptimizePlan={handleGenerateAndOptimizePlan}
+              onOptimizeDraftPlan={() => handleOptimizeDraftPlan()}
               onOpenPlan={() => navigate('/content-plan')}
               isGeneratingDraftPlan={isGeneratingDraftPlan}
               isOptimizingPlan={isOptimizingPlan}

@@ -75,23 +75,17 @@
 }
 
 .sync-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   border: 2px solid #1a1a2e;
   font-weight: 700;
   padding: 8px 14px;
 }
 
-.export-ml-btn {
-  background: #10b981;
-  border: 2px solid #1a1a2e;
-  color: #fff;
-  font-weight: 700;
-  padding: 8px 16px;
-  box-shadow: 2px 2px 0 #1a1a2e;
-  cursor: pointer;
-}
-
-.export-ml-btn:hover {
-  background: #059669;
+.sync-btn-icon {
+  stroke: currentColor;
+  flex-shrink: 0;
 }
 
 .analytics-toast {
@@ -540,8 +534,10 @@
   max-width: 780px;
 }
 
-.info-icon {
-  font-size: 1.4rem;
+.retrain-icon {
+  stroke: #2563eb;
+  flex-shrink: 0;
+  margin-top: 2px;
 }
 
 .ml-retrain-info strong {
@@ -557,141 +553,24 @@
   line-height: 1.4;
 }
 
-.ml-retrain-info code {
-  background: #e2e8f0;
-  padding: 2px 6px;
-  font-weight: 700;
-  color: #1a1a2e;
+/* Dark Theme Overrides for Analytics Page */
+body.theme-dark .analytics-header {
+  border-bottom-color: var(--line, #2a2c38);
 }
 
-/* PostCard Status Badges */
-.post-header-meta {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
+body.theme-dark .analytics-badge {
+  background: var(--bg-control, #161822);
+  color: var(--ink, #d4d2de);
+  border: 1px solid var(--line, #2a2c38);
 }
 
-.post-status-badge {
-  font-size: 0.75rem;
-  font-weight: 700;
-  padding: 3px 8px;
-  border-radius: 3px;
-  border: 1px solid transparent;
-}
-
-.post-status-published {
-  background: #dcfce7;
-  color: #166534;
-  border-color: #86efac;
-}
-
-.post-status-scheduled {
-  background: #fef9c3;
-  color: #854d0e;
-  border-color: #fde047;
-}
-
-.post-status-draft {
-  background: #f1f5f9;
-  color: #475569;
-  border-color: #cbd5e1;
-}
-
-.post-published-link-row {
-  margin: 8px 0 12px;
-  padding: 8px 12px;
-  background: #f8fafc;
-  border-left: 3px solid #10b981;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.85rem;
-}
-
-.post-published-label {
-  font-weight: 700;
-  color: #1a1a2e;
-}
-
-.post-published-link {
-  color: #2563eb;
-  text-decoration: none;
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-
-.post-published-link:hover {
-  text-decoration: underline;
-}
-
-.post-actual-kpi-block {
-  margin: 10px 0 14px;
-  padding: 12px;
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-}
-
-.post-actual-kpi-title {
-  font-size: 0.85rem;
-  font-weight: 700;
-  color: #166534;
-  margin-bottom: 8px;
-}
-
-.post-actual-kpi-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-}
-
-.post-actual-kpi-item {
-  display: flex;
-  flex-direction: column;
-}
-
-.post-actual-kpi-name {
-  font-size: 0.75rem;
-  color: #475569;
-  font-weight: 600;
-}
-
-.post-actual-kpi-val {
-  font-size: 1.1rem;
-  font-weight: 800;
-  color: #1a1a2e;
-}
-
-.post-actual-kpi-delta {
-  font-size: 0.75rem;
-  color: #059669;
-  font-weight: 600;
-}
-
-.post-publish-now-btn {
-  background: #10b981;
-  color: #fff;
-  border: 2px solid #1a1a2e;
-  font-weight: 700;
-  box-shadow: 2px 2px 0 #1a1a2e;
-  cursor: pointer;
-  padding: 8px 14px;
-}
-
-.post-publish-now-btn:hover {
-  background: #059669;
-}
-
-/* Dark Theme Overrides */
 body.theme-dark .analytics-header h1,
 body.theme-dark .section-title,
 body.theme-dark .kpi-value,
 body.theme-dark .channel-info h3,
 body.theme-dark .stat-num,
-body.theme-dark .actual-bold,
-body.theme-dark .post-published-label,
-body.theme-dark .post-actual-kpi-val {
-  color: #f1f5f9;
+body.theme-dark .actual-bold {
+  color: var(--ink, #f1f5f9);
 }
 
 body.theme-dark .analytics-subtitle,
@@ -700,31 +579,122 @@ body.theme-dark .kpi-desc,
 body.theme-dark .stat-sub,
 body.theme-dark .predicted-sub,
 body.theme-dark .ml-validation-subtitle {
-  color: #94a3b8;
+  color: var(--ink-muted, #94a3b8);
+}
+
+body.theme-dark .period-selector {
+  background: var(--bg-control, #161822);
+  border-color: var(--line, #2a2c38);
+}
+
+body.theme-dark .period-btn {
+  color: var(--ink-muted, #94a3b8);
+}
+
+body.theme-dark .period-btn.active {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+body.theme-dark .sync-btn {
+  background: var(--bg-control, #161822);
+  border-color: var(--line, #2a2c38);
+  color: var(--ink, #f1f5f9);
+}
+
+body.theme-dark .sync-btn:hover:not(:disabled) {
+  background: #1e2230;
+  border-color: #3b82f6;
+}
+
+body.theme-dark .analytics-toast {
+  background: #13261c;
+  color: #8fdbb0;
+  border-color: #1f6b45;
+  box-shadow: 2px 2px 0 #000000;
 }
 
 body.theme-dark .kpi-card,
 body.theme-dark .channel-card,
 body.theme-dark .chart-container-card,
 body.theme-dark .ml-validation-card {
-  background: #1e293b;
-  border-color: #334155;
-  box-shadow: 4px 4px 0 0 #0f172a;
+  background: var(--bg-raised, #14161e);
+  border-color: var(--line, #2a2c38);
+  box-shadow: 4px 4px 0 0 var(--shadow, #101218);
+  color: var(--ink, #d4d2de);
 }
 
 body.theme-dark .kpi-card-highlight {
-  background: #064e3b;
-  border-color: #10b981;
+  background: #131d2e;
+  border-color: #3b82f6;
+  box-shadow: 4px 4px 0 0 #1d4ed8;
+}
+
+body.theme-dark .channel-header {
+  border-bottom-color: var(--line, #2a2c38);
+}
+
+body.theme-dark .channel-info a {
+  color: #60a5fa;
+}
+
+body.theme-dark .channel-status-badge {
+  color: #8fdbb0;
+  background: #13261c;
+  border: 1px solid #1f6b45;
+}
+
+body.theme-dark .legend-item {
+  color: var(--ink, #d4d2de);
+}
+
+body.theme-dark .growth-svg-chart line[stroke="#e2e8f0"],
+body.theme-dark .growth-svg-chart line[stroke="#f1f5f9"] {
+  stroke: #2a2c38;
+}
+
+body.theme-dark .growth-svg-chart line[stroke="#1a1a2e"] {
+  stroke: #3b4252;
+}
+
+body.theme-dark .growth-svg-chart circle[stroke="#ffffff"] {
+  stroke: #14161e;
+}
+
+body.theme-dark .chart-axis-label {
+  fill: #64748b;
+}
+
+body.theme-dark .chart-axis-label-x {
+  fill: #cbd5e1;
+}
+
+body.theme-dark .ml-validation-badge {
+  background: #6366f1;
+  color: #ffffff;
+}
+
+body.theme-dark .ml-accuracy-pill {
+  background: #14233c;
+  border-color: #3b82f6;
+}
+
+body.theme-dark .pill-title {
+  color: #93c5fd;
+}
+
+body.theme-dark .pill-val {
+  color: #60a5fa;
 }
 
 body.theme-dark .ml-stats-table th {
-  background: #0f172a;
+  background: #0f121a;
   color: #f1f5f9;
-  border-color: #334155;
+  border-bottom-color: var(--line, #2a2c38);
 }
 
 body.theme-dark .ml-stats-table td {
-  border-color: #334155;
+  border-bottom-color: var(--line, #2a2c38);
   color: #e2e8f0;
 }
 
@@ -732,9 +702,39 @@ body.theme-dark .post-title-cell strong {
   color: #f1f5f9;
 }
 
+body.theme-dark .post-id-sub {
+  color: #64748b;
+}
+
+body.theme-dark .platform-pill-vk {
+  background: #172554;
+  color: #93c5fd;
+}
+
+body.theme-dark .platform-pill-telegram {
+  background: #164e63;
+  color: #67e8f9;
+}
+
+body.theme-dark .accuracy-val {
+  color: #60a5fa;
+}
+
+body.theme-dark .accuracy-bar-bg {
+  background: #2a2c38;
+}
+
+body.theme-dark .accuracy-bar-fill {
+  background: #3b82f6;
+}
+
+body.theme-dark .view-post-link {
+  color: #60a5fa;
+}
+
 body.theme-dark .ml-retrain-footer {
-  background: #0f172a;
-  border-color: #334155;
+  background: #0f121a;
+  border-color: var(--line, #2a2c38);
 }
 
 body.theme-dark .ml-retrain-info strong {
@@ -745,19 +745,6 @@ body.theme-dark .ml-retrain-info p {
   color: #94a3b8;
 }
 
-body.theme-dark .post-published-link-row {
-  background: #0f172a;
-}
-
-body.theme-dark .post-actual-kpi-block {
-  background: #064e3b;
-  border-color: #047857;
-}
-
-body.theme-dark .post-actual-kpi-title {
-  color: #a7f3d0;
-}
-
-body.theme-dark .chart-axis-label-x {
-  fill: #e2e8f0;
+body.theme-dark .retrain-icon {
+  stroke: #60a5fa;
 }

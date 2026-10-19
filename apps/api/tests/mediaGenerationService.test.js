@@ -153,3 +153,53 @@ test('generatePostContent in TEST_MODE adds a media prompt only for visual forma
     else process.env.TEST_MODE = previous;
   }
 });
+
+test('generatePublicationMedia does not send Authorization header to third-party CDN', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'tkrp-media-cdn-'));
+  let contentDownloadHeaders = null;
+  const http = {
+    async request(config) {
+      if (config.method === 'POST') {
+        return {
+          status: 202,
+          data: { id: 'job-cdn', polling_url: 'https://openrouter.ai/api/v1/videos/job-cdn', status: 'pending' }
+        };
+      }
+      if (String(config.url).endsWith('/job-cdn')) {
+        return {
+          status: 200,
+          data: {
+            status: 'completed',
+            unsigned_urls: ['https://cdn.example-storage.com/bucket/video123.mp4']
+          }
+        };
+      }
+      contentDownloadHeaders = config.headers;
+      return {
+        status: 200,
+        data: Buffer.from('mp4-bytes-cdn'),
+        headers: { 'content-type': 'video/mp4' }
+      };
+    }
+  };
+  try {
+    const media = await generatePublicationMedia(
+      { prompt: 'test cdn video', format: 'video', platform: 'vk' },
+      {
+        http,
+        apiKey: 'super-secret-openrouter-key',
+        mediaDir: dir,
+        videoModel: 'google/veo-3.1-lite',
+        sleep: async () => {},
+        pollIntervalMs: 0,
+        maxPolls: 2
+      }
+    );
+    assert.equal(media.status, 'ready');
+    assert.ok(contentDownloadHeaders);
+    assert.equal(contentDownloadHeaders.Authorization, undefined);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+

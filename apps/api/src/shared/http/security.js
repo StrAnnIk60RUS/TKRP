@@ -25,30 +25,39 @@ function normalizeIp(rawIp) {
 
 function isLocalIp(ip) {
   const normalized = normalizeIp(ip);
-  return (
+  if (!normalized) return false;
+  if (
     normalized === '127.0.0.1' ||
     normalized === '::1' ||
     normalized === 'localhost' ||
     normalized.startsWith('192.168.') ||
-    normalized.startsWith('10.') ||
-    normalized.startsWith('172.16.') ||
-    normalized.startsWith('172.17.') ||
-    normalized.startsWith('172.18.') ||
-    normalized.startsWith('172.19.') ||
-    normalized.startsWith('172.2')
-  );
+    normalized.startsWith('10.')
+  ) {
+    return true;
+  }
+  if (normalized.startsWith('172.')) {
+    const parts = normalized.split('.');
+    if (parts.length === 4) {
+      const secondOctet = parseInt(parts[1], 10);
+      return Number.isInteger(secondOctet) && secondOctet >= 16 && secondOctet <= 31;
+    }
+  }
+  return false;
 }
 
 function getClientIp(req) {
-  const forwarded = req.headers['x-forwarded-for'];
-  if (typeof forwarded === 'string' && forwarded.trim()) {
-    return normalizeIp(forwarded.split(',')[0]);
+  const trustProxy = String(process.env.TRUST_PROXY || '').toLowerCase() === 'true';
+  if (trustProxy) {
+    const forwarded = req.headers?.['x-forwarded-for'];
+    if (typeof forwarded === 'string' && forwarded.trim()) {
+      return normalizeIp(forwarded.split(',')[0]);
+    }
   }
-  return normalizeIp(req.ip || req.socket?.remoteAddress || '');
+  return normalizeIp(req.socket?.remoteAddress || req.ip || '');
 }
 
 function getRequestKey(req) {
-  const clientIp = getClientIp(req) || 'unknown-ip';
+  const clientIp = req.clientIp || getClientIp(req) || 'unknown-ip';
   return `${clientIp}:${req.path}`;
 }
 
@@ -63,7 +72,11 @@ function readApiKey(req) {
 function hasMatchingApiKey(req, expectedKey) {
   if (!expectedKey) return false;
   const provided = readApiKey(req);
-  return provided.length > 0 && provided === expectedKey;
+  if (!provided || typeof provided !== 'string') return false;
+  const expectedBuf = Buffer.from(String(expectedKey));
+  const providedBuf = Buffer.from(provided);
+  if (expectedBuf.length !== providedBuf.length) return false;
+  return crypto.timingSafeEqual(expectedBuf, providedBuf);
 }
 
 export function attachRequestContext(req, res, next) {

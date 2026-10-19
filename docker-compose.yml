@@ -1,46 +1,106 @@
-# Local full stack (dev): needs .env in repo root (copy from .env.example).
-# Host node_modules are hidden so Linux deps match the container (important on Windows/macOS).
+# ==============================================================================
+# Production Docker Compose конфигурация для проекта TKRP
+# Соответствует реальной архитектуре проекта TKRP и требованиям методических указаний:
+# 1. Frontend (Nginx 1.27 Alpine + React 18 SPA)
+# 2. Backend API (Node.js 20 Express + Python 3.11 ML)
+# 3. Database (PostgreSQL 16 pgvector с сохранением в named volume)
+# ==============================================================================
+
 services:
+  # ----------------------------------------------------------------------------
+  # 1. Веб-сервер Frontend (Nginx 1.27 Alpine + скомпилированный React 18 SPA)
+  # ----------------------------------------------------------------------------
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: tkrp-frontend
+    restart: unless-stopped
+    ports:
+      - '80:80'
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - tkrp-network
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://localhost/nginx-health || exit 1']
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  # ----------------------------------------------------------------------------
+  # 2. Сервер Backend API (Node.js 20 ESM + Python 3.11 ML Runtime)
+  # ----------------------------------------------------------------------------
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tkrp-backend
+    restart: unless-stopped
+    expose:
+      - '3001'
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      USE_DATABASE: 'true'
+      PRECEDENT_STORAGE: pg
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-tkrp}
+      PYTHON_BIN: /opt/tkrp-py/bin/python
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost}
+    env_file:
+      - path: .env
+        required: false
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - tkrp-network
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -f http://localhost:3001/health || exit 1']
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ----------------------------------------------------------------------------
+  # 3. База данных PostgreSQL (pgvector / postgres:16-alpine)
+  # Безопасность: порт 5432 НЕ опубликован наружу на хост-машину (только expose в сети)
+  # ----------------------------------------------------------------------------
   db:
     image: pgvector/pgvector:pg16
     container_name: tkrp-db
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-tkrp}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-    ports:
-      - '5432:5432'
+    expose:
+      - '5432'
     volumes:
-      - db_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - tkrp-network
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-tkrp}']
       interval: 5s
       timeout: 5s
       retries: 10
+      start_period: 5s
 
-  dev:
-    build:
-      context: .
-      dockerfile: Dockerfile.dev
-    ports:
-      - '5173:5173'
-      - '3001:3001'
-    volumes:
-      - .:/app
-      - root_node_modules:/app/node_modules
-      - api_node_modules:/app/apps/api/node_modules
-    environment:
-      PYTHON_BIN: /opt/tkrp-py/bin/python
-      CHOKIDAR_USEPOLLING: 'true'
-      WATCHPACK_POLLING: 'true'
-    # Compose 2.24+: optional file. Older Compose: `cp .env.example .env` before `up`.
-    env_file:
-      - path: .env
-        required: false
-    stdin_open: true
-    tty: true
+# ==============================================================================
+# Изолированная пользовательская сеть (Custom Bridge Network)
+# ==============================================================================
+networks:
+  tkrp-network:
+    name: tkrp-network
+    driver: bridge
 
+# ==============================================================================
+# Именованный том для персистентного хранения данных СУБД на хост-машине
+# ==============================================================================
 volumes:
-  db_data:
-  root_node_modules:
-  api_node_modules:
+  postgres_data:
+    name: tkrp_postgres_data

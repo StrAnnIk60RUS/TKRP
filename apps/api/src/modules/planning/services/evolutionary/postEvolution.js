@@ -840,6 +840,7 @@ export async function fillPlanWithBestPublication(publications = [], publication
     String(summary || '').trim().length >= 80 && String(keyMessage || '').trim().length >= 12;
 
   const writtenVectors = drafts.map((draft) => buildPostFeatureVector({
+    title: draft.publication?.title || draft.publication?.topic || draft.source?.title || draft.source?.topic || '',
     topic: draft.publication?.topic || draft.source?.topic,
     summary: draft.summary,
     key_message: draft.keyMessage,
@@ -853,6 +854,7 @@ export async function fillPlanWithBestPublication(publications = [], publication
   );
   const originalVectors = shouldCompareDraft
     ? drafts.map((draft) => buildPostFeatureVector({
+      title: draft.publication?.title || draft.publication?.topic || '',
       topic: draft.publication?.topic,
       summary: draft.publication?.summary,
       key_message: draft.publication?.key_message,

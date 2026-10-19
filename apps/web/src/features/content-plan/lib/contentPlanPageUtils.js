@@ -42,7 +42,7 @@ export const sanitizeExportBasename = (name) => {
 }
 
 export const getPlatformsFromPublications = (pubs) => {
-  const allowed = new Set(['vk', 'linkedin', 'instagram'])
+  const allowed = new Set(['vk', 'telegram', 'linkedin', 'instagram'])
   const set = new Set()
   pubs.forEach((p) => {
     if (allowed.has(p?.platform)) set.add(p.platform)
@@ -110,6 +110,7 @@ export const matchesFilters = (publication, filters) => {
 
   if (filters.search.trim()) {
     const haystack = [
+      publication.title,
       publication.topic,
       publication.key_message,
       publication.cta,

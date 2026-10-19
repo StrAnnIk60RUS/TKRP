@@ -1,0 +1,55 @@
+# ==============================================================================
+# Multi-Stage Dockerfile для Frontend (React 18 + Vite 5)
+# ЭТАП 1: Сборка статических файлов (Build Stage)
+# ==============================================================================
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# Копируем конфигурацию зависимостей для эффективного кэширования слоёв
+COPY package.json package-lock.json ./
+COPY apps/api/package.json ./apps/api/package.json
+
+# Устанавливаем зависимости с пропуском postinstall для изоляции сборки фронтенда
+ENV SKIP_POSTINSTALL=1
+RUN npm ci --prefer-offline --no-audit
+
+# Копируем исходный код клиентского приложения и конфигурации
+COPY apps/web ./apps/web
+COPY tools ./tools
+COPY eslint.config.js ./
+
+# Выполняем компиляцию и сборку оптимизированного бандла Vite
+RUN npm run build
+
+# ==============================================================================
+# ЭТАП 2: Продакшн-сервер Nginx (Alpine Runtime Stage)
+# Минимальный размер образа (~45 МБ), высокая скорость отдачи статики и проксирование
+# ==============================================================================
+FROM nginx:1.27-alpine AS runner
+
+# Удаляем стандартную конфигурацию Nginx
+RUN rm -rf /etc/nginx/conf.d/* /usr/share/nginx/html/*
+
+# Копируем пользовательский конфигурационный файл Nginx
+COPY docker/nginx/default.conf /etc/nginx/conf.d/default.conf
+
+# Копируем скомпилированные артефакты из этапа builder
+COPY --from=builder /app/dist/web /usr/share/nginx/html
+
+# Назначаем права доступа для стандартного пользователя nginx
+RUN chown -R nginx:nginx /usr/share/nginx/html && \
+    chmod -R 755 /usr/share/nginx/html && \
+    chown -R nginx:nginx /var/cache/nginx && \
+    chown -R nginx:nginx /var/log/nginx && \
+    touch /var/run/nginx.pid && \
+    chown -R nginx:nginx /var/run/nginx.pid
+
+# Порт HTTP-сервера
+EXPOSE 80
+
+# Health Check для проверки готовности веб-сервера
+HEALTHCHECK --interval=15s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget -qO- http://localhost/nginx-health || exit 1
+
+CMD ["nginx", "-g", "daemon off;"]

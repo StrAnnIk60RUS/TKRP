@@ -329,7 +329,27 @@ test('ownerless snapshots are invisible to authenticated users', async () => {
     }
     srv.close();
     await new Promise((r) => srv.once('close', r));
+  }
+});
+
+test('demo_session_token is rejected when ALLOW_DEMO_AUTH is not enabled', async () => {
+  const prevAllow = process.env.ALLOW_DEMO_AUTH;
+  delete process.env.ALLOW_DEMO_AUTH;
+  const app = buildTestApp();
+  const { srv, port } = await listen(app);
+  const base = `http://127.0.0.1:${port}/api`;
+  try {
+    const me = await fetch(`${base}/auth/me`, {
+      headers: { Authorization: 'Bearer demo_session_token_123456789' }
+    });
+    assert.equal(me.status, 401);
+  } finally {
+    if (prevAllow !== undefined) process.env.ALLOW_DEMO_AUTH = prevAllow;
+    else delete process.env.ALLOW_DEMO_AUTH;
+    srv.close();
+    await new Promise((r) => srv.once('close', r));
     const { closePool } = await import('../src/shared/db/client.js');
     await closePool();
   }
 });
+

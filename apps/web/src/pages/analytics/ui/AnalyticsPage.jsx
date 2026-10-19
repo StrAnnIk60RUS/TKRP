@@ -83,11 +83,6 @@ export const AnalyticsPage = () => {
     }, 900)
   }
 
-  const handleExportPrecedents = () => {
-    const count = evaluatedPosts.length
-    alert(`✓ Сформирован пакет из ${count} верифицированных прецедентов с подтвержденным KPI.\nДанные готовы к передаче в ML-модель через команду:\n\nnpm run ml:retrain`)
-  }
-
   const analyticsSummary = DEMO_ANALYTICS_DATA.summary
   const platforms = DEMO_ANALYTICS_DATA.platforms
   const timeline = DEMO_ANALYTICS_DATA.timeline_growth
@@ -100,7 +95,7 @@ export const AnalyticsPage = () => {
           <h1>Статистика и рост соцсетей</h1>
           <p className="analytics-subtitle">
             Сквозной мониторинг каналов ВКонтакте и Telegram, отслеживание динамики аудитории
-            и сопоставление прогнозов суррогатных ML-моделей TKRP с фактическими результатами.
+            и сопоставление прогнозов аналитической модели с фактическими результатами.
           </p>
         </div>
 
@@ -132,15 +127,21 @@ export const AnalyticsPage = () => {
             onClick={handleSync}
             disabled={syncing}
           >
-            {syncing ? 'Синхронизация…' : '🔄 Синхронизировать'}
-          </button>
-
-          <button
-            type="button"
-            className="primary-btn export-ml-btn"
-            onClick={handleExportPrecedents}
-          >
-            📦 Дообучить ML (экспорт прецедентов)
+            <svg
+              className="sync-btn-icon"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
+            </svg>
+            <span>{syncing ? 'Синхронизация…' : 'Синхронизировать'}</span>
           </button>
         </div>
       </div>
@@ -167,16 +168,16 @@ export const AnalyticsPage = () => {
           </div>
 
           <div className="kpi-card">
-            <div className="kpi-label">Средняя вовлеченность (ER)</div>
+            <div className="kpi-label">Средняя вовлеченность</div>
             <div className="kpi-value">{analyticsSummary.avg_engagement_rate_percent}%</div>
             <div className="kpi-trend neutral">Выше бенчмарка IT (+1.4%)</div>
             <div className="kpi-desc">лайки, репосты и комментарии</div>
           </div>
 
           <div className="kpi-card kpi-card-highlight">
-            <div className="kpi-label">Точность прогнозов ML</div>
+            <div className="kpi-label">Точность прогнозов</div>
             <div className="kpi-value">{meanAccuracy}%</div>
-            <div className="kpi-trend positive">✓ Высокая сходимость</div>
+            <div className="kpi-trend positive">Высокая точность</div>
             <div className="kpi-desc">соответствие плана и реального факта</div>
           </div>
         </div>
@@ -208,7 +209,7 @@ export const AnalyticsPage = () => {
               </div>
               <div className="channel-stat-item">
                 <span className="stat-num">{platforms.vk.avg_er_percent}%</span>
-                <span className="stat-sub">ER вовлеченность</span>
+                <span className="stat-sub">Вовлеченность аудитории</span>
               </div>
               <div className="channel-stat-item">
                 <span className="stat-num">{platforms.vk.posts_published_count}</span>
@@ -239,7 +240,7 @@ export const AnalyticsPage = () => {
               </div>
               <div className="channel-stat-item">
                 <span className="stat-num">{platforms.telegram.avg_er_percent}%</span>
-                <span className="stat-sub">ERR вовлеченность</span>
+                <span className="stat-sub">Вовлеченность аудитории</span>
               </div>
               <div className="channel-stat-item">
                 <span className="stat-num">{platforms.telegram.posts_published_count}</span>
@@ -328,15 +329,14 @@ export const AnalyticsPage = () => {
         <div className="ml-validation-card">
           <div className="ml-validation-header">
             <div>
-              <div className="ml-validation-badge">R&D Контур обратной связи</div>
-              <h2 className="section-title">Оценка точности ML-модели (План vs Реальность)</h2>
+              <div className="ml-validation-badge">Точность прогнозирования</div>
+              <h2 className="section-title">Оценка точности прогнозов (План vs Реальность)</h2>
               <p className="ml-validation-subtitle">
-                Сравнение показателей, рассчитанных двухстадийным генетическим алгоритмом TKRP,
-                с фактическими результатами реакций аудитории после выхода постов.
+                Сравнение расчетных показателей системы с фактической реакцией аудитории после выхода публикаций.
               </p>
             </div>
             <div className="ml-accuracy-pill">
-              <span className="pill-title">Сходимость ML:</span>
+              <span className="pill-title">Точность прогноза:</span>
               <span className="pill-val">{meanAccuracy}%</span>
             </div>
           </div>
@@ -349,7 +349,7 @@ export const AnalyticsPage = () => {
                   <th>Платформа</th>
                   <th>Лайки (Прогноз vs Факт)</th>
                   <th>Просмотры (Прогноз vs Факт)</th>
-                  <th>Сходимость ML</th>
+                  <th>Точность прогноза</th>
                   <th>Ссылка на пост</th>
                 </tr>
               </thead>
@@ -412,13 +412,27 @@ export const AnalyticsPage = () => {
 
           <div className="ml-retrain-footer">
             <div className="ml-retrain-info">
-              <span className="info-icon">💡</span>
+              <svg
+                className="retrain-icon"
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="16" x2="12" y2="12" />
+                <line x1="12" y1="8" x2="12.01" y2="8" />
+              </svg>
               <div>
-                <strong>Замкнутый контур обучения (Active Learning):</strong>
+                <strong>Адаптивное улучшение контент-планов:</strong>
                 <p>
-                  Каждый опубликованный пост с подтвержденными реакциями обогащает базу прецедентов
-                  вашего бренда. Запуск команды <code>npm run ml:retrain</code> автоматически включает
-                  эти данные в обучающую выборку для будущих оптимизаций.
+                  Каждый опубликованный пост с подтвержденной статистикой сохраняется в истории бренда.
+                  Система автоматически учитывает эти результаты, повышая точность будущих прогнозов и рекомендаций.
                 </p>
               </div>
             </div>

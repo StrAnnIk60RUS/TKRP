@@ -242,6 +242,20 @@ export function getKpiPresentation(expectedKpi = {}) {
   }
 }
 
+export function sanitizeExternalHttpUrl(rawUrl) {
+  const trimmed = toStringSafe(rawUrl).trim()
+  if (!trimmed) return null
+  try {
+    const parsed = new URL(trimmed)
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      return parsed.href
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
 export function normalizePublicationForUi(publication) {
   if (!publication || typeof publication !== 'object') return publication
   const topicClean = stripServiceTopicTailForUi(publication.topic)
@@ -263,7 +277,7 @@ export function normalizePublicationForUi(publication) {
     media: publication.media && typeof publication.media === 'object' ? publication.media : null,
     status: publication.status || 'draft',
     published_at: publication.published_at || null,
-    post_url: publication.post_url || null,
+    post_url: sanitizeExternalHttpUrl(publication.post_url),
     remote_post_id: publication.remote_post_id || null,
     actual_kpi: publication.actual_kpi && typeof publication.actual_kpi === 'object' ? publication.actual_kpi : null
   }

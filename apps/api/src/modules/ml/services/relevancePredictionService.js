@@ -190,8 +190,9 @@ async function loadOptimizedPlanSnapshots() {
 
 async function getTrainingPayload(modelKey) {
   const snapshot = await readPrecedentSnapshot();
-  const optimizedPlans = await loadOptimizedPlanSnapshots();
-  const datasets = buildMlTrainingDatasets(snapshot, optimizedPlans);
+  const includeGaOptimized = String(process.env.ML_INCLUDE_GA_OPTIMIZED_TARGETS || '').toLowerCase() === 'true';
+  const optimizedPlans = includeGaOptimized ? await loadOptimizedPlanSnapshots() : [];
+  const datasets = buildMlTrainingDatasets(snapshot, optimizedPlans, { includeGaOptimized });
   const ontologyState = getOntologyFeatureMode();
 
   if (modelKey === 'post') {
@@ -607,7 +608,11 @@ async function predictEngagementRatesForGeneratedPublications(publications, opti
       engagement_rate: engagementRate,
       engagement_rate_source: 'ml_post_metrics_calculated'
     };
-    next.ontology_features = result.featureVectors[index];
+    const existingOntology = (typeof publication.ontology_features === 'object' && publication.ontology_features !== null && !Array.isArray(publication.ontology_features))
+      ? publication.ontology_features
+      : null;
+    next.ontology_features = existingOntology ? { ...existingOntology } : { creativity: 0.5, has_cta: 0 };
+    next.feature_vector = result.featureVectors[index];
     return next;
   });
 

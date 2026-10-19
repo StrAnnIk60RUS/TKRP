@@ -156,16 +156,22 @@ export async function syncPlanHistoryWithServer() {
 
     const merged = serverSnapshots.map((snap) => {
       const existing = localByToken.get(snap.token)
+      const inferredType =
+        snap.type ||
+        (snap.summary?.optimization_valid !== null && snap.summary?.optimization_valid !== undefined
+          ? 'optimized'
+          : 'draft')
       if (existing) {
         return {
           ...existing,
+          type: existing.type || inferredType,
           summary: snap.summary || existing.summary
         }
       }
       return {
         id: snap.plan_id || `plan_${Date.parse(snap.saved_at) || Date.now()}`,
         saved_at: snap.saved_at || new Date().toISOString(),
-        type: 'draft',
+        type: inferredType,
         snapshot_token: snap.token,
         summary: snap.summary || {
           plan_id: snap.plan_id || 'unknown',
@@ -247,6 +253,15 @@ export function getPlanSnapshotToken() {
   return getCurrentSnapshotToken()
 }
 
+function removeLocalDemoSnapshot(token) {
+  if (!token) return
+  try {
+    localStorage.removeItem(`demoPlanSnapshot:${token}`)
+  } catch {
+    /* ignore */
+  }
+}
+
 export async function savePlanSnapshot(plan, metadata = {}) {
   if (!plan || typeof plan !== 'object') return false
 
@@ -271,10 +286,35 @@ export async function savePlanSnapshot(plan, metadata = {}) {
   }
 
   if (!snapshot?.token) {
-    const localToken = `local_${Date.now()}`
+    const fallbackToken =
+      typeof metadata.token === 'string' && metadata.token.trim()
+        ? metadata.token.trim()
+        : `local_${Date.now()}`
     snapshot = {
-      token: localToken,
+      token: fallbackToken,
       saved_at: new Date().toISOString()
+    }
+  }
+
+  const history = getPlanHistory()
+  const entry = {
+    id: planToSave?.plan_id || `plan_${Date.now()}`,
+    saved_at: snapshot.saved_at || new Date().toISOString(),
+    type: metadata.type || (optimization ? 'optimized' : 'draft'),
+    snapshot_token: snapshot.token,
+    summary: snapshot.summary || buildHistorySummary(planToSave, optimization)
+  }
+  const entryFingerprint = buildEntryFingerprint(entry)
+
+  const historyWithoutSameFingerprint = history.filter((item) => buildEntryFingerprint(item) !== entryFingerprint)
+  const tokenDeduped = historyWithoutSameFingerprint.filter((item) => item.snapshot_token !== entry.snapshot_token)
+  const combinedHistory = [entry, ...tokenDeduped]
+  const nextHistory = combinedHistory.slice(0, MAX_HISTORY_ITEMS)
+  const keptTokens = new Set(nextHistory.map((item) => item.snapshot_token).filter(Boolean))
+
+  for (const oldItem of history) {
+    if (oldItem?.snapshot_token && !keptTokens.has(oldItem.snapshot_token)) {
+      removeLocalDemoSnapshot(oldItem.snapshot_token)
     }
   }
 
@@ -284,22 +324,22 @@ export async function savePlanSnapshot(plan, metadata = {}) {
       JSON.stringify({ plan: planToSave, optimization })
     )
   } catch (e) {
-    console.error('Ошибка кэширования demoPlanSnapshot:', e)
+    console.warn('Квота localStorage при кэшировании demoPlanSnapshot, очистка старых снимков:', e)
+    try {
+      for (let i = localStorage.length - 1; i >= 0; i -= 1) {
+        const k = localStorage.key(i)
+        if (k && k.startsWith('demoPlanSnapshot:') && k !== `demoPlanSnapshot:${snapshot.token}`) {
+          localStorage.removeItem(k)
+        }
+      }
+      localStorage.setItem(
+        `demoPlanSnapshot:${snapshot.token}`,
+        JSON.stringify({ plan: planToSave, optimization })
+      )
+    } catch (retryErr) {
+      console.error('Ошибка кэширования demoPlanSnapshot:', retryErr)
+    }
   }
-
-  const entry = {
-    id: planToSave?.plan_id || `plan_${Date.now()}`,
-    saved_at: snapshot.saved_at || new Date().toISOString(),
-    type: metadata.type || 'draft',
-    snapshot_token: snapshot.token,
-    summary: snapshot.summary || buildHistorySummary(planToSave, optimization)
-  }
-  const history = getPlanHistory()
-  const entryFingerprint = buildEntryFingerprint(entry)
-
-  const historyWithoutSameFingerprint = history.filter((item) => buildEntryFingerprint(item) !== entryFingerprint)
-  const tokenDeduped = historyWithoutSameFingerprint.filter((item) => item.snapshot_token !== entry.snapshot_token)
-  const nextHistory = [entry, ...tokenDeduped].slice(0, MAX_HISTORY_ITEMS)
 
   safeWriteJson(CURRENT_SNAPSHOT_TOKEN_KEY, snapshot.token)
   safeWriteJson(CURRENT_HISTORY_ENTRY_KEY, {
@@ -369,6 +409,8 @@ export async function removePlanFromHistory(entryId, entryType, savedAt) {
 
   const current = getCurrentHistoryEntry()
   const wasCurrent = historyEntryMatches(current, entry)
+
+  removeLocalDemoSnapshot(entry.snapshot_token)
 
   try {
     await deletePlanSnapshotOnServer(entry.snapshot_token)

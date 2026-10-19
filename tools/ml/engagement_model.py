@@ -162,6 +162,34 @@ class MultiMetricPredictor:
         X_arr = np.asarray(X, dtype=np.float64)
         y_arr = np.asarray(y, dtype=np.float64)
 
+        n_samples = X_arr.shape[0]
+        # Adapt hyperparameters for small sample sizes so tree splits can occur
+        min_child_samples = max(2, min(20, n_samples // 4))
+        num_leaves = max(2, min(31, n_samples // max(2, min_child_samples)))
+
+        if HAS_LIGHTGBM:
+            self.model_backend = 'LightGBM'
+            base_estimator = LGBMRegressor(
+                n_estimators=100,
+                learning_rate=0.05,
+                num_leaves=num_leaves,
+                min_child_samples=min_child_samples,
+                random_state=self.random_state,
+                n_jobs=1,
+                verbose=-1
+            )
+            self.model = MultiOutputRegressor(base_estimator, n_jobs=1)
+        elif HAS_HIST_GB:
+            self.model_backend = 'HistGradientBoosting'
+            base_estimator = HistGradientBoostingRegressor(
+                max_iter=100,
+                learning_rate=0.05,
+                max_leaf_nodes=num_leaves,
+                min_samples_leaf=min_child_samples,
+                random_state=self.random_state
+            )
+            self.model = MultiOutputRegressor(base_estimator, n_jobs=1)
+
         # 1. Масштабируем признаки
         X_scaled = self.scaler_X.fit_transform(X_arr)
 
@@ -174,7 +202,7 @@ class MultiMetricPredictor:
         return self
 
     def predict(self, X):
-        """Возвращает предсказания в原始 шкале (не log, не нормализованные)"""
+        """Возвращает предсказания в исходной шкале (не log, не нормализованные)"""
         if not self._is_fitted:
             raise RuntimeError("Model must be fitted before predict")
 
@@ -192,6 +220,7 @@ class MultiMetricPredictor:
     def save(self, model_path, metadata_path, extra_metadata=None):
         """Сохраняет модель и метаданные"""
         backend = getattr(self, 'model_backend', 'LightGBM')
+        _MODEL_CACHE.pop(str(Path(model_path).resolve()), None)
         joblib.dump({
             'model': self.model,
             'scaler_X': self.scaler_X,
@@ -335,15 +364,40 @@ def train_plan_model(features, targets, feature_names=None, version_info=None):
     }
 
 
+_MODEL_CACHE = {}
+
+
+def get_cached_model(model_path, metadata_path, model_type):
+    """Кэширует загруженную модель в памяти процесса, проверяя mtime файла модели и метаданных."""
+    model_path = Path(model_path)
+    metadata_path = Path(metadata_path)
+    resolved_key = str(model_path.resolve())
+    mtime = model_path.stat().st_mtime
+    meta_mtime = metadata_path.stat().st_mtime if metadata_path.exists() else 0.0
+
+    entry = _MODEL_CACHE.get(resolved_key)
+    if entry and entry["mtime"] == mtime and entry["meta_mtime"] == meta_mtime:
+        return entry["model"]
+
+    check_feature_set_version(metadata_path, model_type)
+    model = MultiMetricPredictor.load(model_path)
+    _MODEL_CACHE[resolved_key] = {
+        "mtime": mtime,
+        "meta_mtime": meta_mtime,
+        "model": model,
+    }
+    return model
+
+
 def predict_post_metrics(features):
     """Предсказание метрик для постов"""
     model_path = MODEL_DIR / 'post_metrics_model.joblib'
+    metadata_path = MODEL_DIR / 'post_metrics_model_metadata.json'
 
     if not model_path.exists():
         raise FileNotFoundError(f"Model not found: {model_path}")
 
-    check_feature_set_version(MODEL_DIR / 'post_metrics_model_metadata.json', 'post')
-    model = MultiMetricPredictor.load(model_path)
+    model = get_cached_model(model_path, metadata_path, 'post')
     X = np.array(features, dtype=np.float64)
     # Defensive sanitization: JS side should already sanitize, but keep model robust.
     X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
@@ -366,12 +420,12 @@ def predict_post_metrics(features):
 def predict_plan_metrics(features):
     """Предсказание метрик для планов"""
     model_path = MODEL_DIR / 'plan_metrics_model.joblib'
+    metadata_path = MODEL_DIR / 'plan_metrics_model_metadata.json'
 
     if not model_path.exists():
         raise FileNotFoundError(f"Model not found: {model_path}")
 
-    check_feature_set_version(MODEL_DIR / 'plan_metrics_model_metadata.json', 'content_plan')
-    model = MultiMetricPredictor.load(model_path)
+    model = get_cached_model(model_path, metadata_path, 'content_plan')
     X = np.array(features, dtype=np.float64)
     X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
     predictions = model.predict(X)

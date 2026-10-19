@@ -113,7 +113,7 @@ const PlanHistoryPanel = ({
                 >
                   {item.summary?.display_name?.trim() || item.summary?.plan_id || item.id}
                 </span>
-                <span className="precedent-card-score">{item.type === 'optimized' ? 'optimized' : 'draft'}</span>
+                <span className="precedent-card-score">{item.type === 'optimized' ? 'Оптимизирован' : 'Черновик'}</span>
               </div>
               <div className="precedent-card-body">
                 <div>Сохранен: {formatDate(item.saved_at)}</div>

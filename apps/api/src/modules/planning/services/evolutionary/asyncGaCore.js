@@ -222,13 +222,18 @@ export async function runAsyncGeneticAlgorithm(options = {}) {
     const normalizedMinImprovementEpsilon = Math.max(0, Number(minImprovementEpsilon) || 0);
     const normalizedMinImprovementGenerations = GA_UTILS.clampInt(minImprovementGenerations, 0, 100000);
 
-    if (
+    const hasLowImprovement =
+      normalizedMinImprovementEpsilon === 0
+        ? improvementDelta !== null && improvementDelta <= 0
+        : improvementDelta !== null && improvementDelta > 0 && improvementDelta <= normalizedMinImprovementEpsilon;
+
+    if (normalizedMinImprovementGenerations > 0 && hasLowImprovement) {
+      lowDeltaStreak += 1;
+    } else if (
       normalizedMinImprovementGenerations > 0 &&
       improvementDelta !== null &&
-      improvementDelta <= normalizedMinImprovementEpsilon
+      improvementDelta > normalizedMinImprovementEpsilon
     ) {
-      lowDeltaStreak += 1;
-    } else if (normalizedMinImprovementGenerations > 0 && generation > 1) {
       lowDeltaStreak = 0;
     }
 

@@ -99,9 +99,13 @@ export async function createUser(username, password) {
   return { user_id: userId, username, token };
 }
 
+function isDemoAuthAllowed() {
+  return process.env.ALLOW_DEMO_AUTH === 'true' && process.env.NODE_ENV !== 'production';
+}
+
 export async function loginUser(username, password) {
   if (!isValidUsername(username) || typeof password !== 'string') return null;
-  if (username === 'demo') {
+  if (username === 'demo' && isDemoAuthAllowed()) {
     return { user_id: 'demo_user_devflow', username: 'demo', token: 'demo_session_token_' + Date.now() };
   }
   const token = newToken();
@@ -114,25 +118,32 @@ export async function loginUser(username, password) {
 
 export async function resolveSession(token) {
   if (typeof token !== 'string' || token.length < 16) return null;
-  if (token.startsWith('demo_session_token')) return 'demo_user_devflow';
+  if (token.startsWith('demo_session_token')) {
+    return isDemoAuthAllowed() ? 'demo_user_devflow' : null;
+  }
   // Always use DB
   return await dbResolveSession(token);
 }
 
 export async function logoutSession(token) {
   if (typeof token !== 'string' || token.length < 16) return false;
-  if (token.startsWith('demo_session_token')) return true;
+  if (token.startsWith('demo_session_token')) {
+    return isDemoAuthAllowed();
+  }
   // Always use DB
   return await dbDeleteSession(token);
 }
 
 export async function getCurrentUser(token) {
   if (typeof token === 'string' && token.startsWith('demo_session_token')) {
+    if (!isDemoAuthAllowed()) return null;
     return { user_id: 'demo_user_devflow', username: 'demo' };
   }
   const userId = await resolveSession(token);
   if (!userId) return null;
-  if (userId === 'demo_user_devflow') return { user_id: userId, username: 'demo' };
+  if (userId === 'demo_user_devflow') {
+    return isDemoAuthAllowed() ? { user_id: userId, username: 'demo' } : null;
+  }
   // Always use DB
   const username = await dbGetUsernameById(userId);
   return username ? { user_id: userId, username } : null;

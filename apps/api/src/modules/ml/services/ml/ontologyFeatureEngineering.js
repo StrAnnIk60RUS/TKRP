@@ -101,7 +101,7 @@ function getSourceText(source = {}) {
   return (
     source.raw_content ||
     source.content ||
-    [source.title, source.summary, source.key_message, source.cta].filter(Boolean).join('\n\n')
+    [source.title || source.topic, source.summary, source.key_message, source.cta].filter(Boolean).join('\n\n')
   );
 }
 
@@ -158,7 +158,16 @@ function calculateNormalizedEntropy(values = []) {
 }
 
 function parsePlanDate(source = {}) {
-  const candidate = source.planned_date || source.planned_at || source.publication_model?.planned_at || null;
+  const candidate =
+    source.planned_date ||
+    source.planned_at ||
+    source.published_at ||
+    source.datetime ||
+    source.date ||
+    source.created_at ||
+    source.publication_model?.planned_at ||
+    source.publication_model?.published_at ||
+    null;
   if (!candidate || typeof candidate !== 'string') return null;
   const parsed = new Date(candidate);
   return Number.isFinite(parsed.getTime()) ? parsed : null;
@@ -284,16 +293,6 @@ export function buildPlanFeatureMap(publications = [], options = {}) {
   const expectedAudience = uniqueValues(
     (Array.isArray(options.targetAudience) ? options.targetAudience : []).map((value) => normalizeKey(value))
   );
-  const derivedDuration =
-    startDate instanceof Date &&
-    Number.isFinite(startDate.getTime()) &&
-    endDate instanceof Date &&
-    Number.isFinite(endDate.getTime())
-      ? Math.max(1, Math.round((endDate.getTime() - startDate.getTime()) / 86400000) + 1)
-      : null;
-  const durationDays = clampPositive(explicitDuration || derivedDuration || posts.length || 1, 1);
-  const topicCounts = Array.from(buildFrequencyMap(posts.map((item) => item.topic || item.publication_model?.topic)).values());
-  const repeatedTopics = topicCounts.reduce((sum, count) => sum + Math.max(0, count - 1), 0);
   const datedPosts = uniqueValues(
     posts
       .map((item) => {
@@ -302,6 +301,22 @@ export function buildPlanFeatureMap(publications = [], options = {}) {
       })
       .filter(Boolean)
   );
+  const sortedDates = datedPosts
+    .map((d) => new Date(d))
+    .filter((d) => Number.isFinite(d.getTime()))
+    .sort((a, b) => a.getTime() - b.getTime());
+  const autoSpanDuration =
+    sortedDates.length >= 2
+      ? Math.max(1, Math.round((sortedDates[sortedDates.length - 1].getTime() - sortedDates[0].getTime()) / 86400000) + 1)
+      : null;
+  const derivedDuration =
+    startDate instanceof Date &&
+    Number.isFinite(startDate.getTime()) &&
+    endDate instanceof Date &&
+    Number.isFinite(endDate.getTime())
+      ? Math.max(1, Math.round((endDate.getTime() - startDate.getTime()) / 86400000) + 1)
+      : autoSpanDuration;
+  const durationDays = clampPositive(explicitDuration || derivedDuration || posts.length || 1, 1);
   const audienceCoverage =
     expectedAudience.length > 0
       ? clamp01(
@@ -316,6 +331,8 @@ export function buildPlanFeatureMap(publications = [], options = {}) {
             expectedPlatforms.length
         )
       : clamp01(platforms.length / Math.max(1, Math.min(3, posts.length || 1)));
+  const topicCounts = Array.from(buildFrequencyMap(posts.map((item) => item.topic || item.publication_model?.topic)).values());
+  const repeatedTopics = topicCounts.reduce((sum, count) => sum + Math.max(0, count - 1), 0);
 
   return {
     unique_topics: topics.length,
@@ -392,7 +409,7 @@ function extractOptimizationBestMeta(optimization = {}) {
   return candidates.reduce((best, candidate) => (Number(candidate.fitness) > Number(best.fitness) ? candidate : best));
 }
 
-export function buildMlTrainingDatasets(snapshot = {}, optimizedPlans = []) {
+export function buildMlTrainingDatasets(snapshot = {}, optimizedPlans = [], options = {}) {
   const postFeatures = [];
   const postTargets = [];      // Будет массивом [likes, shares, views]
   const planFeatures = [];
@@ -443,33 +460,59 @@ export function buildMlTrainingDatasets(snapshot = {}, optimizedPlans = []) {
     }
   });
 
-  // GA-optimized plan snapshots: predicted targets from best_meta of optimization run.
+  // GA-optimized plan snapshots: prioritize actual confirmed KPI over synthetic predictions
   (Array.isArray(optimizedPlans) ? optimizedPlans : []).forEach((entry) => {
     const plan = entry?.plan || {};
     const publications = Array.isArray(plan.publications) ? plan.publications : [];
     if (!publications.length) return;
-    const bestMeta = extractOptimizationBestMeta(entry?.optimization || {});
-    if (!bestMeta) return;
-    const targets = [
-      clampPositive(bestMeta.predicted_likes ?? 0),
-      clampPositive(bestMeta.predicted_shares ?? 0),
-      clampPositive(bestMeta.predicted_views ?? 0)
-    ];
-    if (targets.every((value) => value === 0)) return;
-    const planFeatureVector = buildPlanFeatureVector(publications, {
-      durationDays: plan?.planning_horizon?.duration_days,
-      expectedPlatforms: plan?.platforms,
-      targetAudience: plan?.target_audience
-    });
-    planFeatures.push(planFeatureVector);
-    planTargets.push(targets);
-    planSampleMeta.push({
-      source: 'ga_optimized',
-      optimized: true,
-      optimization_source: entry?.optimization ? 'plan_snapshot' : null,
-      final_fitness: Number(bestMeta.fitness),
-      saved_at: entry?.saved_at || null
-    });
+
+    const actualKpi = entry?.actual_kpi || plan?.actual_kpi;
+    if (actualKpi) {
+      const targets = [
+        clampPositive(actualKpi.likes ?? actualKpi.total_likes ?? 0),
+        clampPositive(actualKpi.shares ?? actualKpi.total_shares ?? 0),
+        clampPositive(actualKpi.views ?? actualKpi.total_views ?? 0)
+      ];
+      if (targets.every((value) => value === 0)) return;
+      const planFeatureVector = buildPlanFeatureVector(publications, {
+        durationDays: plan?.planning_horizon?.duration_days,
+        expectedPlatforms: plan?.platforms,
+        targetAudience: plan?.target_audience
+      });
+      planFeatures.push(planFeatureVector);
+      planTargets.push(targets);
+      planSampleMeta.push({
+        source: 'actual_kpi',
+        optimized: true,
+        saved_at: entry?.saved_at || null
+      });
+      return;
+    }
+
+    if (options.includeGaOptimized !== false) {
+      const bestMeta = extractOptimizationBestMeta(entry?.optimization || {});
+      if (!bestMeta) return;
+      const targets = [
+        clampPositive(bestMeta.predicted_likes ?? 0),
+        clampPositive(bestMeta.predicted_shares ?? 0),
+        clampPositive(bestMeta.predicted_views ?? 0)
+      ];
+      if (targets.every((value) => value === 0)) return;
+      const planFeatureVector = buildPlanFeatureVector(publications, {
+        durationDays: plan?.planning_horizon?.duration_days,
+        expectedPlatforms: plan?.platforms,
+        targetAudience: plan?.target_audience
+      });
+      planFeatures.push(planFeatureVector);
+      planTargets.push(targets);
+      planSampleMeta.push({
+        source: 'ga_optimized',
+        optimized: true,
+        optimization_source: entry?.optimization ? 'plan_snapshot' : null,
+        final_fitness: Number(bestMeta.fitness),
+        saved_at: entry?.saved_at || null
+      });
+    }
   });
 
   // Если нет планов, создаём fallback

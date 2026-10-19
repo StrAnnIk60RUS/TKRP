@@ -85,7 +85,7 @@ router.post('/seed', requireLocalOrAdminApiKey, (req, res) => {
 
 router.post('/search', requireSessionOrAdminApiKey, async (req, res) => {
   try {
-    const { query, limit, platform, audience_segments } = req.body || {};
+    const { query, limit, platform, platforms, audience_segments } = req.body || {};
     if (!query || typeof query !== 'string' || !query.trim()) {
       return res.status(400).json({
         success: false,
@@ -97,6 +97,7 @@ router.post('/search', requireSessionOrAdminApiKey, async (req, res) => {
     const results = await searchPrecedents(query, {
       limit,
       platform,
+      platforms,
       audience_segments
     });
 

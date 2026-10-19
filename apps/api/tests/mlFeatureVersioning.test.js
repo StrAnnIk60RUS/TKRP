@@ -8,6 +8,7 @@ import {
   buildPostFeatureMap,
   buildPostFeatureVectorWithMeta,
   buildPlanFeatureVectorWithMeta,
+  buildPlanFeatureMap,
   buildMlTrainingDatasets,
   POST_FEATURE_NAMES
 } from '../src/modules/ml/services/ml/ontologyFeatureEngineering.js';
@@ -95,3 +96,31 @@ test('optimized plan snapshots feed plan training samples', () => {
   assert.equal(meta.final_fitness, 0.9);
   assert.deepEqual(datasets.contentPlanDataset.targets[0], [120, 12, 1200]);
 });
+
+test('buildPlanFeatureMap recognizes published_at for timeline metrics', () => {
+  const publications = [
+    { published_at: '2026-03-01T10:00:00Z', topic: 'Topic 1', format: 'text', raw_metrics: { likes: 5 } },
+    { published_at: '2026-03-11T10:00:00Z', topic: 'Topic 2', format: 'video', raw_metrics: { likes: 10 } },
+    { published_at: '2026-03-21T10:00:00Z', topic: 'Topic 3', format: 'image', raw_metrics: { likes: 15 } }
+  ];
+  const featureMap = buildPlanFeatureMap(publications, {});
+  assert.equal(featureMap.posts_count, 3);
+  assert.ok(featureMap.duration_days > 15, `Expected duration_days > 15, got ${featureMap.duration_days}`);
+  assert.ok(featureMap.timeline_density > 0, `Expected timeline_density > 0, got ${featureMap.timeline_density}`);
+});
+
+test('buildMlTrainingDatasets excludes ga_optimized synthetic targets when includeGaOptimized is false', () => {
+  const snapshot = { publications: [], content_plans: [] };
+  const optimizedPlans = [
+    {
+      plan: { plan_id: 'p1', publications: [{ topic: 'T', raw_metrics: { likes: 1 } }] },
+      optimization: {
+        stage1: { ga: { best_meta: { fitness: 0.8, predicted_likes: 99, predicted_shares: 9, predicted_views: 999 } } }
+      }
+    }
+  ];
+  const datasets = buildMlTrainingDatasets(snapshot, optimizedPlans, { includeGaOptimized: false });
+  assert.equal(datasets.contentPlanDataset.features.length, 0);
+  assert.equal(datasets.contentPlanDataset.targets.length, 0);
+});
+

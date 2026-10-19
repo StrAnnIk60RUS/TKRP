@@ -1293,21 +1293,6 @@ export async function optimizeContentPlanEvolution(draftContentPlan, config = {}
       crossoverFn = onePointCrossoverArrays;
   }
 
-  let mutateFn;
-  switch (mutationMethod) {
-    case 'inversion':
-      mutateFn = (individual, rng) => inversionMutation(individual, rng);
-      break;
-    case 'random_replace':
-    default:
-      mutateFn = (individual, rng) => {
-        if (!Array.isArray(individual) || individual.length === 0) return cloneJson(individual);
-        const slotIndex = Math.floor(rng() * individual.length);
-        const next = cloneJson(individual);
-        next[slotIndex] = randomReplaceMutation(next[slotIndex], geneDomains, rng);
-        return next;
-      };
-  }
 
   const precedentContext = await buildPrecedentContext(precedentPublications, draftContentPlan);
   const planningHorizon = resolvePlanningHorizon(draftContentPlan, constraints);
@@ -1380,9 +1365,16 @@ export async function optimizeContentPlanEvolution(draftContentPlan, config = {}
   };
   const mutate = (individual, rng) => {
     if (!Array.isArray(individual) || individual.length === 0) return cloneJson(individual);
+    if (mutationMethod === 'inversion') {
+      const next = inversionMutation(individual, rng);
+      for (let i = 0; i < next.length; i++) {
+        next[i] = applyLockedFieldsToGene(next[i], i, rng);
+      }
+      return next;
+    }
     const slotIndex = Math.floor(rng() * individual.length);
     const next = cloneJson(individual);
-    next[slotIndex] = mutateFn(next[slotIndex], rng);
+    next[slotIndex] = randomReplaceMutation(next[slotIndex], geneDomains, rng);
     next[slotIndex] = applyLockedFieldsToGene(next[slotIndex], slotIndex, rng);
     return next;
   };
@@ -1405,8 +1397,8 @@ export async function optimizeContentPlanEvolution(draftContentPlan, config = {}
     crossover,
     mutate,
     cacheKeyForIndividual: (individual) => JSON.stringify(individual),
-    minImprovementEpsilon: ga.minImprovementEpsilon ?? 1e-4,
-    minImprovementGenerations: ga.minImprovementGenerations ?? 4,
+    minImprovementEpsilon: ga.minImprovementEpsilon ?? 0,
+    minImprovementGenerations: ga.minImprovementGenerations ?? 0,
     scorePopulation: async (population) => {
       const candidatePlans = population.map((genome) =>
         applyGenomeToPlan(

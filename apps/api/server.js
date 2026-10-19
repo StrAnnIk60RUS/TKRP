@@ -10,7 +10,8 @@ import {
   createCorsOptions,
   createRateLimitMiddleware
 } from './src/shared/http/security.js';
-import { closePool, isDatabaseEnabled } from './src/shared/db/client.js';
+import { apiNotFoundHandler, globalErrorHandler } from './src/shared/http/expressHttp.js';
+import { closePool, isDatabaseEnabled, query } from './src/shared/db/client.js';
 import { ensureInstagramPreviewUser } from './src/modules/auth/services/authStore.js';
 import { INSTAGRAM_PREVIEW_USERNAME } from './src/modules/auth/services/instagramAccess.js';
 import { getJobQueueStats } from './src/shared/runtime/jobQueue.js';
@@ -30,10 +31,29 @@ app.use(cors(createCorsOptions()));
 app.use(express.json({ limit: process.env.API_BODY_LIMIT || '10mb' }));
 app.use(createRateLimitMiddleware());
 
-app.get('/health', (req, res) => {
-  res.json({
-    status: 'ok',
+app.get('/health', async (req, res) => {
+  let dbStatus = 'not_configured';
+  let dbHealthy = true;
+
+  if (isDatabaseEnabled()) {
+    try {
+      await query('SELECT 1');
+      dbStatus = 'connected';
+    } catch (err) {
+      dbStatus = `disconnected: ${err?.message || err}`;
+      dbHealthy = false;
+    }
+  }
+
+  const isHealthy = dbHealthy;
+  const statusCode = isHealthy ? 200 : 503;
+
+  res.status(statusCode).json({
+    status: isHealthy ? 'ok' : 'degraded',
     service: 'LLM Enrichment Server',
+    database: dbStatus,
+    timestamp: new Date().toISOString(),
+    uptime_seconds: Math.floor(process.uptime()),
     request_id: req.requestId,
     cors_origins: process.env.CORS_ALLOWED_ORIGINS || 'localhost defaults',
     api_key_protection: Boolean(process.env.SERVER_API_KEY || process.env.ADMIN_API_KEY),
@@ -43,6 +63,8 @@ app.get('/health', (req, res) => {
 });
 
 app.use('/api', apiRoutes);
+app.use('/api', apiNotFoundHandler);
+app.use(globalErrorHandler);
 
 app.listen(PORT, () => {
   console.log(`🚀 LLM Enrichment Server запущен на http://localhost:${PORT}`);

@@ -29,8 +29,6 @@
     "cors": "^2.8.6",
     "dotenv": "^17.4.0",
     "express": "^5.2.1",
-    "jspdf": "^4.2.1",
-    "jspdf-autotable": "^5.0.7",
     "pdfmake": "^0.3.7",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",

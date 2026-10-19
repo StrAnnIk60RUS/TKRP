@@ -304,12 +304,22 @@ function getMinSummaryLengthByFormat(format = 'text') {
 }
 
 const SUMMARY_PAD_SENTENCES = [
-  ' Дальше — что проверить на месте, какой результат считать удачным и кто подтверждает, что шаг закрыт.',
-  ' Рядом имеет смысл показать один рабочий пример и границу, после которой гипотезу пора остановить.',
-  ' Отдельно стоит назвать ограничение: где метод не подходит и какой сигнал говорит, что пора сменить подход.',
-  ' Полезно сравнить два соседних решения по сроку, риску и тому, что увидит заказчик в первую неделю.',
-  ' В конце оставьте читателю один вопрос, на который можно ответить из своего опыта, без общего призыва.'
+  ' Такой подход помогает быстрее увидеть практический результат и избежать типичных ошибок на старте.',
+  ' Важно заранее определить понятные ориентиры качества, чтобы оценивать прогресс по реальным изменениям.',
+  ' На практике это снижает лишнюю нагрузку и делает каждый следующий шаг предсказуемым и прозрачным.',
+  ' Когда ключевые детали выстроены последовательно, результат становится заметен уже в первые недели.',
+  ' Особое внимание стоит уделить обратной связи и регулярной проверке того, как решение работает в жизни.',
+  ' Это позволяет вовремя скорректировать детали и адаптировать процесс под индивидуальные задачи.',
+  ' В итоге складывается устойчивая система, которая опирается на практику, а не на общие обещания.',
+  ' Главное — двигаться от конкретной задачи к измеримому эффекту, сохраняя комфорт и вовлечённость.'
 ];
+
+function formatSentenceFragment(value) {
+  const clean = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!clean) return '';
+  const capitalized = clean.charAt(0).toUpperCase() + clean.slice(1);
+  return /[.!?…]$/u.test(capitalized) ? capitalized : `${capitalized}.`;
+}
 
 function ensureTextLength(value, minLength, maxLength = MAX_SUMMARY_LENGTH) {
   const normalized = typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
@@ -320,11 +330,14 @@ function ensureTextLength(value, minLength, maxLength = MAX_SUMMARY_LENGTH) {
   for (let i = 0; i < sample.length; i += 1) {
     seed = (seed * 33 + sample.charCodeAt(i)) >>> 0;
   }
-  let extended = normalized;
-  let padIndex = seed;
-  while (extended.length < minLength) {
-    extended = `${extended}${SUMMARY_PAD_SENTENCES[padIndex % SUMMARY_PAD_SENTENCES.length]}`;
-    padIndex += 1;
+  let extended = /[.!?…]$/u.test(normalized) ? normalized : `${normalized}.`;
+  let steps = 0;
+  while (extended.length < minLength && steps < SUMMARY_PAD_SENTENCES.length) {
+    const candidate = SUMMARY_PAD_SENTENCES[(seed + steps) % SUMMARY_PAD_SENTENCES.length];
+    if (!extended.includes(candidate.trim())) {
+      extended = `${extended}${candidate}`;
+    }
+    steps += 1;
   }
   return extended.slice(0, maxLength).trim();
 }
@@ -345,14 +358,38 @@ function nicheDetailForVariant(formInput = {}, variant = 0) {
     .map((value) => (typeof value === 'string' ? value.trim() : ''))
     .filter(Boolean);
   if (!fields.length) {
-    return 'Берите один прикладной факт этого слота и не пересказывайте весь состав продукта.';
+    return 'В основе подхода — опора на реальные задачи аудитории и понятный практический результат.';
   }
-  return excerptForSlot(fields[Math.abs(variant) % fields.length], 170, variant);
+  return formatSentenceFragment(excerptForSlot(fields[Math.abs(variant) % fields.length], 170, variant));
+}
+
+const RU_INFLECTION_SUFFIX_RE =
+  /(?:ами|ями|ого|его|ому|ему|ыми|ими|ость|ости|ение|ения|ание|ания|ться|тся|ешь|ете|ают|яют|ите|ать|ять|ить|еть|ов|ев|ей|ам|ям|ах|ях|ом|ем|ою|ею|ую|юю|ый|ий|ой|ая|яя|ое|ее|ые|ие|а|я|о|е|ы|и|у|ю|ь)$/i;
+
+function stemSemanticToken(token) {
+  const normalized = String(token || '').toLowerCase().replace(/ё/g, 'е').trim();
+  if (normalized.length <= 4) return normalized;
+  const stripped = normalized.replace(RU_INFLECTION_SUFFIX_RE, '');
+  return stripped.length >= 3 ? stripped : normalized.slice(0, 4);
+}
+
+function tokensMatchSemantically(left, right) {
+  if (!left || !right) return false;
+  if (left === right) return true;
+  const stemLeft = stemSemanticToken(left);
+  const stemRight = stemSemanticToken(right);
+  if (stemLeft === stemRight) return true;
+  const minLen = Math.min(stemLeft.length, stemRight.length);
+  if (minLen >= 5) {
+    return stemLeft.slice(0, 5) === stemRight.slice(0, 5);
+  }
+  return false;
 }
 
 function tokenizeSemanticText(value) {
   return String(value || '')
     .toLowerCase()
+    .replace(/ё/g, 'е')
     .replace(/[^a-zа-я0-9\s_-]+/gi, ' ')
     .split(/[\s_-]+/)
     .map((token) => token.trim())
@@ -367,33 +404,30 @@ function hasSemanticOverlap(source, target, options = {}) {
   const sourceTokens = tokenizeSemanticText(source);
   const targetTokens = tokenizeSemanticText(target);
   if (!sourceTokens.length || !targetTokens.length) return false;
-  const sourceSet = new Set(sourceTokens);
-  const targetUnique = new Set(targetTokens);
-  const sharedCount = Array.from(targetUnique).filter((token) => sourceSet.has(token)).length;
-  const overlapBase = Math.max(1, Math.min(sourceSet.size, targetUnique.size));
+  const sourceUnique = Array.from(new Set(sourceTokens));
+  const targetUnique = Array.from(new Set(targetTokens));
+  const sharedCount = targetUnique.filter((targetToken) =>
+    sourceUnique.some((sourceToken) => tokensMatchSemantically(sourceToken, targetToken))
+  ).length;
+  const overlapBase = Math.max(1, Math.min(sourceUnique.length, targetUnique.length));
   return sharedCount >= minSharedTokens && sharedCount / overlapBase >= minOverlapRatio;
 }
 
-const COHERENCE_TOPIC_KEY_OVERLAP = { minSharedTokens: 2, minOverlapRatio: 0.14 };
-const COHERENCE_TOPIC_BODY_OVERLAP = { minSharedTokens: 2, minOverlapRatio: 0.1 };
+const COHERENCE_TOPIC_KEY_OVERLAP = { minSharedTokens: 1, minOverlapRatio: 0.12 };
+const COHERENCE_TOPIC_BODY_OVERLAP = { minSharedTokens: 1, minOverlapRatio: 0.08 };
 
 function topicAnchorsInKeyMessage(topic, keyMessage) {
   const anchors = tokenizeSemanticText(topic).filter((token) => token.length >= 4);
   if (!anchors.length) return true;
-  const keySet = new Set(tokenizeSemanticText(keyMessage));
-  return anchors.some((token) => keySet.has(token));
+  const keyTokens = tokenizeSemanticText(keyMessage);
+  return anchors.some((anchor) => keyTokens.some((keyToken) => tokensMatchSemantically(anchor, keyToken)));
 }
 
 function buildSummaryRepairFromTopic(topic, format, formInput) {
   const minLength = getMinSummaryLengthByFormat(format);
-  const safeTopic = sanitizeTopicTitle(topic) || 'тема публикации';
+  const safeTopic = sanitizeTopicTitle(topic) || 'ключевая тема публикации';
   const detail = nicheDetailForVariant(formInput, summarySanitizeSeed(safeTopic, format, 'inform', safeTopic));
-  const audience =
-    typeof formInput.consumerCategory === 'string' && formInput.consumerCategory.trim()
-      ? formInput.consumerCategory.trim()
-      : '';
-  const audienceHint = audience ? ` Аудитория слота: ${audience}.` : '';
-  const core = `По теме «${safeTopic}» достаточно одного рабочего эпизода, а не полного описания продукта. ${detail}${audienceHint} Назовите, что меняется после этого шага и как это проверить без пересказа остальных публикаций плана.`;
+  const core = `Разбираем тему «${safeTopic}» на конкретном жизненном примере: почему возникает эта ситуация и какие детали важно заметить вовремя. ${detail} Показываем простые и понятные шаги, которые помогают мягко скорректировать процесс и получить устойчивый результат на практике.`;
   return ensureTextLength(core, minLength, MAX_SUMMARY_LENGTH);
 }
 
@@ -431,14 +465,14 @@ function buildSummaryOpeningsToAvoidList(publications = [], limit = 14) {
 
 function buildMonthlySlotSummaryHints(slots = [], monthIndex = 0) {
   const hints = [
-    'норма/требование и разрыв с практикой',
-    'сцена на смене и роли людей',
-    'короткая метрика или диапазон',
-    'вопрос читателю',
-    'развилка двух рабочих подходов',
-    'типовой риск или замечание аудита',
-    'миф и проверка фактами',
-    'мини-история внедрения'
+    'практическая ситуация и разрыв с ожиданиями',
+    'жизненный пример и роли участников',
+    'наглядный показатель или ориентир',
+    'вопрос читателю из практики',
+    'сравнение двух подходов',
+    'типичная ошибка и как её избежать',
+    'частый миф и проверка фактами',
+    'мини-история из опыта'
   ];
   return toArray(slots).map((slot, i) => ({
     slot_id: slot.slot_id,
@@ -446,9 +480,9 @@ function buildMonthlySlotSummaryHints(slots = [], monthIndex = 0) {
   }));
 }
 
-/** ТЗ автору / повелительное наклонение вместо текста для ленты (без \b — кириллица). */
+/** ТЗ автору / повелительное наклонение / старые синтетические вставки вместо текста для ленты (без \b — кириллица). */
 const AUTHOR_BRIEF_PHRASE_RE =
-  /(?:^|[\s,.;:!?«»(])(?:Сделай\s+акцент|Добавь\s+спорн[а-я]*|Покажи,\s+в\s+каком\s+месте|Объясни,\s+как\s+удерживать)/iu;
+  /(?:^|[\s,.;:!?«»(])(?:Сделай\s+акцент|Добавь\s+спорн[а-я]*|Покажи,\s+в\s+каком\s+месте|Объясни,\s+как\s+удерживать|Аудитория\s+слота\s*:|достаточно\s+одного\s+рабочего\s+эпизода,\s+а\s+не\s+полного\s+описания\s+продукта|Назовите,\s+что\s+меняется\s+после\s+этого\s+шага|без\s+пересказа\s+остальных\s+публикаций\s+плана|Отдельно\s+стоит\s+назвать\s+ограничение:\s+где\s+метод\s+не\s+подходит|В\s+конце\s+оставьте\s+читателю\s+один\s+вопрос)/iu;
 
 function summarySanitizeSeed(topic, format, objective, summarySnippet) {
   let h = 2166136261;
@@ -464,6 +498,7 @@ export function sanitizeUserFacingSummary(summary, topic, format, formInput = {}
   const minLength = getMinSummaryLengthByFormat(format);
   let normalized = stripObjectiveMeta(summary)
     .replace(/\b(?:в\s+фокусе|коротко\s+о\s+главном|для\s+команды\s+на\s+местах)\s*:\s*/giu, '')
+    .replace(/Аудитория\s+слота\s*:\s*[^.?!]+[.?!]?/giu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
   normalized = stripMisalignedSummaryLead(topic, normalized);
@@ -483,6 +518,8 @@ export function sanitizeUserFacingSummary(summary, topic, format, formInput = {}
     });
   if (keptSentences.length) {
     normalized = keptSentences.join(' ');
+  } else {
+    normalized = '';
   }
   const stillInstruction =
     /\b(?:цель\s+публикации|задача\s+материала|читатель\s+получит|структура\s+материала)\b/iu.test(normalized) ||
@@ -492,7 +529,7 @@ export function sanitizeUserFacingSummary(summary, topic, format, formInput = {}
     const seed = summarySanitizeSeed(topic, format, obj, normalized);
     return buildDiversifiedSummaryForSlot({ topic, format, objective: obj }, formInput, seed);
   }
-  return ensureTextLength(normalized, minLength, MAX_SUMMARY_LENGTH);
+  return normalized.slice(0, MAX_SUMMARY_LENGTH).trim();
 }
 
 function buildDiversifiedSummaryForSlot(slot, formInput, variantSeed = 0) {
@@ -500,31 +537,32 @@ function buildDiversifiedSummaryForSlot(slot, formInput, variantSeed = 0) {
   const topic =
     sanitizeTopicTitle(slot?.topic) || buildFallbackTopic(slot, formInput, (idx % 17) + 1);
   const format = slot?.format || 'text';
+  const minLength = getMinSummaryLengthByFormat(format);
   const objective = normalizeObjective(slot?.objective, 'inform');
   const detail = nicheDetailForVariant(formInput, idx + 3);
   const objectiveLine =
     objective === 'convert'
-      ? 'Фокус на точке входа в проект и том, как эффект увидеть в цифрах за короткий горизонт.'
+      ? 'Разбираем, с какого простого шага удобно начать и как быстро увидеть первые результаты.'
       : objective === 'retain'
-        ? 'Фокус на дисциплине эксплуатации и том, как не потерять качество после запуска.'
+        ? 'Показываем, как закрепить полученный прогресс и поддерживать стабильное качество в долгую.'
         : objective === 'engage'
-          ? 'Фокус на спорном рабочем выборе, который командам есть что обсудить.'
+          ? 'Сопоставляем два подхода из практики, вокруг которых чаще всего возникают вопросы и обсуждения.'
           : objective === 'brand_building'
-            ? 'Фокус на экспертизе и зрелости подхода, без пустых обещаний.'
-            : 'Фокус на прикладном сценарии и типовых ошибках, которые дорого обходятся.';
+            ? 'Делимся внутренней логикой работы и принципами, которые помогают держать высокую планку качества.'
+            : 'Разбираем типичные причины проблемы и понятные решения, которые работают в реальных условиях.';
   const v = idx % 8;
   const bodies = [
-    `Инженер формулирует «${topic}» как вопрос приоритета: что фиксировать в первую очередь. ${objectiveLine} Опора слота: ${detail} Дальше — критерии «готово/не готово» именно для этой темы.`,
-    `Если смотреть глазами проверки: где в «${topic}» пустеет документация и чем это кончается на аудите. ${objectiveLine} Факт, который нельзя размазывать на другие посты: ${detail}`,
-    `Развилка для руководителя по «${topic}»: быстрый пилот или поэтапная стандартизация. ${objectiveLine} ${detail} Сравнивайте срок, риск и то, что увидит заказчик в первую неделю.`,
-    `Смена упирается в «${topic}», когда регламент есть только на бумаге. ${objectiveLine} ${detail} Покажите один порядок действий и как измерить эффект до и после.`,
-    `«${topic}» не сводится к покупке готового блока. ${objectiveLine} ${detail} Назовите владельца данных и метрику, которая честно покажет прогресс.`,
-    `Вопрос команде: что изменится через месяц, если закрыть «${topic}» до конца. ${objectiveLine} ${detail} Дайте красный флаг и один пункт самопроверки.`,
-    `Цифра как якорь для «${topic}»: какую долю переделок можно увидеть в отчёте без ручной догадки. ${objectiveLine} ${detail} Укажите источник данных и кто подписывает результат.`,
-    `Там, где «${topic}» уже работает, ломается не инструмент, а передача между людьми. ${objectiveLine} ${detail} Опишите, что делают иначе на одной конкретной передаче.`
+    `В теме «${topic}» важно выделить главное: на что обратить внимание в первую очередь. ${objectiveLine} ${detail} Это позволяет выстроить понятную последовательность действий без лишнего стресса.`,
+    `Частая ситуация вокруг «${topic}»: мелкие сигналы остаются без внимания, пока не начинают влиять на общий результат. ${objectiveLine} ${detail}`,
+    `Когда речь заходит о «${topic}», обычно выбирают между быстрым точечным решением и системной перестройкой подхода. ${objectiveLine} ${detail}`,
+    `На практике «${topic}» проверяется в конкретных ежедневных ситуациях, когда стандартные шаблоны перестают работать. ${objectiveLine} ${detail}`,
+    `Решение задачи «${topic}» строится на внимании к деталям и обратной связи. ${objectiveLine} ${detail} Такой формат помогает сразу заметить положительную динамику.`,
+    `Что меняется на практике, когда вопрос «${topic}» решается системно и последовательно? ${objectiveLine} ${detail}`,
+    `Наглядный ориентир в теме «${topic}» — это реальные изменения в качестве процесса и вовлечённости. ${objectiveLine} ${detail}`,
+    `Там, где «${topic}» выстроена грамотно, ключевую роль играет чёткое взаимодействие и понятный ритм работы. ${objectiveLine} ${detail}`
   ];
   const body = bodies[v];
-  return sanitizeUserFacingSummary(body, topic, format, formInput, objective);
+  return ensureTextLength(body, minLength, MAX_SUMMARY_LENGTH);
 }
 
 function summaryMiddleFingerprint(text) {
@@ -994,7 +1032,10 @@ function repairSkeleton(rawSkeleton = {}, formInput = {}, targetPublicationCount
   );
   const requestedPublicationCount = getRequestedPublicationCount(formInput);
 
-  const rawSlots = toArray(rawSkeleton.publication_slots);
+  const calendarSlots = toArray(rawSkeleton.calendar_plan).flatMap((m) => toArray(m?.slots));
+  const rawSlots = toArray(rawSkeleton.publication_slots).length > 0
+    ? toArray(rawSkeleton.publication_slots)
+    : calendarSlots;
   const config = {
     platforms,
     formats: resolvedFormats,
@@ -1143,20 +1184,21 @@ function buildFallbackTopic(slot, formInput, index) {
 
 function buildFallbackSummary(slot, formInput) {
   const topic = sanitizeTopicTitle(slot?.topic) || buildFallbackTopic(slot, formInput, 0);
+  const minLength = getMinSummaryLengthByFormat(slot?.format);
   const detail = nicheDetailForVariant(
     formInput,
     summarySanitizeSeed(topic, slot?.format || 'text', slot?.objective || 'inform', topic)
   );
   const scenarioLine =
     slot?.objective === 'convert'
-      ? 'Эффект этого слота виден в одной точке входа: какие две цифры честно сравнить до и после.'
+      ? 'Показываем, с какого шага удобно начать знакомство с решением и какой результат можно увидеть в короткие сроки.'
       : slot?.objective === 'retain'
-        ? 'После запуска этот сценарий держится конкретным регламентным шагом, а не общим обещанием сервиса.'
+        ? 'Разбираем, как выстроенное сопровождение и внимание к деталям помогают удерживать стабильное качество.'
         : slot?.objective === 'engage'
-          ? 'Здесь спорят два рабочих варианта; покажите, где они расходятся, и не повторяйте спор соседнего поста.'
-          : 'Возьмите один эпизод, где теряется время или качество, и одну проверку, которая меняет исход.';
+          ? 'Сравниваем два распространённых подхода из практики и разбираем, в каких случаях каждый из них работает лучше.'
+          : 'Разбираем типичную ситуацию на практике: почему возникает проблема и какое решение помогает изменить результат.';
   const base = `«${topic}». ${detail} ${scenarioLine}`;
-  return sanitizeUserFacingSummary(base, topic, slot?.format, formInput, slot?.objective);
+  return ensureTextLength(base, minLength, MAX_SUMMARY_LENGTH);
 }
 
 function buildFallbackKeyMessage(formInput, slot = {}) {
@@ -1241,12 +1283,22 @@ function repairPublicationSemanticCoherence(publication, fallback, formInput = {
   if (!topicKeyOk) {
     next = {
       ...next,
-      key_message: buildFallbackKeyMessage(fi, { topic: next.topic, objective: next.objective })
+      key_message: buildFallbackKeyMessage(fi, {
+        topic: next.topic,
+        objective: next.objective,
+        format: next.format,
+        tone: next.tone
+      })
     };
     repaired = true;
   }
 
-  if (!publicationSemanticCoherenceOk(next)) {
+  const existingSummary = typeof next.summary === 'string' ? next.summary.trim() : '';
+  const hasUsableSummary =
+    existingSummary.length >= 120 &&
+    !AUTHOR_BRIEF_PHRASE_RE.test(existingSummary);
+
+  if (!hasUsableSummary && !publicationSemanticCoherenceOk(next)) {
     next = {
       ...next,
       summary: buildSummaryRepairFromTopic(next.topic, next.format, fi)
@@ -1254,11 +1306,16 @@ function repairPublicationSemanticCoherence(publication, fallback, formInput = {
     repaired = true;
   }
 
-  if (!publicationSemanticCoherenceOk(next)) {
+  if (!hasUsableSummary && !publicationSemanticCoherenceOk(next)) {
     next = {
       ...next,
       summary: fallback.summary,
-      key_message: buildFallbackKeyMessage(fi, { topic: next.topic || fallback.topic, objective: next.objective })
+      key_message: buildFallbackKeyMessage(fi, {
+        topic: next.topic || fallback.topic,
+        objective: next.objective,
+        format: next.format,
+        tone: next.tone
+      })
     };
     repaired = true;
   }
@@ -1277,8 +1334,10 @@ function normalizeBatchPublication(
 ) {
   const fallback = buildFallbackPublication(slot, formInput, compactRagContext, skeleton, index);
   const minSummaryLength = getMinSummaryLengthByFormat(slot?.format);
-  const generatedSummary = typeof rawItem.summary === 'string' ? rawItem.summary : '';
-  const normalizedSummary = ensureTextLength(generatedSummary, minSummaryLength, MAX_SUMMARY_LENGTH);
+  const generatedSummary = typeof rawItem.summary === 'string' ? rawItem.summary.replace(/\s+/g, ' ').trim() : '';
+  const normalizedSummary = generatedSummary.length >= 120
+    ? generatedSummary.slice(0, MAX_SUMMARY_LENGTH)
+    : ensureTextLength(generatedSummary, minSummaryLength, MAX_SUMMARY_LENGTH);
   const fallbackSummary = ensureTextLength(fallback.summary, minSummaryLength, MAX_SUMMARY_LENGTH);
 
   const rawUsedPrecedentIds = uniqueStrings(
@@ -1883,5 +1942,8 @@ export const DRAFT_PLAN_PIPELINE_TEST_UTILS = {
   calibrateExpectedKpi,
   choosePreferredTopic,
   choosePreferredKeyMessage,
-  choosePreferredSummary
+  choosePreferredSummary,
+  repairSkeleton,
+  buildSummaryRepairFromTopic,
+  repairPublicationSemanticCoherence
 };

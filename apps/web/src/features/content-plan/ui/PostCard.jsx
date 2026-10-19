@@ -7,12 +7,14 @@ import {
   getMediaPromptLabel,
   getObjectiveLabel,
   getPlatformLabel,
+  getPublicationStatusLabel,
   getToneLabel,
   isMeaningfulCta,
   normalizePublicationForUi,
   truncateText
 } from '../lib/publicationPresentation'
 import PostMediaBlock from './PostMediaBlock'
+import './PostCard.css'
 
 const getEngagementSourceLabel = (source) => {
   if (source === 'ml_post_metrics_calculated') return 'рассчитано на основе прогноза модели'
@@ -61,10 +63,8 @@ const PostCard = ({ post, showPlatformField, onEdit, onPublish }) => {
         <div className="post-header-meta">
           <span className="post-date">{plannedDateLabel}</span>
           <span className={`post-status-badge post-status-${status}`}>
-            {status === 'published' && '🟢 Опубликован'}
-            {status === 'scheduled' && '⏰ Запланирован автопостинг'}
-            {status === 'draft' && '📝 Черновик'}
-            {status === 'failed' && '❌ Ошибка публикации'}
+            <span className="post-status-dot" aria-hidden="true" />
+            <span>{getPublicationStatusLabel(status)}</span>
           </span>
         </div>
         <span className="post-category" title={showFullHeadingTooltip ? fullHeading : undefined}>
@@ -111,7 +111,7 @@ const PostCard = ({ post, showPlatformField, onEdit, onPublish }) => {
       {normalizedPost.expected_kpi && (
         <div className="post-metrics">
           <p className="post-metrics-note">
-            Ниже показаны 2 блока: (1) ориентиры по качеству поста, (2) абсолютный прогноз результата от ML.
+            Ниже показаны 2 блока: (1) ориентиры по качеству поста, (2) прогноз результата от аналитической модели.
           </p>
           <div className="post-metrics-section">
             <div className="post-metrics-section-title">Оценки качества поста (относительные)</div>
@@ -148,7 +148,7 @@ const PostCard = ({ post, showPlatformField, onEdit, onPublish }) => {
               </>
             ) : (
               <span className="post-metrics-ml-counts">
-                По этому посту абсолютный ML-прогноз не пришёл. Можно ориентироваться на относительные оценки выше.
+                По этому посту прогноз модели не рассчитан. Можно ориентироваться на относительные оценки выше.
               </span>
             )}
           </div>
@@ -164,7 +164,22 @@ const PostCard = ({ post, showPlatformField, onEdit, onPublish }) => {
             rel="noopener noreferrer"
             className="post-published-link"
           >
-            🔗 {normalizedPost.post_url}
+            <svg
+              className="post-published-icon"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+            </svg>
+            <span>{normalizedPost.post_url}</span>
           </a>
         </div>
       )}
@@ -172,7 +187,22 @@ const PostCard = ({ post, showPlatformField, onEdit, onPublish }) => {
       {actualKpi && (
         <div className="post-actual-kpi-block">
           <div className="post-actual-kpi-title">
-            <span>📊 Фактическая статистика поста (Факт vs Прогноз ML):</span>
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <line x1="18" y1="20" x2="18" y2="10" />
+              <line x1="12" y1="20" x2="12" y2="4" />
+              <line x1="6" y1="20" x2="6" y2="14" />
+            </svg>
+            <span>Фактическая статистика поста (Факт vs Прогноз):</span>
           </div>
           <div className="post-actual-kpi-grid">
             <div className="post-actual-kpi-item">
@@ -208,7 +238,7 @@ const PostCard = ({ post, showPlatformField, onEdit, onPublish }) => {
             </div>
             {actualKpi.er_percent != null && (
               <div className="post-actual-kpi-item">
-                <span className="post-actual-kpi-name">Факт ER</span>
+                <span className="post-actual-kpi-name">Вовлечённость</span>
                 <span className="post-actual-kpi-val">{actualKpi.er_percent}%</span>
               </div>
             )}
@@ -224,7 +254,22 @@ const PostCard = ({ post, showPlatformField, onEdit, onPublish }) => {
             onClick={onPublish}
             title="Опубликовать этот пост в соцсеть прямо сейчас"
           >
-            🚀 Опубликовать сейчас
+            <svg
+              className="publish-btn-icon"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <line x1="22" y1="2" x2="11" y2="13" />
+              <polygon points="22 2 15 22 11 13 2 9 22 2" />
+            </svg>
+            <span>Опубликовать сейчас</span>
           </button>
         )}
         {onEdit && (

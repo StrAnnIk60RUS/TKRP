@@ -66,10 +66,20 @@ function missingCookieEnvName(url) {
 function redactSecrets(text) {
   if (typeof text !== 'string') return text;
   let out = text;
-  for (const name of ['VK_COOKIE', 'LINKEDIN_COOKIE', 'INSTAGRAM_COOKIE']) {
+  for (const name of [
+    'VK_COOKIE',
+    'LINKEDIN_COOKIE',
+    'INSTAGRAM_COOKIE',
+    'VK_API_TOKEN',
+    'APIFY_API_TOKEN',
+    'OPENROUTER_API_KEY',
+    'SERVER_API_KEY',
+    'ADMIN_API_KEY'
+  ]) {
     const value = String(process.env[name] || '');
     if (value.length > 0) out = out.replaceAll(value, '[REDACTED]');
   }
+  out = out.replace(/(access_token|token|api_key|key)=([^&\s"']+)/gi, '$1=[REDACTED]');
   return out;
 }
 
@@ -185,10 +195,14 @@ function mapPostsToCompetitorsData(url, posts) {
   };
 }
 
+let parserJobSeq = 0;
+
 async function runPythonParser(url) {
   return enqueueParserExecution(async () => {
     ensureParserRuntimeDir();
-    const outputPath = path.join(PARSER_RUNTIME_DIR, `posts-${Date.now()}.json`);
+    parserJobSeq += 1;
+    const uniqueSuffix = `${Date.now()}-${parserJobSeq}-${Math.random().toString(36).slice(2, 8)}`;
+    const outputPath = path.join(PARSER_RUNTIME_DIR, `posts-${uniqueSuffix}.json`);
     const result = await runPythonProcess({
       scriptPath: PYTHON_SCRIPT_PATH,
       cwd: PARSER_DIR,

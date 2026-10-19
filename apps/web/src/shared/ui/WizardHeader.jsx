@@ -1,13 +1,19 @@
 import React from 'react'
 
 const statusMeta = {
-  pending: { label: 'Пусто', className: 'is-pending' },
-  in_progress: { label: 'В процессе', className: 'is-in-progress' },
+  pending: { label: 'Ожидает', className: 'is-pending' },
+  in_progress: { label: 'В работе', className: 'is-in-progress' },
   completed: { label: 'Готово', className: 'is-completed' },
-  attention: { label: 'Нужно проверить', className: 'is-attention' }
+  attention: { label: 'Требует внимания', className: 'is-attention' }
 }
 
-const WizardHeader = ({ currentStep, wizardSteps, onStepClick, stepStatuses = [] }) => {
+const WizardHeader = ({
+  currentStep,
+  wizardSteps,
+  onStepClick,
+  stepStatuses = [],
+  stepMeta = null
+}) => {
   const wizardProgress = (currentStep / wizardSteps.length) * 100
   const currentStatus = statusMeta[stepStatuses[currentStep - 1]] || statusMeta.pending
   const handleStepKeyDown = (event, stepNumber) => {
@@ -44,18 +50,30 @@ const WizardHeader = ({ currentStep, wizardSteps, onStepClick, stepStatuses = []
               className={`wizard-step-tab ${isActive ? 'active' : ''} ${status.className}`}
               onClick={() => onStepClick(stepNumber)}
               onKeyDown={(event) => handleStepKeyDown(event, stepNumber)}
-              title={`Перейти к этапу: ${stepName}`}
+              title={`Шаг ${stepNumber}: ${stepName} (${status.label})`}
               aria-label={`Шаг ${stepNumber}: ${stepName}`}
               aria-current={isActive ? 'step' : undefined}
             >
-              <span className="wizard-step-number">{stepNumber}.</span> {stepName}
+              {stepNumber}. {stepName}
             </button>
           )
         })}
       </div>
+
+      {stepMeta && (
+        <div className="ux-step-guide-banner" role="region" aria-label="Подсказка по текущему шагу">
+          <div className="ux-step-guide-main">
+            <div className="ux-step-guide-kicker">ЧТО ДЕЛАТЬ СЕЙЧАС</div>
+            <h2 className="ux-step-guide-title">{stepMeta.title}</h2>
+            <p className="ux-step-guide-goal">
+              {stepMeta.goal}
+              {stepMeta.nextHint ? ` ${stepMeta.nextHint}` : ''}
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
 export default WizardHeader
-

@@ -19,20 +19,24 @@ function matchesAdminApiKey(req) {
 }
 
 export async function requireSessionOrAdminApiKey(req, res, next) {
-  if (matchesAdminApiKey(req)) {
-    next();
-    return;
-  }
+  try {
+    if (matchesAdminApiKey(req)) {
+      next();
+      return;
+    }
 
-  const token = readBearerToken(req);
-  if (token && await resolveSession(token)) {
-    next();
-    return;
-  }
+    const token = readBearerToken(req);
+    if (token && await resolveSession(token)) {
+      next();
+      return;
+    }
 
-  res.status(401).json({
-    success: false,
-    error: 'Authentication required. Please log in or register.',
-    request_id: req.requestId
-  });
+    res.status(401).json({
+      success: false,
+      error: 'Authentication required. Please log in or register.',
+      request_id: req.requestId
+    });
+  } catch (error) {
+    next(error);
+  }
 }

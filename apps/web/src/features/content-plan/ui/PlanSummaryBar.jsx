@@ -144,7 +144,7 @@ const PlanSummaryBar = ({ summary, optimizationMeta, planExpectedKpi = null }) =
         </strong>
         {optimizationMeta ? (
           <>
-            <span className="plan-summary-metric-meta">Прогноз метрик плана (ML):</span>
+            <span className="plan-summary-metric-meta">Прогноз метрик плана:</span>
             <ul className="plan-summary-metric-meta-list">
               {predictedMetrics.map((metric) => (
                 <li key={metric.label}>

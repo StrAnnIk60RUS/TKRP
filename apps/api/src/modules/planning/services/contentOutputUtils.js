@@ -106,12 +106,35 @@ const GENERIC_TOPIC_RE =
   /^(?:пост\s+про|материал\s+про|тема\s+про|inform:|educate:|engage:|convert:|retain:|brand\s*building:)/iu;
 
 const GENERIC_SUMMARY_RE =
-  /(?:показываем\s+реальный\s+рабочий\s+сценарий|ставим\s+.+\s+в\s+связку\s+с\s+kpi,\s*рисками\s+и\s+зрелостью\s+процессов|разбираем\s+ограничения\s+внедрения,\s*роли\s+команды\s+и\s+критерии\s+готовности\s+к\s+пилоту)/iu;
+  /(?:показываем\s+реальный\s+рабочий\s+сценарий|ставим\s+.+\s+в\s+связку\s+с\s+kpi,\s*рисками\s+и\s+зрелостью\s+процессов|разбираем\s+ограничения\s+внедрения,\s*роли\s+команды\s+и\s+критерии\s+готовности\s+к\s+пилоту|достаточно\s+одного\s+рабочего\s+эпизода,\s+а\s+не\s+полного\s+описания\s+продукта|аудитория\s+слота\s*:|без\s+пересказа\s+остальных\s+публикаций\s+плана)/iu;
 
 const DOMAIN_SIGNAL_RE =
   /rfid|wi[\s-]?fi|веб[\s-]?интерфейс|регистратор|датчик|термоцикл|технадзор|паспорт(?:ов)?\s+шв(?:а|ов)|калибровк|метролог|сертификац|околошовн|шов|сварк|бру|допуск|аналитик|отчет|пилот/u;
 
 const WORD_TOKEN_RE = /[a-zа-я0-9]+/giu;
+
+const RU_CORE_SUFFIX_RE =
+  /(?:ами|ями|ого|его|ому|ему|ыми|ими|ость|ости|ение|ения|ание|ания|ться|тся|ешь|ете|ают|яют|ите|ать|ять|ить|еть|ов|ев|ей|ам|ям|ах|ях|ом|ем|ою|ею|ую|юю|ый|ий|ой|ая|яя|ое|ее|ые|ие|а|я|о|е|ы|и|у|ю|ь)$/i;
+
+function stemCoreToken(token) {
+  const normalized = String(token || '').toLowerCase().replace(/ё/g, 'е').trim();
+  if (normalized.length <= 4) return normalized;
+  const stripped = normalized.replace(RU_CORE_SUFFIX_RE, '');
+  return stripped.length >= 3 ? stripped : normalized.slice(0, 4);
+}
+
+function coreTokensMatch(left, right) {
+  if (!left || !right) return false;
+  if (left === right) return true;
+  const sLeft = stemCoreToken(left);
+  const sRight = stemCoreToken(right);
+  if (sLeft === sRight) return true;
+  const minLen = Math.min(sLeft.length, sRight.length);
+  if (minLen >= 5) {
+    return sLeft.slice(0, 5) === sRight.slice(0, 5);
+  }
+  return false;
+}
 
 function normalizeWhitespace(value) {
   return String(value || '').replace(/\s+/g, ' ').trim();
@@ -120,6 +143,7 @@ function normalizeWhitespace(value) {
 function tokenizeCoreTerms(value) {
   return normalizeWhitespace(value)
     .toLowerCase()
+    .replace(/ё/g, 'е')
     .match(WORD_TOKEN_RE)
     ?.filter((token) => token.length >= 4) || [];
 }
@@ -172,10 +196,12 @@ function countDomainSignals(text = '') {
 }
 
 function textOverlapRatio(text = '', anchorTerms = []) {
-  const textTokens = new Set(tokenizeCoreTerms(text));
-  const anchors = uniqueTokens(anchorTerms);
+  const textTokens = uniqueTokens(tokenizeCoreTerms(text));
+  const anchors = uniqueTokens(anchorTerms.map((t) => String(t || '').toLowerCase().replace(/ё/g, 'е')));
   if (!anchors.length) return 0;
-  const matched = anchors.filter((token) => textTokens.has(token)).length;
+  const matched = anchors.filter((anchor) =>
+    textTokens.some((textToken) => coreTokensMatch(anchor, textToken))
+  ).length;
   return matched / anchors.length;
 }
 

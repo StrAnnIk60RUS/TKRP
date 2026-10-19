@@ -216,6 +216,7 @@ export async function getAggregatedOntology(requestOptions = {}) {
 export async function exportOntologyToExcel(requestOptions = {}) {
   const response = await safeFetch(`${API_URL}/api/precedents/ontology/export`, {
     method: 'GET',
+    headers: authHeaders(),
     signal: requestOptions.signal
   })
   if (!response.ok) {
@@ -240,6 +241,7 @@ export async function exportOntologyToExcel(requestOptions = {}) {
 export async function exportOntologyToTurtle(requestOptions = {}) {
   const response = await safeFetch(`${API_URL}/api/precedents/ontology/export/turtle`, {
     method: 'GET',
+    headers: authHeaders(),
     signal: requestOptions.signal
   })
   if (!response.ok) {
@@ -436,7 +438,17 @@ export async function generatePublicationMedia(payload, requestOptions = {}) {
 }
 
 export async function fetchPlanMediaBlob(urlPath, requestOptions = {}) {
-  const response = await safeFetch(`${API_URL}${urlPath}`, {
+  const safePath = typeof urlPath === 'string' ? urlPath.trim() : ''
+  if (
+    !safePath.startsWith('/api/plan/media/files/') ||
+    safePath.startsWith('//') ||
+    safePath.includes('..') ||
+    safePath.includes('@') ||
+    safePath.includes('\\')
+  ) {
+    throw new Error('Недопустимый путь к медиафайлу плана')
+  }
+  const response = await safeFetch(`${API_URL}${safePath}`, {
     method: 'GET',
     headers: authHeaders(),
     signal: requestOptions.signal
@@ -456,3 +468,15 @@ export async function deletePlanSnapshotOnServer(token, requestOptions = {}) {
     throw error
   }
 }
+
+export async function predictPostMetricsLive(publications, requestOptions = {}) {
+  return await fetchJsonOrThrow(`${API_URL}/api/ml/relevance/predict`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ publications }),
+    signal: requestOptions.signal
+  })
+}
+

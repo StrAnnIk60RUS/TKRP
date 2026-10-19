@@ -1,9 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import {
   applyFitnessRollbackGuard,
-  mergePublicationsRewrite
+  mergePublicationsRewrite,
+  PROMPT_PATH
 } from '../src/modules/planning/services/planDiversityLlmPass.js';
+
+test('PROMPT_PATH points to an existing and readable text file', () => {
+  assert.ok(fs.existsSync(PROMPT_PATH), `Prompt file does not exist at ${PROMPT_PATH}`);
+  const content = fs.readFileSync(PROMPT_PATH, 'utf-8');
+  assert.ok(content.length > 50);
+});
 
 test('mergePublicationsRewrite keeps originals when rewrite list is empty', () => {
   const original = [{ publication_id: 'p1', summary: 'same' }];

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import AutoResizeTextarea from '../../../shared/ui/AutoResizeTextarea'
-import { generatePublicationMedia } from '../../../shared/api/enrichmentService'
+import { generatePublicationMedia, predictPostMetricsLive } from '../../../shared/api/enrichmentService'
 import '../../../shared/ui/PreviewModal.css'
 import './editorModals.css'
 import {
@@ -15,7 +15,8 @@ import {
   normalizePlatform,
   normalizePublicationForUi,
   normalizeTone,
-  publicationFieldOptions
+  publicationFieldOptions,
+  sanitizeExternalHttpUrl
 } from '../lib/publicationPresentation'
 import PostMediaBlock from './PostMediaBlock'
 
@@ -59,7 +60,10 @@ const PostEditModal = ({ publication, onSave, onCancel, platforms, onToast }) =>
   const [draft, setDraft] = useState(() => buildInitialDraft(publication))
   const [error, setError] = useState('')
   const [generating, setGenerating] = useState(false)
+  const [liveKpi, setLiveKpi] = useState(() => publication?.expected_kpi || null)
+  const [rescoring, setRescoring] = useState(false)
   const generateAbortRef = useRef(null)
+  const rescoreAbortRef = useRef(null)
 
   const title = useMemo(() => {
     const topic = coerceString(publication?.topic || '').trim()
@@ -68,12 +72,72 @@ const PostEditModal = ({ publication, onSave, onCancel, platforms, onToast }) =>
 
   useEffect(() => {
     setDraft(buildInitialDraft(publication))
+    setLiveKpi(publication?.expected_kpi || null)
     setError('')
     setGenerating(false)
     generateAbortRef.current?.abort()
+    rescoreAbortRef.current?.abort()
   }, [publication])
 
-  useEffect(() => () => generateAbortRef.current?.abort(), [])
+  useEffect(
+    () => () => {
+      generateAbortRef.current?.abort()
+      rescoreAbortRef.current?.abort()
+    },
+    []
+  )
+
+  useEffect(() => {
+    const topic = draft.topic.trim()
+    const summary = draft.summary.trim()
+    if (!topic || !summary) return undefined
+
+    const timer = setTimeout(async () => {
+      rescoreAbortRef.current?.abort()
+      const controller = new AbortController()
+      rescoreAbortRef.current = controller
+      setRescoring(true)
+      try {
+        const candidatePub = {
+          ...(publication || {}),
+          planned_date: draft.planned_date,
+          topic,
+          title: topic,
+          platform: normalizePlatform(draft.platform),
+          format: normalizeFormat(draft.format),
+          objective: normalizeObjective(draft.objective),
+          tone: normalizeTone(draft.tone.trim(), 'expert'),
+          summary,
+          key_message: draft.key_message.trim(),
+          cta: draft.cta.trim()
+        }
+        const res = await predictPostMetricsLive([candidatePub], { signal: controller.signal })
+        const updated = res?.updatedPublications?.[0]
+        if (updated?.expected_kpi) {
+          setLiveKpi((prev) => ({ ...(prev || {}), ...updated.expected_kpi }))
+        }
+      } catch (err) {
+        if (err?.name !== 'AbortError') {
+          /* live rescoring is non-blocking when offline */
+        }
+      } finally {
+        if (rescoreAbortRef.current === controller) setRescoring(false)
+      }
+    }, 450)
+
+    return () => clearTimeout(timer)
+  }, [
+    draft.planned_date,
+    draft.topic,
+    draft.platform,
+    draft.format,
+    draft.objective,
+    draft.tone,
+    draft.summary,
+    draft.key_message,
+    draft.cta,
+    publication
+  ])
 
   const setField = (name, value) => {
     setDraft((prev) => ({
@@ -95,7 +159,8 @@ const PostEditModal = ({ publication, onSave, onCancel, platforms, onToast }) =>
       summary: draft.summary.trim(),
       key_message: draft.key_message.trim(),
       cta: draft.cta.trim(),
-      media_prompt: draft.media_prompt.trim()
+      media_prompt: draft.media_prompt.trim(),
+      post_url: draft.post_url.trim()
     }
 
     if (!cleaned.planned_date) return 'Укажите дату публикации'
@@ -108,6 +173,9 @@ const PostEditModal = ({ publication, onSave, onCancel, platforms, onToast }) =>
     if (!publicationFieldOptions.tones.includes(cleaned.tone)) return 'Укажите тон'
     if (!cleaned.summary) return 'Укажите текст поста'
     if (!cleaned.key_message) return 'Укажите ключевое сообщение'
+    if (cleaned.post_url && !sanitizeExternalHttpUrl(cleaned.post_url)) {
+      return 'Ссылка на публикацию должна начинаться с http:// или https://'
+    }
     if (requireMediaPrompt && getMediaKind(cleaned.format) && !cleaned.media_prompt) {
       return 'Укажите промпт для изображения или видео'
     }
@@ -119,6 +187,7 @@ const PostEditModal = ({ publication, onSave, onCancel, platforms, onToast }) =>
     const format = normalizeFormat(draft.format)
     const kind = getMediaKind(format)
     const media = kind ? mediaForDraft(format, mediaOverride === undefined ? draft.media : mediaOverride) : null
+    const safeUrl = draft.post_url ? sanitizeExternalHttpUrl(draft.post_url) : null
     return {
       planned_date: draft.planned_date,
       topic: draft.topic.trim(),
@@ -132,8 +201,9 @@ const PostEditModal = ({ publication, onSave, onCancel, platforms, onToast }) =>
       media_prompt: kind ? draft.media_prompt.trim() : '',
       media,
       status: draft.status || 'draft',
-      post_url: draft.post_url ? draft.post_url.trim() : null,
-      actual_kpi: draft.actual_kpi || null
+      post_url: safeUrl,
+      actual_kpi: draft.actual_kpi || null,
+      ...(liveKpi ? { expected_kpi: liveKpi } : {})
     }
   }
 
@@ -177,7 +247,7 @@ const PostEditModal = ({ publication, onSave, onCancel, platforms, onToast }) =>
         { signal: controller.signal }
       )
       setDraft((prev) => ({ ...prev, media }))
-      const saved = await onSave(buildPayload(media))
+      const saved = await onSave(buildPayload(media), { keepOpen: true })
       if (saved === false) {
         const saveErr = 'Медиа готово, но сохранить пост не удалось'
         setError(saveErr)
@@ -272,9 +342,9 @@ const PostEditModal = ({ publication, onSave, onCancel, platforms, onToast }) =>
                   value={draft.status}
                   onChange={(e) => setField('status', e.target.value)}
                 >
-                  <option value="draft">📝 Черновик</option>
-                  <option value="scheduled">⏰ Запланирован автопостинг</option>
-                  <option value="published">🟢 Опубликован</option>
+                  <option value="draft">Черновик</option>
+                  <option value="scheduled">Запланирован автопостинг</option>
+                  <option value="published">Опубликован</option>
                 </select>
               </label>
 
@@ -383,6 +453,43 @@ const PostEditModal = ({ publication, onSave, onCancel, platforms, onToast }) =>
                     </p>
                   )}
                   <PostMediaBlock media={mediaForDraft(draft.format, draft.media)} />
+                </div>
+              )}
+
+              {liveKpi && (
+                <div className="editor-field editor-field-wide">
+                  <strong>
+                    Live-прогноз ML-модели{' '}
+                    {rescoring ? '(пересчёт…)' : ''}
+                  </strong>
+                  <p className="editor-hint">
+                    Вовлечённость:{' '}
+                    <strong>{((Number(liveKpi.engagement_rate) || 0) * 100).toFixed(1)}%</strong>
+                    {(liveKpi.ml_predicted_likes != null || liveKpi.predicted_likes != null) && (
+                      <>
+                        {' · '}Лайки:{' '}
+                        <strong>
+                          {Math.round(Number(liveKpi.ml_predicted_likes ?? liveKpi.predicted_likes) || 0)}
+                        </strong>
+                      </>
+                    )}
+                    {(liveKpi.ml_predicted_shares != null || liveKpi.predicted_shares != null) && (
+                      <>
+                        {' · '}Репосты:{' '}
+                        <strong>
+                          {Math.round(Number(liveKpi.ml_predicted_shares ?? liveKpi.predicted_shares) || 0)}
+                        </strong>
+                      </>
+                    )}
+                    {(liveKpi.ml_predicted_views != null || liveKpi.predicted_views != null) && (
+                      <>
+                        {' · '}Просмотры:{' '}
+                        <strong>
+                          {Math.round(Number(liveKpi.ml_predicted_views ?? liveKpi.predicted_views) || 0)}
+                        </strong>
+                      </>
+                    )}
+                  </p>
                 </div>
               )}
             </div>

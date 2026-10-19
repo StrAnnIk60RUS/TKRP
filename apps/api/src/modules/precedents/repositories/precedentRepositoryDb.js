@@ -1,11 +1,13 @@
 import {
   cosineSimilarity,
   embedTexts,
+  getEmbeddingConfig,
   normalizeCosineToUnitInterval,
   buildVectorLiteral
 } from '../services/embeddingService.js';
 import {
   buildRagCacheKey,
+  clearRagQueryCache,
   getCachedRagSearch,
   setCachedRagSearch,
   isRagCacheEnabled
@@ -375,9 +377,12 @@ function scheduleBackgroundReembed(reason) {
 async function countStaleEmbeddings(modelVersion) {
   const sql =
     'SELECT (SELECT COUNT(1) FROM publications WHERE embedding IS NOT NULL AND COALESCE(embedding_model_version, embedding_model, \'\') <> $1) + ' +
-    '(SELECT COUNT(1) FROM content_plans WHERE embedding IS NOT NULL AND COALESCE(embedding_model_version, embedding_model, \'\') <> $1)';
+    '(SELECT COUNT(1) FROM content_plans WHERE embedding IS NOT NULL AND COALESCE(embedding_model_version, embedding_model, \'\') <> $1) AS stale_count';
   const result = await query(sql, [modelVersion]);
-  return Number(result.rows[0][0]) || 0;
+  const row = result?.rows?.[0];
+  if (!row) return 0;
+  const rawCount = Array.isArray(row) ? row[0] : (row.stale_count ?? Object.values(row)[0]);
+  return Number(rawCount) || 0;
 }
 
 /**
@@ -445,6 +450,7 @@ export async function reembedPrecedentsWithWrongDimension() {
     };
   });
 
+  clearRagQueryCache();
   return result;
 }
 
@@ -581,6 +587,10 @@ export async function persistPrecedents(enrichedData, options = {}) {
       persistence.updated_content_plans >
     0;
 
+  if (hasChanges) {
+    clearRagQueryCache();
+  }
+
   if (autoTrainEnabled && hasChanges) {
     try {
       await trainRelevanceModel();
@@ -628,12 +638,20 @@ export async function searchPrecedents(searchQuery, options = {}) {
   const limit = Math.max(1, Math.min(Number(options.limit) || 5, 20));
 
   try {
+    const embeddingConfig = getEmbeddingConfig();
+    const configuredModelVersion = embeddingConfig.modelVersion || embeddingConfig.model;
+    const preCacheKey = buildRagCacheKey(normalizedQuery, options, configuredModelVersion, 'pg');
+    if (isRagCacheEnabled()) {
+      const cached = getCachedRagSearch(preCacheKey);
+      if (cached) return cached;
+    }
+
     const queryEmbeddingResult = await embedTexts([normalizedQuery]);
     const queryEmbedding = queryEmbeddingResult.embeddings[0];
     const modelVersion = queryEmbeddingResult.modelVersion || queryEmbeddingResult.model;
 
     const cacheKey = buildRagCacheKey(normalizedQuery, options, modelVersion, 'pg');
-    if (isRagCacheEnabled()) {
+    if (cacheKey !== preCacheKey && isRagCacheEnabled()) {
       const cached = getCachedRagSearch(cacheKey);
       if (cached) return cached;
     }

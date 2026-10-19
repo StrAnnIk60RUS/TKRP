@@ -3,9 +3,23 @@
  * @module contentPlanExport
  */
 
-import * as XLSX from 'xlsx'
-import pdfMake from 'pdfmake/build/pdfmake'
-import pdfFonts from 'pdfmake/build/vfs_fonts'
+let cachedPdfMake = null
+
+async function loadPdfMake() {
+  if (cachedPdfMake) return cachedPdfMake
+  const [pdfMakeMod, pdfFontsMod] = await Promise.all([
+    import('pdfmake/build/pdfmake'),
+    import('pdfmake/build/vfs_fonts')
+  ])
+  const pdfMake = pdfMakeMod.default || pdfMakeMod
+  const pdfFonts = pdfFontsMod.default || pdfFontsMod
+  const vfsPayload = pdfFonts?.pdfMake?.vfs || pdfFonts?.vfs
+  if (vfsPayload) {
+    pdfMake.vfs = vfsPayload
+  }
+  cachedPdfMake = pdfMake
+  return pdfMake
+}
 
 const formatPercent = (v) => ((Number(v) || 0) * 100).toFixed(1) + '%'
 
@@ -24,11 +38,6 @@ function sanitizeCellForExport(value) {
     .replace(/\s+/g, ' ')
     .trim()
   return s || '—'
-}
-
-const vfsPayload = pdfFonts?.pdfMake?.vfs || pdfFonts?.vfs
-if (vfsPayload) {
-  pdfMake.vfs = vfsPayload
 }
 
 /**
@@ -98,7 +107,15 @@ function buildStage2PublicationResolver(optimizationMeta = null) {
   return (publication, index) => {
     const publicationId =
       typeof publication?.publication_id === 'string' ? publication.publication_id.trim() : ''
-    return byId.get(publicationId) || stage2Publications[index] || null
+    if (publicationId && byId.has(publicationId)) {
+      return byId.get(publicationId)
+    }
+    const resolvedIndex = Number.isInteger(index)
+      ? index
+      : Number.isInteger(publication?.__global_index)
+        ? publication.__global_index
+        : null
+    return resolvedIndex != null ? stage2Publications[resolvedIndex] || null : null
   }
 }
 
@@ -130,15 +147,15 @@ function buildDetailedPostRowsForMonth(month, optimizationMeta = null) {
     { text: 'Вовлеч.', style: 'detailHeaderCell' },
     { text: 'Конверсия', style: 'detailHeaderCell' },
     { text: 'Охват', style: 'detailHeaderCell' },
-    { text: 'ML', style: 'detailHeaderCell' }
+    { text: 'Прогноз', style: 'detailHeaderCell' }
   ]]
   const resolveStage2 = buildStage2PublicationResolver(optimizationMeta)
   const detailed = month.days
     .flatMap((day) =>
-      (Array.isArray(day?.publications) ? day.publications : []).map((post, index) => ({
+      (Array.isArray(day?.publications) ? day.publications : []).map((post) => ({
         date: day.date,
         post,
-        stage2: resolveStage2(post, index)
+        stage2: resolveStage2(post, post?.__global_index)
       }))
     )
     .sort((a, b) => String(a.date).localeCompare(String(b.date)))
@@ -238,11 +255,11 @@ function groupPublicationsByMonthAndDay(contentPlan) {
           )
         ).sort()
 
-  const byDate = pubs.reduce((acc, pub) => {
+  const byDate = pubs.reduce((acc, pub, globalIdx) => {
     const date = typeof pub?.planned_date === 'string' ? pub.planned_date.slice(0, 10) : null
     if (!date) return acc
     if (!acc[date]) acc[date] = []
-    acc[date].push(pub)
+    acc[date].push({ ...pub, __global_index: globalIdx })
     return acc
   }, {})
 
@@ -366,12 +383,13 @@ function buildPdfDayCell(day, monthKey, options = {}) {
   const keyDateLabel = getDayKeyDateLabel(keyDates, day?.date || '')
   const all = Array.isArray(day?.publications) ? day.publications : []
   const resolveStage2 = buildStage2PublicationResolver(optimizationMeta)
-  const allWithMatches = all.map((item, index) => ({
+  const allWithMatches = all.map((item) => ({
     ...item,
-    __stage2_match: resolveStage2(item, index)
+    __stage2_match: resolveStage2(item, item?.__global_index)
   }))
   const vkPosts = allWithMatches.filter((item) => String(item?.platform || '').toLowerCase() === 'vk')
   const linkedInPosts = allWithMatches.filter((item) => String(item?.platform || '').toLowerCase() === 'linkedin')
+  const telegramPosts = allWithMatches.filter((item) => String(item?.platform || '').toLowerCase() === 'telegram')
   const instagramPosts = allWithMatches.filter((item) => String(item?.platform || '').toLowerCase() === 'instagram')
 
   const header = {
@@ -389,6 +407,9 @@ function buildPdfDayCell(day, monthKey, options = {}) {
   const lanes = [
     buildPdfLane(vkPosts, 'VK', { maxPostsPerLane, maxTopicLen, compact }),
     buildPdfLane(linkedInPosts, 'LinkedIn', { maxPostsPerLane, maxTopicLen, compact }),
+    ...(telegramPosts.length
+      ? [buildPdfLane(telegramPosts, 'Telegram', { maxPostsPerLane, maxTopicLen, compact })]
+      : []),
     ...(instagramPosts.length
       ? [buildPdfLane(instagramPosts, 'Instagram', { maxPostsPerLane, maxTopicLen, compact })]
       : [])
@@ -451,7 +472,8 @@ function buildPlanMlSummary(contentPlan, optimizationMeta = null) {
  * @param {Object} contentPlan — план с publications
  * @param {string} [filename] — имя файла без расширения
  */
-export function exportToExcel(contentPlan, filename, options = {}) {
+export async function exportToExcel(contentPlan, filename, options = {}) {
+  const XLSX = await import('xlsx')
   const optimizationMeta = options?.optimizationMeta || null
   const pubs = Array.isArray(contentPlan?.publications) ? contentPlan.publications : []
   const resolveStage2 = buildStage2PublicationResolver(optimizationMeta)
@@ -488,10 +510,10 @@ export function exportToExcel(contentPlan, filename, options = {}) {
         ['Платформы', Array.isArray(contentPlan.platforms) ? contentPlan.platforms.join(', ').toUpperCase() : '—'],
         ['Всего публикаций', String(pubs.length)],
         ['', ''],
-        ['ML метрики плана', ''],
+        ['Прогнозные метрики плана', ''],
         ['Суммарный прогноз лайков (по постам)', String(Math.round(mlSummary.totalMlLikes || 0))],
-        ['Суммарные ML репосты (по постам)', String(Math.round(mlSummary.totalMlShares || 0))],
-        ['Суммарные ML просмотры (по постам)', String(Math.round(mlSummary.totalMlViews || 0))],
+        ['Суммарные прогнозные репосты (по постам)', String(Math.round(mlSummary.totalMlShares || 0))],
+        ['Суммарные прогнозные просмотры (по постам)', String(Math.round(mlSummary.totalMlViews || 0))],
         ['Средняя вовлечённость (по постам)', formatPercent(mlSummary.avgEngagement)],
         ['Средняя конверсия (по постам)', formatPercent(mlSummary.avgConversion)],
         ['Средний охват (по постам)', formatPercent(mlSummary.avgReach)]
@@ -502,10 +524,10 @@ export function exportToExcel(contentPlan, filename, options = {}) {
           ['Название плана', displayName],
           ['Всего публикаций', String(pubs.length)],
           ['', ''],
-          ['ML метрики плана', ''],
+          ['Прогнозные метрики плана', ''],
           ['Суммарный прогноз лайков (по постам)', String(Math.round(mlSummary.totalMlLikes || 0))],
-          ['Суммарные ML репосты (по постам)', String(Math.round(mlSummary.totalMlShares || 0))],
-          ['Суммарные ML просмотры (по постам)', String(Math.round(mlSummary.totalMlViews || 0))],
+          ['Суммарные прогнозные репосты (по постам)', String(Math.round(mlSummary.totalMlShares || 0))],
+          ['Суммарные прогнозные просмотры (по постам)', String(Math.round(mlSummary.totalMlViews || 0))],
           ['Средняя вовлечённость (по постам)', formatPercent(mlSummary.avgEngagement)],
           ['Средняя конверсия (по постам)', formatPercent(mlSummary.avgConversion)],
           ['Средний охват (по постам)', formatPercent(mlSummary.avgReach)]
@@ -514,10 +536,10 @@ export function exportToExcel(contentPlan, filename, options = {}) {
           ['Параметр', 'Значение'],
           ['Всего публикаций', String(pubs.length)],
           ['', ''],
-          ['ML метрики плана', ''],
+          ['Прогнозные метрики плана', ''],
           ['Суммарный прогноз лайков (по постам)', String(Math.round(mlSummary.totalMlLikes || 0))],
-          ['Суммарные ML репосты (по постам)', String(Math.round(mlSummary.totalMlShares || 0))],
-          ['Суммарные ML просмотры (по постам)', String(Math.round(mlSummary.totalMlViews || 0))],
+          ['Суммарные прогнозные репосты (по постам)', String(Math.round(mlSummary.totalMlShares || 0))],
+          ['Суммарные прогнозные просмотры (по постам)', String(Math.round(mlSummary.totalMlViews || 0))],
           ['Средняя вовлечённость (по постам)', formatPercent(mlSummary.avgEngagement)],
           ['Средняя конверсия (по постам)', formatPercent(mlSummary.avgConversion)],
           ['Средний охват (по постам)', formatPercent(mlSummary.avgReach)]
@@ -536,6 +558,7 @@ export function exportToExcel(contentPlan, filename, options = {}) {
  * @param {Object} [options] — { filename?, isOptimized? }
  */
 export async function exportToPdf(contentPlan, options = {}) {
+  const pdfMake = await loadPdfMake()
   const { filename, isOptimized, optimizationMeta = null } =
     typeof options === 'string' ? { filename: options } : options
   const pubs = Array.isArray(contentPlan?.publications) ? contentPlan.publications : []

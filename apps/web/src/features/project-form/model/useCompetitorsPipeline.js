@@ -4,6 +4,13 @@ import {
   checkEnrichmentServer,
   parseCompetitorByUrl
 } from '../../../shared/api/enrichmentService';
+import {
+  buildEnrichmentDownloadPayload,
+  buildEnrichmentToastMessages,
+  canEnrichCompetitors,
+  isPostAlreadyEnriched,
+  mergeParsedCompetitorsFromUrls
+} from '../lib/competitorsPipelineUtils';
 
 export function useCompetitorsPipeline(addToast, options = {}) {
   const { isDeveloper = true } = options
@@ -32,73 +39,6 @@ export function useCompetitorsPipeline(addToast, options = {}) {
     addToast('Данные конкурентов удалены', 'info');
   };
 
-  const buildEnrichmentDownloadPayload = ({
-    resultData,
-    errorData,
-    competitorsData: rawCompetitorsData,
-    competitorsFileName: currentCompetitorsFileName
-  }) => {
-    let dataToDownload;
-    let filename;
-
-    if (resultData && resultData.enriched_data) {
-      dataToDownload = {
-        ...resultData.enriched_data,
-        _metadata: {
-          enriched_at: resultData.metadata?.enriched_at || new Date().toISOString(),
-          model: 'llm',
-          usage: resultData.usage,
-          success: true,
-          parse_successful: true,
-          partial_enrichment: Boolean(resultData.metadata?.partial_enrichment),
-          parse_error: resultData.parse_error || null
-        }
-      };
-      filename =
-        currentCompetitorsFileName?.replace('.json', '_enriched.json') ||
-        'competitors_data_enriched.json';
-    } else if (resultData && resultData.raw_response) {
-      dataToDownload = {
-        _warning: 'Ответ модели не удалось разобрать, но данные сохранены для проверки',
-        _parse_error: resultData.parse_error,
-        _raw_response_from_llm: resultData.raw_response,
-        _usage: resultData.usage,
-        _metadata: resultData.metadata,
-        _original_data: rawCompetitorsData,
-        _timestamp: new Date().toISOString()
-      };
-      filename =
-        currentCompetitorsFileName?.replace('.json', '_enriched_INVALID_JSON.json') ||
-        'competitors_data_enriched_INVALID_JSON.json';
-    } else if (resultData) {
-      dataToDownload = {
-        _error: 'Данные некорректные или неполные',
-        _raw_response: resultData,
-        _original_data: rawCompetitorsData,
-        _timestamp: new Date().toISOString()
-      };
-      filename =
-        currentCompetitorsFileName?.replace('.json', '_enriched_ERROR.json') ||
-        'competitors_data_enriched_ERROR.json';
-    } else if (errorData) {
-      dataToDownload = errorData;
-      filename =
-        currentCompetitorsFileName?.replace('.json', '_enrichment_ERROR.json') ||
-        'competitors_data_enrichment_ERROR.json';
-    } else {
-      dataToDownload = {
-        _error: 'Неизвестная ошибка',
-        _original_data: rawCompetitorsData,
-        _timestamp: new Date().toISOString()
-      };
-      filename =
-        currentCompetitorsFileName?.replace('.json', '_enrichment_ERROR.json') ||
-        'competitors_data_enrichment_ERROR.json';
-    }
-
-    return { dataToDownload, filename };
-  };
-
   const downloadJsonFile = (dataToDownload, filename, onToast) => {
     const jsonString = JSON.stringify(dataToDownload, null, 2);
     const blob = new Blob([jsonString], { type: 'application/json' });
@@ -121,11 +61,7 @@ export function useCompetitorsPipeline(addToast, options = {}) {
     }
 
     const firstPost = competitorsData.competitors?.[0]?.posts?.[0];
-    const alreadyEnriched =
-      firstPost &&
-      (firstPost.publication_model ||
-        (firstPost.topic && firstPost.tone) ||
-        (firstPost.content_category && firstPost.tone));
+    const alreadyEnriched = isPostAlreadyEnriched(firstPost);
     if (alreadyEnriched) {
       const confirmed = window.confirm(
         'Данные уже выглядят обогащёнными (есть publication_model или семантические поля). Запустить обогащение заново?'
@@ -148,18 +84,10 @@ export function useCompetitorsPipeline(addToast, options = {}) {
         setCompetitorsFileName(
           competitorsFileName?.replace('.json', '_enriched.json') || 'competitors_data_enriched.json'
         );
-        const usageInfo = result.usage ? ` (использовано токенов: ${result.usage.total_tokens || 'нет данных'})` : '';
-        addToast(`Данные успешно обогащены!${usageInfo}`, 'success');
-        if (result.parse_error?.partial) {
-          addToast(
-            'Часть данных не обработана; для пропущенных постов сохранена базовая семантика.',
-            'warning'
-          );
-        }
+        buildEnrichmentToastMessages(result).forEach((msg) => addToast(msg.text, msg.type));
         return { success: true, result };
       } else if (result.enriched_data === null && result.raw_response) {
-        const usageInfo = result.usage ? ` (использовано токенов: ${result.usage.total_tokens || 'нет данных'})` : '';
-        addToast(`Обогащение завершено, но ответ модели не удалось разобрать. Файл скачан для проверки.${usageInfo}`, 'warning');
+        buildEnrichmentToastMessages(result).forEach((msg) => addToast(msg.text, msg.type));
         return { success: false, reason: 'invalid_llm_json', result };
       } else if (result.error) {
         throw new Error(result.error);
@@ -274,27 +202,7 @@ export function useCompetitorsPipeline(addToast, options = {}) {
       return;
     }
 
-    const merged = {
-      parsing_metadata: {
-        source_type: 'urls',
-        parsed_at: new Date().toISOString(),
-        urls,
-        successful_count: successfulResults.length,
-        failed_count: failedUrls.length
-      },
-      competitors: []
-    };
-
-    successfulResults.forEach((res, idx) => {
-      if (Array.isArray(res.competitors)) {
-        res.competitors.forEach((comp, compIdx) => {
-          merged.competitors.push({
-            ...comp,
-            competitor_id: comp.competitor_id || `url_${idx + 1}_comp_${compIdx + 1}`
-          });
-        });
-      }
-    });
+    const merged = mergeParsedCompetitorsFromUrls(successfulResults, urls, failedUrls.length);
 
     setCompetitorsData(merged);
     setCompetitorsFileName('competitors_from_urls.json');
@@ -331,17 +239,7 @@ export function useCompetitorsPipeline(addToast, options = {}) {
     // Скачиваем сырые спарсенные данные в JSON (только для разработчика)
     if (isDeveloper) {
       try {
-        const jsonString = JSON.stringify(merged, null, 2);
-        const blob = new Blob([jsonString], { type: 'application/json' });
-        const downloadUrl = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = downloadUrl;
-        link.download = 'competitors_from_urls.json';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(downloadUrl);
-        addToast('Файл competitors_from_urls.json скачан', 'info');
+        downloadJsonFile(merged, 'competitors_from_urls.json', addToast);
       } catch (downloadError) {
         console.error('Ошибка при скачивании файла спарсенных данных:', downloadError);
         addToast('Не удалось скачать файл спарсенных данных', 'error');
@@ -357,10 +255,7 @@ export function useCompetitorsPipeline(addToast, options = {}) {
     setCompetitorUrls(['']);
   };
 
-  const canEnrich =
-    !!competitorsData &&
-    Array.isArray(competitorsData.competitors) &&
-    competitorsData.competitors.length > 0;
+  const canEnrich = canEnrichCompetitors(competitorsData);
 
   return {
     competitorsData,

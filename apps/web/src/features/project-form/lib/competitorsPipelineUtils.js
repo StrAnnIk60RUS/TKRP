@@ -127,14 +127,14 @@ export function buildEnrichmentToastMessages(result) {
   return messages
 }
 
-export function mergeParsedCompetitorsFromUrls(successfulResults, urls = []) {
+export function mergeParsedCompetitorsFromUrls(successfulResults, urls = [], failedCount = 0) {
   const merged = {
     parsing_metadata: {
       source_type: 'urls',
       parsed_at: new Date().toISOString(),
       urls,
       successful_count: successfulResults.length,
-      failed_count: 0
+      failed_count: failedCount
     },
     competitors: []
   }
