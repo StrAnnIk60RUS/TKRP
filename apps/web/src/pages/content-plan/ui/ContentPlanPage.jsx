@@ -39,7 +39,6 @@ import {
   getPlanSnapshotFromServer,
   listPlanSnapshotsFromServer
 } from '../../../shared/api/enrichmentService'
-import { exportToExcel, exportToPdf } from '../../../shared/lib/contentPlanExport'
 import { useInstagramAccess } from '../../../shared/lib/useInstagramAccess'
 import { ToastContainer } from '../../../shared/ui/Toast'
 import AuthGate from '../../../shared/ui/AuthGate'
@@ -712,6 +711,7 @@ const ContentPlanPage = () => {
   const handleDownloadExcel = async () => {
     if (!contentPlan) return
     try {
+      const { exportToExcel } = await import('../../../shared/lib/contentPlanExport')
       await exportToExcel(contentPlan, baseFilename, { optimizationMeta })
     } catch (e) {
       console.error('Ошибка экспорта Excel:', e)
@@ -722,6 +722,7 @@ const ContentPlanPage = () => {
   const handleDownloadPdf = async () => {
     if (!contentPlan) return
     try {
+      const { exportToPdf } = await import('../../../shared/lib/contentPlanExport')
       await exportToPdf(contentPlan, {
         filename: baseFilename,
         isOptimized: !!optimizationMeta,

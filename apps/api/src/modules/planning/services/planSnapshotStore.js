@@ -40,7 +40,7 @@ function snapshotDisplayName(plan) {
   return t || null;
 }
 
-function buildSnapshotSummary(plan, optimization = null) {
+export function buildSnapshotSummary(plan, optimization = null) {
   const publications = Array.isArray(plan?.publications) ? plan.publications : [];
   const formats = Array.from(new Set(publications.map((item) => item?.format).filter(Boolean)));
   return {

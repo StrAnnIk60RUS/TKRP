@@ -63,7 +63,7 @@ const COLUMN_KEYS = [
   'Прогноз просмотров'
 ]
 
-function buildPublicationRows(publications) {
+export function buildPublicationRows(publications) {
   return (publications || []).map((pub, idx) => {
     const mlLikes =
       toFiniteNumberOrNull(pub.expected_kpi?.ml_predicted_likes) ??

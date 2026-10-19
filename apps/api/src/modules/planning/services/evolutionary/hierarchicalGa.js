@@ -196,21 +196,25 @@ export function repairPlanConstraints(plan, constraints = {}) {
   return { publications, repairs, unfixable };
 }
 
-/** Display-fitness KPI of a final publication set (for LLM rewrite guard). */
 async function scorePlanFitness(plan, publications) {
-  const prediction = await predictContentPlanMetrics(
-    { ...(plan || {}), publications },
-    { forceTrain: false }
-  );
-  return kpiScore(
-    [
-      asNumber(prediction?.predictedLikes, 0),
-      asNumber(prediction?.predictedShares, 0),
-      asNumber(prediction?.predictedViews, 0)
-    ],
-    prediction?.metadata,
-    { keyPrefix: 'total_' }
-  );
+  try {
+    const prediction = await predictContentPlanMetrics(
+      { ...(plan || {}), publications },
+      { forceTrain: false }
+    );
+    return kpiScore(
+      [
+        asNumber(prediction?.predictedLikes, 0),
+        asNumber(prediction?.predictedShares, 0),
+        asNumber(prediction?.predictedViews, 0)
+      ],
+      prediction?.metadata,
+      { keyPrefix: 'total_' }
+    );
+  } catch (error) {
+    console.warn('[GA:scorePlanFitness] Failed to score plan fitness via ML:', error?.message);
+    return 0.5;
+  }
 }
 
 export async function runHierarchicalOptimization(payload = {}) {

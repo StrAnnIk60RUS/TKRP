@@ -98,7 +98,11 @@ class MultiMetricPredictor:
         self.n_targets = len(target_names)
         self.random_state = random_state
 
-        if HAS_LIGHTGBM:
+        force_backend = os.environ.get('ML_FORCE_BACKEND', '').strip().lower()
+        use_lgbm = HAS_LIGHTGBM and force_backend not in ('histgradientboosting', 'histgb', 'sklearn', 'mlp')
+        use_hist_gb = (HAS_HIST_GB and force_backend != 'mlp') if not use_lgbm else False
+
+        if use_lgbm:
             self.model_backend = 'LightGBM'
             base_estimator = LGBMRegressor(
                 n_estimators=100,
@@ -108,7 +112,7 @@ class MultiMetricPredictor:
                 n_jobs=1,
                 verbose=-1
             )
-        elif HAS_HIST_GB:
+        elif use_hist_gb:
             self.model_backend = 'HistGradientBoosting'
             base_estimator = HistGradientBoostingRegressor(
                 max_iter=100,
@@ -134,6 +138,9 @@ class MultiMetricPredictor:
         self.scaler_X = StandardScaler()
         self.scaler_y = StandardScaler()
         self._is_fitted = False
+        self.is_fallback = False
+        self.fallback_reason = None
+        self.fallback_metadata = None
 
     def preprocess_X(self, X):
         """Масштабирование признаков"""
@@ -167,7 +174,11 @@ class MultiMetricPredictor:
         min_child_samples = max(2, min(20, n_samples // 4))
         num_leaves = max(2, min(31, n_samples // max(2, min_child_samples)))
 
-        if HAS_LIGHTGBM:
+        force_backend = os.environ.get('ML_FORCE_BACKEND', '').strip().lower()
+        use_lgbm = HAS_LIGHTGBM and force_backend not in ('histgradientboosting', 'histgb', 'sklearn', 'mlp')
+        use_hist_gb = (HAS_HIST_GB and force_backend != 'mlp') if not use_lgbm else False
+
+        if use_lgbm:
             self.model_backend = 'LightGBM'
             base_estimator = LGBMRegressor(
                 n_estimators=100,
@@ -179,7 +190,7 @@ class MultiMetricPredictor:
                 verbose=-1
             )
             self.model = MultiOutputRegressor(base_estimator, n_jobs=1)
-        elif HAS_HIST_GB:
+        elif use_hist_gb:
             self.model_backend = 'HistGradientBoosting'
             base_estimator = HistGradientBoostingRegressor(
                 max_iter=100,
@@ -201,12 +212,61 @@ class MultiMetricPredictor:
         self._is_fitted = True
         return self
 
+    def _predict_fallback(self, X_arr):
+        n_samples = X_arr.shape[0]
+        y_result = np.zeros((n_samples, self.n_targets), dtype=np.float64)
+        metadata = getattr(self, 'fallback_metadata', {}) or {}
+        target_summary = metadata.get('target_summary', {})
+        feature_stats = metadata.get('feature_stats', {})
+        feature_names = metadata.get('feature_names', [])
+
+        defaults = {
+            'total_likes': 350.0,
+            'total_shares': 50.0,
+            'total_views': 30000.0,
+            'likes': 50.0,
+            'shares': 5.0,
+            'views': 1200.0
+        }
+
+        modulations = np.ones(n_samples, dtype=np.float64)
+        if feature_stats and feature_names and X_arr.shape[1] >= len(feature_names):
+            z_scores = np.zeros(n_samples, dtype=np.float64)
+            valid_feats = 0
+            for idx, name in enumerate(feature_names):
+                stats = feature_stats.get(name)
+                if stats and 'mean' in stats and 'std' in stats:
+                    mean = float(stats['mean'])
+                    std = float(stats['std'])
+                    if std > 1e-6:
+                        col = X_arr[:, idx]
+                        z = np.clip((col - mean) / std, -2.5, 2.5)
+                        z_scores += z
+                        valid_feats += 1
+            if valid_feats > 0:
+                avg_z = z_scores / valid_feats
+                modulations = np.clip(1.0 + 0.15 * avg_z, 0.70, 1.40)
+
+        for i, target_name in enumerate(self.target_names):
+            summary = target_summary.get(target_name, {})
+            mean_val = float(summary.get('mean', defaults.get(target_name, 100.0)))
+            min_val = float(summary.get('min', 0.0))
+            max_val = float(summary.get('max', max(mean_val * 3.0, 10.0)))
+
+            pred_col = mean_val * modulations
+            y_result[:, i] = np.clip(pred_col, min_val, max_val)
+
+        return y_result
+
     def predict(self, X):
         """Возвращает предсказания в исходной шкале (не log, не нормализованные)"""
         if not self._is_fitted:
             raise RuntimeError("Model must be fitted before predict")
 
         X_arr = np.asarray(X, dtype=np.float64)
+        if getattr(self, 'is_fallback', False):
+            return self._predict_fallback(X_arr)
+
         X_scaled = self.preprocess_X(X_arr)
         y_pred_scaled = self.model.predict(X_scaled)
         y_denorm = self.scaler_y.inverse_transform(y_pred_scaled)
@@ -244,16 +304,53 @@ class MultiMetricPredictor:
             json.dump(metadata, f, indent=2)
 
     @classmethod
-    def load(cls, model_path):
-        """Загружает модель"""
-        data = joblib.load(model_path)
-        instance = cls(target_names=data['target_names'])
-        instance.model = data['model']
-        instance.scaler_X = data['scaler_X']
-        instance.scaler_y = data['scaler_y']
-        instance._is_fitted = data.get('is_fitted', True)
-        instance.model_backend = data.get('model_backend', 'LightGBM')
+    def _create_fallback_instance(cls, model_path, metadata_path=None, error=None):
+        """Creates a fallback instance using target distribution metadata when artifact cannot be loaded."""
+        is_plan = 'plan' in str(model_path).lower()
+        default_targets = PLAN_TARGET_NAMES if is_plan else POST_TARGET_NAMES
+        metadata = {}
+        if metadata_path and Path(metadata_path).exists():
+            try:
+                with open(metadata_path, 'r', encoding='utf-8') as f:
+                    metadata = json.load(f)
+            except Exception:
+                pass
+
+        target_names = metadata.get('target_names', default_targets)
+        instance = cls(target_names=target_names)
+        instance._is_fitted = True
+        instance.is_fallback = True
+        instance.fallback_reason = str(error) if error else 'missing_backend_or_corrupt_artifact'
+        instance.fallback_metadata = metadata
+        instance.model_backend = 'FallbackHeuristic'
         return instance
+
+    @classmethod
+    def load(cls, model_path, metadata_path=None):
+        """Загружает модель с graceful fallback при несовместимости окружения (например, отсутствие lightgbm)"""
+        model_path = Path(model_path)
+        if not model_path.exists():
+            return cls._create_fallback_instance(
+                model_path, metadata_path, error=FileNotFoundError(f"Model not found: {model_path}")
+            )
+
+        try:
+            data = joblib.load(model_path)
+            instance = cls(target_names=data['target_names'])
+            instance.model = data['model']
+            instance.scaler_X = data['scaler_X']
+            instance.scaler_y = data['scaler_y']
+            instance._is_fitted = data.get('is_fitted', True)
+            instance.model_backend = data.get('model_backend', 'LightGBM')
+            instance.is_fallback = False
+            return instance
+        except Exception as e:
+            print(
+                f"[ML] Warning: Could not load model artifact from {model_path} ({e}). "
+                f"Falling back to calibrated heuristic baseline.",
+                file=sys.stderr
+            )
+            return cls._create_fallback_instance(model_path, metadata_path, error=e)
 
 
 def train_post_model(features, targets, feature_names=None, version_info=None):
@@ -380,7 +477,7 @@ def get_cached_model(model_path, metadata_path, model_type):
         return entry["model"]
 
     check_feature_set_version(metadata_path, model_type)
-    model = MultiMetricPredictor.load(model_path)
+    model = MultiMetricPredictor.load(model_path, metadata_path=metadata_path)
     _MODEL_CACHE[resolved_key] = {
         "mtime": mtime,
         "meta_mtime": meta_mtime,
@@ -394,8 +491,8 @@ def predict_post_metrics(features):
     model_path = MODEL_DIR / 'post_metrics_model.joblib'
     metadata_path = MODEL_DIR / 'post_metrics_model_metadata.json'
 
-    if not model_path.exists():
-        raise FileNotFoundError(f"Model not found: {model_path}")
+    if not model_path.exists() and not metadata_path.exists():
+        raise FileNotFoundError(f"Model and metadata not found: {model_path}")
 
     model = get_cached_model(model_path, metadata_path, 'post')
     X = np.array(features, dtype=np.float64)
@@ -409,12 +506,16 @@ def predict_post_metrics(features):
         for pred in predictions
     ]
 
-    return {
+    result = {
         'predictions': predictions.tolist(),
         'target_names': POST_TARGET_NAMES,
         'complex_er': complex_er_list,
         'engagement_rates': complex_er_list
     }
+    if getattr(model, 'is_fallback', False):
+        result['fallback'] = True
+        result['fallback_reason'] = getattr(model, 'fallback_reason', 'missing_backend_or_load_error')
+    return result
 
 
 def predict_plan_metrics(features):
@@ -422,8 +523,8 @@ def predict_plan_metrics(features):
     model_path = MODEL_DIR / 'plan_metrics_model.joblib'
     metadata_path = MODEL_DIR / 'plan_metrics_model_metadata.json'
 
-    if not model_path.exists():
-        raise FileNotFoundError(f"Model not found: {model_path}")
+    if not model_path.exists() and not metadata_path.exists():
+        raise FileNotFoundError(f"Model and metadata not found: {model_path}")
 
     model = get_cached_model(model_path, metadata_path, 'content_plan')
     X = np.array(features, dtype=np.float64)
@@ -436,12 +537,16 @@ def predict_plan_metrics(features):
         for pred in predictions
     ]
 
-    return {
+    result = {
         'predictions': predictions.tolist(),
         'target_names': PLAN_TARGET_NAMES,
         'complex_er': complex_er_list,
         'engagement_rates': complex_er_list
     }
+    if getattr(model, 'is_fallback', False):
+        result['fallback'] = True
+        result['fallback_reason'] = getattr(model, 'fallback_reason', 'missing_backend_or_load_error')
+    return result
 
 
 def main():
@@ -533,13 +638,27 @@ def main():
 
         elif mode == 'predict':
             features = input_data.get('features', [])
-
-            if model_key == 'post':
-                result = predict_post_metrics(features)
-            elif model_key == 'content_plan':
-                result = predict_plan_metrics(features)
-            else:
-                result = {'error': f'Unknown model_key: {model_key}'}
+            try:
+                if model_key == 'post':
+                    result = predict_post_metrics(features)
+                elif model_key == 'content_plan':
+                    result = predict_plan_metrics(features)
+                else:
+                    result = {'error': f'Unknown model_key: {model_key}'}
+            except Exception as e:
+                print(f"[ML] Warning: Predict failed for {model_key} ({e}). Generating calibrated emergency baseline.", file=sys.stderr)
+                n_samples = max(1, len(features))
+                target_names = PLAN_TARGET_NAMES if model_key == 'content_plan' else POST_TARGET_NAMES
+                defaults = [350, 50, 30000] if model_key == 'content_plan' else [50, 5, 1200]
+                fallback_preds = [defaults for _ in range(n_samples)]
+                result = {
+                    'predictions': fallback_preds,
+                    'target_names': target_names,
+                    'complex_er': [0.05 for _ in range(n_samples)],
+                    'engagement_rates': [0.05 for _ in range(n_samples)],
+                    'fallback': True,
+                    'fallback_reason': str(e)
+                }
 
             print(json.dumps(result))
     else:

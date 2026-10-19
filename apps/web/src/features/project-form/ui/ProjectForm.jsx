@@ -16,6 +16,10 @@ import OnboardingMaster from './projectForm/OnboardingMaster'
 import { initialWizardState, wizardReducer } from './projectForm/wizardState'
 import { useCompetitorsPipeline } from '../model/useCompetitorsPipeline'
 import { buildRetrievalBadge } from '../lib/precedentPresentationUtils'
+import {
+  planMarketerCombinedWorkflow,
+  isGenerationBlockedByBackend
+} from '../lib/workflowUiUtils'
 import { getCurrentUserId } from '../../../shared/api/authService'
 import {
   getAggregatedOntology,
@@ -774,12 +778,13 @@ const ProjectForm = () => {
 
   const handleSearchAndGenerateDraftPlan = async () => {
     const searchCompleted = await handleSearchPrecedents()
-    if (!searchCompleted) return
+    const plan = planMarketerCombinedWorkflow({ searchCompleted })
+    if (plan.blocked) return
     await handleGenerateDraftPlan()
   }
 
   const handleSeedDemoPrecedents = async () => {
-    if (isEnrichmentServerAvailable === false) {
+    if (isGenerationBlockedByBackend(isEnrichmentServerAvailable)) {
       addToast('Сервер недоступен. Убедитесь, что он запущен.', 'error')
       return
     }
@@ -801,7 +806,7 @@ const ProjectForm = () => {
   }
 
   const handleExportOntologyToExcel = async () => {
-    if (isEnrichmentServerAvailable === false) {
+    if (isGenerationBlockedByBackend(isEnrichmentServerAvailable)) {
       addToast('Сервер недоступен. Убедитесь, что он запущен.', 'error')
       return
     }
@@ -820,7 +825,7 @@ const ProjectForm = () => {
   }
 
   const handleLoadOntology = async () => {
-    if (isEnrichmentServerAvailable === false) {
+    if (isGenerationBlockedByBackend(isEnrichmentServerAvailable)) {
       addToast('Сервер недоступен. Убедитесь, что он запущен.', 'error')
       return
     }
@@ -1145,15 +1150,13 @@ const ProjectForm = () => {
   return (
     <>
       <ToastContainer toasts={toasts} removeToast={removeToast} />
-      {isDeveloper && (
-        <OperationStatusPanel
-          operations={operations}
-          telemetry={operationTelemetry}
-          onCancel={cancelOperation}
-          onRetry={retryOperation}
-          isDeveloper
-        />
-      )}
+      <OperationStatusPanel
+        operations={operations}
+        telemetry={operationTelemetry}
+        onCancel={cancelOperation}
+        onRetry={retryOperation}
+        isDeveloper={isDeveloper}
+      />
 
       <form className="project-form">
         {/* Прогресс-бар и гид по текущему шагу */}

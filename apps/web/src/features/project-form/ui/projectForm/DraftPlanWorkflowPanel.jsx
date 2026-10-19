@@ -1,5 +1,6 @@
 import React from 'react'
 import ProcessIndicator from '../../../../shared/ui/ProcessIndicator'
+import OptimizationTracePanel from './OptimizationTracePanel'
 
 const formatPercent = (value) => `${((Number(value) || 0) * 100).toFixed(1)}%`
 const formatNumber = (value) => {
@@ -452,6 +453,13 @@ const DraftPlanWorkflowPanel = ({
                     </div>
                   ))}
               </div>
+            )}
+            {!!optimizedPlan && (
+              <OptimizationTracePanel
+                optimizationResult={optimizationResult}
+                bestPublication={bestPublication}
+                isDeveloper={isDeveloper}
+              />
             )}
           </div>
           )}

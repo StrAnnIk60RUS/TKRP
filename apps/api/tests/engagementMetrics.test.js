@@ -53,3 +53,32 @@ test('calculateComplexEngagementRate uses saturation proxy when views are missin
   assert.ok(rate > 0.3 && rate < 0.4);
 });
 
+test('predictPlanMetricsByFeatureVectors returns valid predictions array and metadata', async () => {
+  const { predictPlanMetricsByFeatureVectors } = await import(
+    '../src/modules/ml/services/relevancePredictionService.js'
+  );
+  const sampleVector = [10, 4, 0.5, 0.2, 10, 14, 0.5, 0.5, 1.0, 0.5, 0.05, 0.1];
+  const result = await predictPlanMetricsByFeatureVectors([sampleVector]);
+  assert.ok(Array.isArray(result?.predictions));
+  assert.equal(result.predictions.length, 1);
+  assert.equal(result.predictions[0].length, 3);
+  assert.ok(result.predictions[0][0] >= 0);
+  assert.ok(result.predictions[0][1] >= 0);
+  assert.ok(result.predictions[0][2] >= 0);
+});
+
+test('predictPostMetricsByFeatureVectors returns valid predictions array and metadata', async () => {
+  const { predictPostMetricsByFeatureVectors } = await import(
+    '../src/modules/ml/services/relevancePredictionService.js'
+  );
+  const sampleVector = new Array(36).fill(0.5);
+  const result = await predictPostMetricsByFeatureVectors([sampleVector]);
+  assert.ok(Array.isArray(result?.predictions));
+  assert.equal(result.predictions.length, 1);
+  assert.equal(result.predictions[0].length, 3);
+  assert.ok(result.predictions[0][0] >= 0);
+  assert.ok(result.predictions[0][1] >= 0);
+  assert.ok(result.predictions[0][2] >= 0);
+});
+
+

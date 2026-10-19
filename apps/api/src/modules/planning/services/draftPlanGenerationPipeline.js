@@ -779,7 +779,7 @@ function ragPlanText(item = {}) {
   return `${model.plan_id || data.plan_id || ''} ${(model.audience_segments || []).join(' ')} ${data.summary || ''}`;
 }
 
-function buildCompactRagContext(ragResults = {}) {
+export function buildCompactRagContext(ragResults = {}) {
   const rankedPublications = toArray(ragResults.publications)
     .slice()
     .sort(

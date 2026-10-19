@@ -1,4 +1,8 @@
 import React from 'react'
+import {
+  buildReadinessOverview,
+  isGenerationBlockedByBackend
+} from '../../lib/workflowUiUtils'
 
 const getPublicationDayModeCopy = (mode) =>
   mode === 'shared'
@@ -24,17 +28,24 @@ const WorkflowSummaryPanel = ({
   riskSummary = []
 }) => {
   const publicationDayModeCopy = getPublicationDayModeCopy(publicationDayMode)
-  const statusTone =
-    isEnrichmentServerAvailable === false
-      ? 'danger'
-      : 'neutral'
+  const isBlocked = isGenerationBlockedByBackend(isEnrichmentServerAvailable)
+  const statusTone = isBlocked ? 'danger' : 'neutral'
 
   const statusLabel =
-    isEnrichmentServerAvailable === false
+    isBlocked
       ? 'Сервер недоступен'
       : isEnrichmentServerAvailable === true
       ? null
       : 'Проверка backend...'
+
+  const readiness = buildReadinessOverview({
+    filledRequired,
+    requiredCount,
+    competitorsCount,
+    precedentsSummary,
+    hasDraftPlan,
+    hasOptimizedPlan
+  })
 
   return (
     <section className="form-section precedent-workflow-section">
@@ -52,8 +63,7 @@ const WorkflowSummaryPanel = ({
         <div className="workflow-overview-card">
           <span className="workflow-overview-label">Данные</span>
           <strong className="workflow-overview-value">
-            {filledRequired}/{requiredCount} · {competitorsCount} конкр. ·{' '}
-            {(precedentsSummary?.publications_count || 0) + (precedentsSummary?.content_plans_count || 0)} прец.
+            {readiness.dataLine}
           </strong>
           <span className="workflow-overview-meta">форма · конкуренты · прецеденты</span>
         </div>
@@ -61,14 +71,10 @@ const WorkflowSummaryPanel = ({
         <div className="workflow-overview-card">
           <span className="workflow-overview-label">Статус</span>
           <strong className="workflow-overview-value">
-            {hasOptimizedPlan ? 'Оптимизирован' : hasDraftPlan ? 'Черновик' : 'Ожидает'}
+            {readiness.statusLine}
           </strong>
           <span className="workflow-overview-meta">
-            {hasOptimizedPlan
-              ? 'план готов'
-              : hasDraftPlan
-              ? 'можно перейти к оптимизации'
-              : 'черновик ещё не собран'}
+            {readiness.statusMeta}
             {' · '}
             {publicationDayModeCopy.label}
           </span>
