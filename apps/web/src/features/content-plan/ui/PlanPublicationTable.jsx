@@ -20,6 +20,7 @@ const PlanPublicationTable = ({ publications, onEdit }) => {
             <th>Заголовок</th>
             <th>Формат</th>
             <th>Цель</th>
+            <th>Статус</th>
             <th title="Внутренняя оценка модели, 0–100%, не метрика площадки">Вовлечённость (оценка)</th>
             <th>Призыв</th>
             <th></th>
@@ -31,6 +32,7 @@ const PlanPublicationTable = ({ publications, onEdit }) => {
             const kpi = getKpiPresentation(normalizedPost.expected_kpi)
             const fullHeading = normalizedPost.title || normalizedPost.topic || 'Без темы'
             const heading = getCompactTopicHeading(fullHeading) || fullHeading
+            const status = normalizedPost.status || 'draft'
             return (
             <tr key={`${normalizedPost.publication_id || 'pub'}_${normalizedPost.planned_date || 'na'}_${idx}`}>
               <td data-label="Дата">{normalizedPost.planned_date || '—'}</td>
@@ -40,6 +42,26 @@ const PlanPublicationTable = ({ publications, onEdit }) => {
               </td>
               <td data-label="Формат">{getFormatLabel(normalizedPost.format)}</td>
               <td data-label="Цель">{getObjectiveLabel(normalizedPost.objective)}</td>
+              <td data-label="Статус">
+                <span className={`post-status-badge post-status-${status}`}>
+                  {status === 'published' && '🟢 Опубликован'}
+                  {status === 'scheduled' && '⏰ Запланирован'}
+                  {status === 'draft' && '📝 Черновик'}
+                  {status === 'failed' && '❌ Ошибка'}
+                </span>
+                {normalizedPost.post_url && (
+                  <div>
+                    <a
+                      href={normalizedPost.post_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ fontSize: '0.75rem', color: '#2563eb', fontWeight: 600 }}
+                    >
+                      Ссылка ↗
+                    </a>
+                  </div>
+                )}
+              </td>
               <td data-label="Вовлечённость (оценка)">
                 <div>{kpi.engagementPercent}</div>
                 {kpi.isRelativeScore && (

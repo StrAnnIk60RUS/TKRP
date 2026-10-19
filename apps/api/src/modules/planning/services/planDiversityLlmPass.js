@@ -7,6 +7,25 @@ import { extractJsonObjectFromContent } from '../../enrichment/services/semantic
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROMPT_PATH = path.join(__dirname, '../../shared/prompts/planDiversityTextRewritePrompt.txt');
 
+export const PLAN_DIVERSITY_REWRITE_JSON_SCHEMA = {
+  type: 'object',
+  properties: {
+    publications: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          publication_id: { type: 'string' },
+          key_message: { type: 'string' },
+          summary: { type: 'string' }
+        },
+        required: ['publication_id', 'key_message', 'summary']
+      }
+    }
+  },
+  required: ['publications']
+};
+
 function readPromptFile() {
   return fs.readFileSync(PROMPT_PATH, 'utf-8');
 }
@@ -136,7 +155,9 @@ export async function applyPlanDiversityLlmRewrite(planSlice = {}, options = {})
 
   const llmResponse = await callOpenRouterChat(systemPrompt, userPrompt, {
     temperature,
-    responseFormat: 'json'
+    jsonSchema: PLAN_DIVERSITY_REWRITE_JSON_SCHEMA,
+    schemaName: 'plan_diversity_rewrite',
+    responseFormat: 'json_schema'
   });
 
   let parsed;

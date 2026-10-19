@@ -317,9 +317,115 @@ def _instagram_cookie_headers(cookie: str) -> Dict[str, str]:
     return headers
 
 
-def parse_instagram_account(url: str) -> List[VKPost]:
-    """Parse recent posts from a public Instagram profile via the web profile API."""
-    username = extract_instagram_username(url)
+def _parse_instagram_via_apify(username: str, token: str) -> List[VKPost]:
+    """Parse recent posts from an Instagram profile using Apify's Instagram Scraper."""
+    profile_url = f"https://www.instagram.com/{username}/"
+    actor_endpoint = (
+        f"https://api.apify.com/v2/actors/apify~instagram-scraper/run-sync-get-dataset-items"
+        f"?token={token}"
+    )
+    payload = {
+        "resultsType": "posts",
+        "directUrls": [profile_url],
+        "resultsLimit": 30,
+    }
+    headers = {
+        "Content-Type": "application/json",
+        "User-Agent": "TKRP-Content-Planner/1.0",
+    }
+
+    try:
+        resp = requests.post(
+            actor_endpoint,
+            json=payload,
+            headers=headers,
+            timeout=120,
+        )
+    except requests.RequestException as exc:
+        raise InstagramParserError(f"Apify request failed for '{username}': {exc}") from exc
+
+    if resp.status_code == 401:
+        raise InstagramParserError("Неверный APIFY_API_TOKEN в .env")
+    if not resp.ok:
+        raise InstagramParserError(f"Apify Instagram Scraper error ({resp.status_code}): {resp.text[:200]}")
+
+    try:
+        items = resp.json()
+    except ValueError as exc:
+        raise InstagramParserError("Apify вернул некорректный ответ (не JSON)") from exc
+
+    if not isinstance(items, list):
+        raise InstagramParserError("Apify вернул неожиданный формат ответа")
+
+    posts: List[VKPost] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        # Caption / text
+        text = str(item.get("caption") or "").strip()
+        if not text:
+            continue
+
+        short_code = item.get("shortCode") or item.get("code")
+        post_url = (
+            item.get("url")
+            or (f"https://www.instagram.com/p/{short_code}/" if short_code else profile_url)
+        )
+
+        account_name = (
+            item.get("ownerFullName")
+            or item.get("ownerUsername")
+            or username
+        )
+
+        likes = item.get("likesCount")
+        comments = item.get("commentsCount")
+        views = item.get("videoViewCount") or item.get("videoPlayCount")
+        follower_count = (
+            item.get("followersCount")
+            or item.get("ownerFollowersCount")
+        )
+
+        # Datetime formatting (ISO 8601 -> YYYY-MM-DD HH:MM:SS)
+        post_date = None
+        raw_ts = item.get("timestamp")
+        if raw_ts and isinstance(raw_ts, str):
+            try:
+                # Handle ISO timestamps like 2026-03-15T12:00:00.000Z
+                clean_ts = raw_ts.replace("Z", "+00:00")
+                dt = datetime.fromisoformat(clean_ts)
+                post_date = dt.strftime("%Y-%m-%d %H:%M:%S")
+            except (ValueError, TypeError):
+                post_date = raw_ts[:19].replace("T", " ")
+
+        post_type = str(item.get("type") or "").lower()
+        is_video = "video" in post_type or item.get("videoUrl") is not None
+        attachment_type = "video" if is_video else "photo"
+
+        posts.append(
+            VKPost(
+                url=post_url,
+                account_name=str(account_name) if account_name else username,
+                text=text,
+                likes=int(likes) if isinstance(likes, (int, float)) and likes >= 0 else None,
+                comments=int(comments) if isinstance(comments, (int, float)) and comments >= 0 else None,
+                reposts=0,
+                datetime=post_date,
+                views=int(views) if isinstance(views, (int, float)) and views >= 0 else None,
+                attachments=[{"type": attachment_type}],
+                follower_count=int(follower_count) if isinstance(follower_count, (int, float)) and follower_count >= 0 else None,
+            )
+        )
+
+    if not posts:
+        raise InstagramParserError(f"У профиля '{username}' не найдено постов с текстом через Apify.")
+
+    print(f"Fetched {len(posts)} Instagram posts for '{username}' via Apify.")
+    return posts
+
+
+def _parse_instagram_via_web(username: str) -> List[VKPost]:
+    """Parse recent posts from a public Instagram profile via the legacy web profile API."""
     cookie = os.getenv("INSTAGRAM_COOKIE", "").strip()
     headers = {
         "User-Agent": (
@@ -348,7 +454,7 @@ def parse_instagram_account(url: str) -> List[VKPost]:
     if resp.status_code in (401, 403, 429):
         raise InstagramParserError(
             f"Instagram ограничил доступ ({resp.status_code}) для '{username}'. "
-            "Задайте INSTAGRAM_COOKIE в .env (cookie авторизованной сессии)."
+            "Задайте APIFY_API_TOKEN или INSTAGRAM_COOKIE в .env."
         )
     if not resp.ok:
         raise InstagramParserError(f"Instagram HTTP {resp.status_code} для '{username}'")
@@ -357,7 +463,7 @@ def parse_instagram_account(url: str) -> List[VKPost]:
         payload = resp.json()
     except ValueError as exc:
         raise InstagramParserError(
-            f"Instagram вернул не JSON для '{username}'. Задайте INSTAGRAM_COOKIE в .env."
+            f"Instagram вернул не JSON для '{username}'. Задайте APIFY_API_TOKEN в .env."
         ) from exc
 
     user = (payload.get("data") or {}).get("user") or {}
@@ -365,10 +471,10 @@ def parse_instagram_account(url: str) -> List[VKPost]:
     if not isinstance(media, list) or not media:
         if user.get("is_private"):
             raise InstagramParserError(
-                f"Профиль '{username}' закрыт. Нужна сессия с доступом (INSTAGRAM_COOKIE)."
+                f"Профиль '{username}' закрыт. Нужна сессия с доступом."
             )
         raise InstagramParserError(
-            f"Instagram не вернул посты для '{username}'. Проверьте ссылку и INSTAGRAM_COOKIE."
+            f"Instagram не вернул посты для '{username}'. Проверьте ссылку или задайте APIFY_API_TOKEN."
         )
 
     account_name = user.get("full_name") or user.get("username") or username
@@ -422,3 +528,20 @@ def parse_instagram_account(url: str) -> List[VKPost]:
         raise InstagramParserError(f"У профиля '{username}' нет постов с текстом.")
     print(f"Fetched {len(posts)} Instagram posts for '{username}'.")
     return posts
+
+
+def parse_instagram_account(url: str) -> List[VKPost]:
+    """Parse recent posts from a public Instagram profile (prefers Apify, falls back to web API)."""
+    username = extract_instagram_username(url)
+    apify_token = os.getenv("APIFY_API_TOKEN", "").strip()
+
+    if apify_token:
+        try:
+            return _parse_instagram_via_apify(username, apify_token)
+        except InstagramParserError as exc:
+            # If Apify fails (e.g. rate limit reached), log warning and attempt web fallback if cookie is provided
+            print(f"Warning: Apify Instagram parse failed: {exc}. Trying fallback...")
+            if not os.getenv("INSTAGRAM_COOKIE", "").strip():
+                raise
+
+    return _parse_instagram_via_web(username)

@@ -2,8 +2,18 @@ import sys
 import json
 import numpy as np
 from sklearn.preprocessing import StandardScaler
-from sklearn.neural_network import MLPRegressor
 from sklearn.multioutput import MultiOutputRegressor
+try:
+    from lightgbm import LGBMRegressor
+    HAS_LIGHTGBM = True
+except ImportError:
+    HAS_LIGHTGBM = False
+    try:
+        from sklearn.ensemble import HistGradientBoostingRegressor
+        HAS_HIST_GB = True
+    except ImportError:
+        HAS_HIST_GB = False
+        from sklearn.neural_network import MLPRegressor
 import joblib
 import os
 from pathlib import Path
@@ -61,26 +71,66 @@ def exp_transform(values):
     return np.expm1(values)
 
 
-class MultiMetricPredictor:
-    """Multi-output регрессор для предсказания нескольких метрик"""
+def calculate_complex_er(likes, shares, views, comments=0):
+    """Расчет комплексного Engagement Rate (ER).
 
-    def __init__(self, target_names, hidden_layer_sizes=(128, 64), max_iter=500, random_state=42):
+    Формула: (likes + 2 * comments + 3 * shares) / views (если views > 0),
+    иначе сатурационный прокси interactions / (interactions + 50).
+    Ограничен диапазоном [0.0, 1.0].
+    """
+    l = max(float(likes or 0), 0.0)
+    s = max(float(shares or 0), 0.0)
+    v = max(float(views or 0), 0.0)
+    c = max(float(comments or 0), 0.0)
+    interactions = l + (2.0 * c) + (3.0 * s)
+    if v > 0.0:
+        return min(max(interactions / v, 0.0), 1.0)
+    if interactions > 0.0:
+        return min(max(interactions / (interactions + 50.0), 0.0), 1.0)
+    return 0.0
+
+
+class MultiMetricPredictor:
+    """Multi-output регрессор для предсказания нескольких метрик (LightGBM / HistGB)"""
+
+    def __init__(self, target_names, random_state=42, **kwargs):
         self.target_names = target_names
         self.n_targets = len(target_names)
+        self.random_state = random_state
 
-        base_mlp = MLPRegressor(
-            hidden_layer_sizes=hidden_layer_sizes,
-            activation='relu',
-            solver='adam',
-            max_iter=max_iter,
-            random_state=random_state,
-            early_stopping=True,
-            validation_fraction=0.1,
-            n_iter_no_change=20,
-            verbose=False
-        )
+        if HAS_LIGHTGBM:
+            self.model_backend = 'LightGBM'
+            base_estimator = LGBMRegressor(
+                n_estimators=100,
+                learning_rate=0.05,
+                num_leaves=31,
+                random_state=random_state,
+                n_jobs=1,
+                verbose=-1
+            )
+        elif HAS_HIST_GB:
+            self.model_backend = 'HistGradientBoosting'
+            base_estimator = HistGradientBoostingRegressor(
+                max_iter=100,
+                learning_rate=0.05,
+                max_leaf_nodes=31,
+                random_state=random_state
+            )
+        else:
+            self.model_backend = 'MLPRegressor'
+            base_estimator = MLPRegressor(
+                hidden_layer_sizes=(128, 64),
+                activation='relu',
+                solver='adam',
+                max_iter=500,
+                random_state=random_state,
+                early_stopping=True,
+                validation_fraction=0.1,
+                n_iter_no_change=20,
+                verbose=False
+            )
 
-        self.model = MultiOutputRegressor(base_mlp, n_jobs=1)
+        self.model = MultiOutputRegressor(base_estimator, n_jobs=1)
         self.scaler_X = StandardScaler()
         self.scaler_y = StandardScaler()
         self._is_fitted = False
@@ -109,11 +159,14 @@ class MultiMetricPredictor:
         X: shape (n_samples, n_features)
         y: shape (n_samples, n_targets)
         """
+        X_arr = np.asarray(X, dtype=np.float64)
+        y_arr = np.asarray(y, dtype=np.float64)
+
         # 1. Масштабируем признаки
-        X_scaled = self.scaler_X.fit_transform(X)
+        X_scaled = self.scaler_X.fit_transform(X_arr)
 
         # 2. Fit scaler_y на log1p данных И сразу transform
-        y_scaled = self.fit_preprocess_y(y)
+        y_scaled = self.fit_preprocess_y(y_arr)
 
         # 3. Обучаем модель
         self.model.fit(X_scaled, y_scaled)
@@ -125,7 +178,8 @@ class MultiMetricPredictor:
         if not self._is_fitted:
             raise RuntimeError("Model must be fitted before predict")
 
-        X_scaled = self.preprocess_X(X)
+        X_arr = np.asarray(X, dtype=np.float64)
+        X_scaled = self.preprocess_X(X_arr)
         y_pred_scaled = self.model.predict(X_scaled)
         y_denorm = self.scaler_y.inverse_transform(y_pred_scaled)
 
@@ -137,12 +191,14 @@ class MultiMetricPredictor:
 
     def save(self, model_path, metadata_path, extra_metadata=None):
         """Сохраняет модель и метаданные"""
+        backend = getattr(self, 'model_backend', 'LightGBM')
         joblib.dump({
             'model': self.model,
             'scaler_X': self.scaler_X,
             'scaler_y': self.scaler_y,
             'target_names': self.target_names,
             'is_fitted': self._is_fitted,
+            'model_backend': backend,
             'feature_set_version': (extra_metadata or {}).get('feature_set_version'),
             'ontology_features_enabled': (extra_metadata or {}).get('ontology_features_enabled')
         }, model_path)
@@ -150,7 +206,7 @@ class MultiMetricPredictor:
         metadata = {
             'target_names': self.target_names,
             'n_targets': self.n_targets,
-            'model_type': 'MultiOutputRegressor(MLPRegressor)',
+            'model_type': f'MultiOutputRegressor({backend})',
             'feature_names': None
         }
         if extra_metadata:
@@ -167,6 +223,7 @@ class MultiMetricPredictor:
         instance.scaler_X = data['scaler_X']
         instance.scaler_y = data['scaler_y']
         instance._is_fitted = data.get('is_fitted', True)
+        instance.model_backend = data.get('model_backend', 'LightGBM')
         return instance
 
 
@@ -293,9 +350,16 @@ def predict_post_metrics(features):
     predictions = model.predict(X)
     predictions = np.round(predictions).astype(int)
 
+    complex_er_list = [
+        round(calculate_complex_er(pred[0], pred[1], pred[2]), 4)
+        for pred in predictions
+    ]
+
     return {
         'predictions': predictions.tolist(),
-        'target_names': POST_TARGET_NAMES
+        'target_names': POST_TARGET_NAMES,
+        'complex_er': complex_er_list,
+        'engagement_rates': complex_er_list
     }
 
 
@@ -313,9 +377,16 @@ def predict_plan_metrics(features):
     predictions = model.predict(X)
     predictions = np.round(predictions).astype(int)
 
+    complex_er_list = [
+        round(calculate_complex_er(pred[0], pred[1], pred[2]), 4)
+        for pred in predictions
+    ]
+
     return {
         'predictions': predictions.tolist(),
-        'target_names': PLAN_TARGET_NAMES
+        'target_names': PLAN_TARGET_NAMES,
+        'complex_er': complex_er_list,
+        'engagement_rates': complex_er_list
     }
 
 

@@ -52,7 +52,7 @@ function buildInitialDraft(plan) {
   }
 }
 
-const PlanEditModal = ({ plan, onSave, onCancel }) => {
+const PlanEditModal = ({ plan, onSave, onCancel, onToast }) => {
   const [draft, setDraft] = useState(() => buildInitialDraft(plan))
   const [error, setError] = useState('')
   const autoMinPublications = useMemo(() => deriveAutoMinPublications(plan, draft), [plan, draft])
@@ -79,6 +79,9 @@ const PlanEditModal = ({ plan, onSave, onCancel }) => {
     const maybeError = validate()
     if (maybeError) {
       setError(maybeError)
+      if (typeof onToast === 'function') {
+        onToast(maybeError, 'error')
+      }
       return
     }
 

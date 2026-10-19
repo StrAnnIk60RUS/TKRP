@@ -1,6 +1,6 @@
 const ALLOWED_OBJECTIVES = ['inform', 'educate', 'engage', 'convert', 'retain', 'brand_building']
 const ALLOWED_FORMATS = ['text', 'image', 'video', 'combined']
-const ALLOWED_PLATFORMS = ['vk', 'linkedin', 'instagram']
+const ALLOWED_PLATFORMS = ['vk', 'telegram', 'linkedin', 'instagram']
 const ALLOWED_TONES = ['expert', 'friendly', 'official', 'inspiring', 'humorous', 'neutral']
 
 const OBJECTIVE_LABELS = {
@@ -31,8 +31,20 @@ const FORMAT_ALIASES = {
 
 const PLATFORM_LABELS = {
   vk: 'ВКонтакте',
+  telegram: 'Telegram',
   linkedin: 'LinkedIn',
   instagram: 'Instagram'
+}
+
+const PUBLICATION_STATUS_LABELS = {
+  draft: 'Черновик',
+  scheduled: 'Запланирован к публикации',
+  published: 'Опубликован',
+  failed: 'Ошибка публикации'
+}
+
+export function getPublicationStatusLabel(status) {
+  return PUBLICATION_STATUS_LABELS[status] || 'Черновик'
 }
 
 const TONE_ALIASES = {
@@ -248,7 +260,12 @@ export function normalizePublicationForUi(publication) {
     objective: normalizeObjective(publication.objective),
     platform: normalizePlatform(publication.platform),
     media_prompt: toStringSafe(publication.media_prompt),
-    media: publication.media && typeof publication.media === 'object' ? publication.media : null
+    media: publication.media && typeof publication.media === 'object' ? publication.media : null,
+    status: publication.status || 'draft',
+    published_at: publication.published_at || null,
+    post_url: publication.post_url || null,
+    remote_post_id: publication.remote_post_id || null,
+    actual_kpi: publication.actual_kpi && typeof publication.actual_kpi === 'object' ? publication.actual_kpi : null
   }
 }
 

@@ -5,7 +5,7 @@
     "views"
   ],
   "n_targets": 3,
-  "model_type": "MultiOutputRegressor(MLPRegressor)",
+  "model_type": "MultiOutputRegressor(LightGBM)",
   "feature_names": [
     "paragraphs_exists",
     "paragraphs_count_norm",

@@ -102,6 +102,12 @@ const Layout = ({ children }) => {
                 >
                   Просмотр контент-плана
                 </Link>
+                <Link 
+                  to="/analytics" 
+                  className={`nav-link ${location.pathname === '/analytics' ? 'active' : ''}`}
+                >
+                  Статистика соцсетей
+                </Link>
               </>
             ) : null}
           </nav>

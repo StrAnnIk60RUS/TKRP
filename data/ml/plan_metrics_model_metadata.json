@@ -5,7 +5,7 @@
     "total_views"
   ],
   "n_targets": 3,
-  "model_type": "MultiOutputRegressor(MLPRegressor)",
+  "model_type": "MultiOutputRegressor(LightGBM)",
   "feature_names": [
     "unique_topics",
     "unique_tones",

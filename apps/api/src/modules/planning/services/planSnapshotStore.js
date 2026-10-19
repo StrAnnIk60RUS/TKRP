@@ -158,12 +158,20 @@ async function dbLoadSnapshot(token) {
   };
 }
 
-async function dbListSnapshots(max) {
+async function dbListSnapshots(max, owner = null) {
   const cutoff = new Date(Date.now() - snapshotTtlMs()).toISOString();
-  const res = await query(
-    'SELECT token, saved_at, summary FROM plan_snapshots WHERE saved_at >= $1 ORDER BY saved_at DESC LIMIT $2',
-    [cutoff, max]
-  );
+  let res;
+  if (owner !== null && owner !== undefined) {
+    res = await query(
+      'SELECT token, saved_at, summary FROM plan_snapshots WHERE saved_at >= $1 AND owner = $2 ORDER BY saved_at DESC LIMIT $3',
+      [cutoff, String(owner), max]
+    );
+  } else {
+    res = await query(
+      'SELECT token, saved_at, summary FROM plan_snapshots WHERE saved_at >= $1 ORDER BY saved_at DESC LIMIT $2',
+      [cutoff, max]
+    );
+  }
   const entries = [];
   for (const row of res.rows) {
     const token = row.token;
@@ -173,7 +181,9 @@ async function dbListSnapshots(max) {
       token,
       saved_at: isoDateValue(row.saved_at),
       plan_id: summary.plan_id || null,
-      publications_count: summary.publications_count ?? null
+      publications_count: summary.publications_count ?? null,
+      display_name: summary.display_name || null,
+      summary
     });
   }
   return entries;
@@ -348,13 +358,13 @@ export async function deleteSnapshot(token) {
   * @param {number} limit - max entries to return
   * @returns {Promise<Array<{ token, saved_at, plan_id, publications_count }>>}
   */
-export async function listSnapshots(limit = 50) {
+export async function listSnapshots(limit = 50, owner = null) {
   const max = Math.max(0, Math.floor(Number(limit)));
   if (max === 0) return [];
   if (isDatabaseEnabled()) {
     try {
       await dbSweepExpiredSnapshots();
-      return dbListSnapshots(max);
+      return dbListSnapshots(max, owner);
     } catch (error) {
       console.warn('Ошибка listing snapshots from DB, fallback JSON:', error.message || error);
     }
@@ -375,12 +385,15 @@ export async function listSnapshots(limit = 50) {
       const parsed = JSON.parse(raw);
       const token = parsed?.token || name.replace(/\.json$/, '');
       if (!isValidToken(token)) continue;
+      if (owner !== null && owner !== undefined && String(parsed?.owner ?? '') !== String(owner)) continue;
       if (snapshotExpiredAt(parsed?.saved_at)) continue;
       entries.push({
         token,
         saved_at: parsed?.saved_at || null,
         plan_id: parsed?.summary?.plan_id || parsed?.snapshot?.plan?.plan_id || null,
-        publications_count: parsed?.summary?.publications_count ?? null
+        publications_count: parsed?.summary?.publications_count ?? null,
+        display_name: parsed?.summary?.display_name || snapshotDisplayName(parsed?.snapshot?.plan) || null,
+        summary: parsed?.summary || null
       });
     } catch (error) {
       console.error('Ошибка listing snapshot плана:', error.message || error);

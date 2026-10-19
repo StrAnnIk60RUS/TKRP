@@ -8,6 +8,17 @@ import {
 } from './contentOutputUtils.js';
 import { buildFallbackMediaPrompt, mediaKindForFormat } from './mediaGenerationService.js';
 
+export const POST_CONTENT_JSON_SCHEMA = {
+  type: 'object',
+  properties: {
+    key_message: { type: 'string' },
+    summary: { type: 'string' },
+    cta: { type: 'string' },
+    media_prompt: { type: 'string' }
+  },
+  required: ['key_message', 'summary']
+};
+
 function clip(value, maxLen) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();
   if (!text) return '';
@@ -154,7 +165,9 @@ ${visualKind ? `media_prompt — промпт на английском для �
     const llmResponse = await callOpenRouterChat(systemPrompt, userPrompt, {
       temperature: temperatureFromCreativity(creativity),
       maxTokens: visualKind ? 1100 : 900,
-      responseFormat: 'json'
+      jsonSchema: POST_CONTENT_JSON_SCHEMA,
+      schemaName: 'post_content_generation',
+      responseFormat: 'json_schema'
     });
 
     if (usage) {

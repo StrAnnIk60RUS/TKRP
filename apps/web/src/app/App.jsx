@@ -5,6 +5,7 @@ import Layout from '../shared/ui/Layout'
 import ParticleBackground from '../shared/ui/ParticleBackground'
 import HomePage from '../pages/home/ui/HomePage'
 import ContentPlanPage from '../pages/content-plan/ui/ContentPlanPage'
+import AnalyticsPage from '../pages/analytics/ui/AnalyticsPage'
 import LoginPage from '../pages/auth/ui/LoginPage'
 import RegisterPage from '../pages/auth/ui/RegisterPage'
 import NotFoundPage from '../pages/not-found/ui/NotFoundPage'
@@ -25,6 +26,7 @@ function App() {
         <Routes>
           <Route path="/" element={<AuthenticatedOnly><HomePage /></AuthenticatedOnly>} />
           <Route path="/content-plan" element={<AuthenticatedOnly><ContentPlanPage /></AuthenticatedOnly>} />
+          <Route path="/analytics" element={<AuthenticatedOnly><AnalyticsPage /></AuthenticatedOnly>} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="*" element={<NotFoundPage />} />
