@@ -1,6 +1,7 @@
 import {
   deletePlanSnapshotOnServer,
   getPlanSnapshotFromServer,
+  listPlanSnapshotsFromServer,
   savePlanSnapshotToServer
 } from '../../../shared/api/enrichmentService'
 import { getCurrentUserId } from '../../../shared/api/authService'
@@ -144,22 +145,92 @@ function isSnapshotNotFoundError(error) {
   return msg.includes('Snapshot не найден')
 }
 
+export async function syncPlanHistoryWithServer() {
+  try {
+    const res = await listPlanSnapshotsFromServer(MAX_HISTORY_ITEMS)
+    const serverSnapshots = Array.isArray(res?.snapshots) ? res.snapshots : []
+    if (serverSnapshots.length === 0) return getPlanHistory()
+
+    const localHistory = getPlanHistory()
+    const localByToken = new Map(localHistory.map((item) => [item.snapshot_token, item]))
+
+    const merged = serverSnapshots.map((snap) => {
+      const existing = localByToken.get(snap.token)
+      if (existing) {
+        return {
+          ...existing,
+          summary: snap.summary || existing.summary
+        }
+      }
+      return {
+        id: snap.plan_id || `plan_${Date.parse(snap.saved_at) || Date.now()}`,
+        saved_at: snap.saved_at || new Date().toISOString(),
+        type: 'draft',
+        snapshot_token: snap.token,
+        summary: snap.summary || {
+          plan_id: snap.plan_id || 'unknown',
+          display_name: snap.display_name || null,
+          publications_count: snap.publications_count ?? 0
+        }
+      }
+    })
+
+    safeWriteJson(PLAN_HISTORY_KEY, merged.slice(0, MAX_HISTORY_ITEMS))
+    return merged.slice(0, MAX_HISTORY_ITEMS)
+  } catch (error) {
+    console.warn('Не удалось синхронизировать историю планов с сервером:', error)
+    return getPlanHistory()
+  }
+}
+
 export async function getCurrentPlanState() {
-  const token = getCurrentSnapshotToken()
+  let token = getCurrentSnapshotToken()
+  if (!token) {
+    const synced = await syncPlanHistoryWithServer()
+    if (synced && synced.length > 0) {
+      token = synced[0].snapshot_token
+      safeWriteJson(CURRENT_SNAPSHOT_TOKEN_KEY, token)
+      safeWriteJson(CURRENT_HISTORY_ENTRY_KEY, {
+        id: synced[0].id,
+        type: synced[0].type || 'draft',
+        saved_at: synced[0].saved_at,
+        snapshot_token: token
+      })
+    }
+  }
+
   if (!token) return null
   try {
     const response = await getPlanSnapshotFromServer(token)
     const snapshot = response?.snapshot || null
-    if (!snapshot?.plan) return null
-    return {
-      plan: snapshot.plan,
-      optimization: snapshot.optimization || null,
-      token
+    if (snapshot?.plan) {
+      return {
+        plan: snapshot.plan,
+        optimization: snapshot.optimization || null,
+        token
+      }
     }
   } catch (error) {
-    console.error('Ошибка загрузки текущего snapshot плана:', error)
-    return null
+    console.warn('Серверный snapshot не получен, проверка локального демо-снимка:', error)
   }
+
+  try {
+    const localRaw = localStorage.getItem(`demoPlanSnapshot:${token}`)
+    if (localRaw) {
+      const parsed = JSON.parse(localRaw)
+      if (parsed?.plan) {
+        return {
+          plan: parsed.plan,
+          optimization: parsed.optimization || null,
+          token
+        }
+      }
+    }
+  } catch (e) {
+    console.error('Ошибка чтения локального demoPlanSnapshot:', e)
+  }
+
+  return null
 }
 
 export function getPlanHistory() {
@@ -191,9 +262,31 @@ export async function savePlanSnapshot(plan, metadata = {}) {
   if (typeof metadata.token === 'string' && metadata.token.trim()) {
     body.token = metadata.token.trim()
   }
-  const saveResponse = await savePlanSnapshotToServer(body)
-  const snapshot = saveResponse?.snapshot
-  if (!snapshot?.token) return false
+  let snapshot = null
+  try {
+    const saveResponse = await savePlanSnapshotToServer(body)
+    snapshot = saveResponse?.snapshot
+  } catch (err) {
+    console.warn('Сервер недоступен при сохранении snapshot, сохранение локально:', err)
+  }
+
+  if (!snapshot?.token) {
+    const localToken = `local_${Date.now()}`
+    snapshot = {
+      token: localToken,
+      saved_at: new Date().toISOString()
+    }
+  }
+
+  try {
+    localStorage.setItem(
+      `demoPlanSnapshot:${snapshot.token}`,
+      JSON.stringify({ plan: planToSave, optimization })
+    )
+  } catch (e) {
+    console.error('Ошибка кэширования demoPlanSnapshot:', e)
+  }
+
   const entry = {
     id: planToSave?.plan_id || `plan_${Date.now()}`,
     saved_at: snapshot.saved_at || new Date().toISOString(),

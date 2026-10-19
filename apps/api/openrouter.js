@@ -13,6 +13,7 @@ import {
   extractJsonObjectFromContent,
   getEnrichmentConfig,
   mergeSemanticBatchResults,
+  SEMANTIC_ENRICHMENT_BATCH_JSON_SCHEMA,
   summarizeEnrichmentLimits,
   validateAndNormalizeSemanticBatchResult,
   validateNormalizedEnrichmentResult
@@ -94,7 +95,13 @@ async function callOpenRouterChatUncached(systemPrompt, userPrompt, options = {}
     throw new Error('API ключ для LLM не установлен в переменных окружения');
   }
 
-  const { temperature = 0.4, responseFormat = null } = options;
+  const {
+    temperature = 0.4,
+    responseFormat = null,
+    jsonSchema = null,
+    schemaName = 'response',
+    schemaStrict = true
+  } = options;
   const maxTokens =
     options.maxTokens != null && Number.isFinite(Number(options.maxTokens))
       ? Number(options.maxTokens)
@@ -116,8 +123,19 @@ async function callOpenRouterChatUncached(systemPrompt, userPrompt, options = {}
     max_tokens: maxTokens
   };
 
-  // Если нужен JSON формат ответа
-  if (responseFormat === 'json') {
+  // Нативный JSON Schema mode или JSON object mode
+  if (jsonSchema && typeof jsonSchema === 'object') {
+    requestBody.response_format = {
+      type: 'json_schema',
+      json_schema: {
+        name: schemaName,
+        strict: Boolean(schemaStrict),
+        schema: jsonSchema
+      }
+    };
+  } else if (responseFormat && typeof responseFormat === 'object') {
+    requestBody.response_format = responseFormat;
+  } else if (responseFormat === 'json') {
     requestBody.response_format = { type: 'json_object' };
   }
 
@@ -155,6 +173,20 @@ async function callOpenRouterChatUncached(systemPrompt, userPrompt, options = {}
       usage: response.data.usage || null
     };
   } catch (error) {
+    // Мягкий fallback: если провайдер в OpenRouter не поддерживает json_schema, повторяем с type: 'json_object'
+    if (
+      requestBody.response_format?.type === 'json_schema' &&
+      error.response?.status === 400 &&
+      /json_schema|response_format|schema/i.test(String(error.response?.data?.error?.message || error.message || ''))
+    ) {
+      console.warn('[LLM] Provider does not support json_schema; retrying with type: json_object fallback...');
+      return await callOpenRouterChatUncached(systemPrompt, userPrompt, {
+        ...options,
+        jsonSchema: null,
+        responseFormat: 'json'
+      });
+    }
+
     console.error('Ошибка при вызове LLM API:', error.response?.data || error.message);
 
     let errorMessage = 'Ошибка при обращении к LLM API';
@@ -275,8 +307,9 @@ async function enrichSemanticBatch(batch, systemPrompt, options = {}) {
     {
       temperature: compact ? 0.1 : 0.2,
       maxTokens: compact ? 4000 : 8000,
-      // Enrichment expects strict JSON; ask the model to return JSON object.
-      responseFormat: 'json'
+      jsonSchema: SEMANTIC_ENRICHMENT_BATCH_JSON_SCHEMA,
+      schemaName: 'semantic_enrichment_batch',
+      responseFormat: 'json_schema'
     }
   );
 

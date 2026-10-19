@@ -30,7 +30,7 @@ const getAbsoluteSourceLabel = (source) => {
   return 'источник не указан'
 }
 
-const PostCard = ({ post, showPlatformField, onEdit }) => {
+const PostCard = ({ post, showPlatformField, onEdit, onPublish }) => {
   const normalizedPost = normalizePublicationForUi(post)
   const plannedDateLabel = normalizedPost.planned_date
     ? new Date(normalizedPost.planned_date).toLocaleDateString('ru-RU')
@@ -52,10 +52,21 @@ const PostCard = ({ post, showPlatformField, onEdit }) => {
   const engagementSourceLabel = getEngagementSourceLabel(expectedKpi.engagement_rate_source)
   const absoluteSourceLabel = getAbsoluteSourceLabel(mlSource)
 
+  const status = normalizedPost.status || 'draft'
+  const actualKpi = normalizedPost.actual_kpi
+
   return (
-    <div className="post-card">
+    <div className={`post-card post-card-${status}`}>
       <div className="post-header">
-        <span className="post-date">{plannedDateLabel}</span>
+        <div className="post-header-meta">
+          <span className="post-date">{plannedDateLabel}</span>
+          <span className={`post-status-badge post-status-${status}`}>
+            {status === 'published' && '🟢 Опубликован'}
+            {status === 'scheduled' && '⏰ Запланирован автопостинг'}
+            {status === 'draft' && '📝 Черновик'}
+            {status === 'failed' && '❌ Ошибка публикации'}
+          </span>
+        </div>
         <span className="post-category" title={showFullHeadingTooltip ? fullHeading : undefined}>
           {postHeading}
         </span>
@@ -144,13 +155,84 @@ const PostCard = ({ post, showPlatformField, onEdit }) => {
         </div>
       )}
 
-      {onEdit && (
-        <div className="post-edit-actions">
+      {normalizedPost.post_url && (
+        <div className="post-published-link-row">
+          <span className="post-published-label">Опубликовано в соцсети:</span>
+          <a
+            href={normalizedPost.post_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="post-published-link"
+          >
+            🔗 {normalizedPost.post_url}
+          </a>
+        </div>
+      )}
+
+      {actualKpi && (
+        <div className="post-actual-kpi-block">
+          <div className="post-actual-kpi-title">
+            <span>📊 Фактическая статистика поста (Факт vs Прогноз ML):</span>
+          </div>
+          <div className="post-actual-kpi-grid">
+            <div className="post-actual-kpi-item">
+              <span className="post-actual-kpi-name">Лайки</span>
+              <span className="post-actual-kpi-val">{actualKpi.likes}</span>
+              {mlLikesRaw != null && (
+                <span className="post-actual-kpi-delta">
+                  (прогноз: {Number(mlLikesRaw).toFixed(0)})
+                </span>
+              )}
+            </div>
+            <div className="post-actual-kpi-item">
+              <span className="post-actual-kpi-name">Просмотры</span>
+              <span className="post-actual-kpi-val">{actualKpi.views}</span>
+              {mlViewsRaw != null && (
+                <span className="post-actual-kpi-delta">
+                  (прогноз: {Number(mlViewsRaw).toFixed(0)})
+                </span>
+              )}
+            </div>
+            <div className="post-actual-kpi-item">
+              <span className="post-actual-kpi-name">Репосты</span>
+              <span className="post-actual-kpi-val">{actualKpi.shares}</span>
+              {mlSharesRaw != null && (
+                <span className="post-actual-kpi-delta">
+                  (прогноз: {Number(mlSharesRaw).toFixed(0)})
+                </span>
+              )}
+            </div>
+            <div className="post-actual-kpi-item">
+              <span className="post-actual-kpi-name">Комментарии</span>
+              <span className="post-actual-kpi-val">{actualKpi.comments || 0}</span>
+            </div>
+            {actualKpi.er_percent != null && (
+              <div className="post-actual-kpi-item">
+                <span className="post-actual-kpi-name">Факт ER</span>
+                <span className="post-actual-kpi-val">{actualKpi.er_percent}%</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="post-edit-actions">
+        {onPublish && status !== 'published' && (
+          <button
+            type="button"
+            className="primary-btn post-publish-now-btn"
+            onClick={onPublish}
+            title="Опубликовать этот пост в соцсеть прямо сейчас"
+          >
+            🚀 Опубликовать сейчас
+          </button>
+        )}
+        {onEdit && (
           <button type="button" className="secondary-btn post-edit-btn" onClick={onEdit}>
             Редактировать
           </button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   )
 }

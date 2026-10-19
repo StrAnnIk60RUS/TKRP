@@ -34,3 +34,22 @@ test('computePostEngagementMetrics unknown when no signal', () => {
   assert.equal(r.metrics_quality, 'unknown');
   assert.equal(r.rate, 0);
 });
+
+test('calculateComplexEngagementRate computes weighted reactions over views', async () => {
+  const { calculateComplexEngagementRate } = await import(
+    '../src/modules/ml/services/relevancePredictionService.js'
+  );
+  // likes=10 (weight 1), comments=5 (weight 2 -> 10), shares=2 (weight 3 -> 6) => 26 / 100 = 0.26
+  const rate = calculateComplexEngagementRate({ likes: 10, comments: 5, shares: 2, views: 100 });
+  assert.equal(rate, 0.26);
+});
+
+test('calculateComplexEngagementRate uses saturation proxy when views are missing', async () => {
+  const { calculateComplexEngagementRate } = await import(
+    '../src/modules/ml/services/relevancePredictionService.js'
+  );
+  // likes=10, comments=5 (10), shares=2 (6) => interactions = 26. proxy = 26 / 76 ~= 0.3421
+  const rate = calculateComplexEngagementRate({ likes: 10, comments: 5, shares: 2, views: 0 });
+  assert.ok(rate > 0.3 && rate < 0.4);
+});
+

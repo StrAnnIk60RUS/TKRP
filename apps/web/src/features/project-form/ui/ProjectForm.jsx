@@ -666,6 +666,9 @@ const ProjectForm = () => {
   const validateField = (name, value) => {
     const error = validateFieldValue(name, value ?? '', formData)
     setErrors(prev => ({ ...prev, [name]: error }))
+    if (error) {
+      addToast(error, 'error')
+    }
     return !error
   }
 
@@ -803,7 +806,8 @@ const ProjectForm = () => {
       setTouched(
         Object.keys(formValidation.errors).reduce((acc, key) => ({ ...acc, [key]: true }), {})
       )
-      addToast('Перед генерацией заполните обязательные поля формы', 'error')
+      const firstErrorMessage = Object.values(formValidation.errors)[0]
+      addToast(firstErrorMessage ? `Ошибка заполнения: ${firstErrorMessage}` : 'Перед генерацией заполните обязательные поля формы', 'error')
       return
     }
 

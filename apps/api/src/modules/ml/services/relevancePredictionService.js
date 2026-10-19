@@ -257,14 +257,29 @@ function capContentPlanMetrics(predictedMetrics, metadata = null) {
 }
 
 /**
- * Вычисление engagement rate из предсказанных метрик
- * Формула: (likes + shares * 2) / views, кап на 1
+ * Вычисление комплексного engagement rate из предсказанных метрик.
+ * Учитывает взвешенную сумму реакций: likes (вес 1) + comments (вес 2) + shares (вес 3).
+ * При views > 0: interactions / views, кап на 1.
+ * При отсутствии просмотров: сатурационный прокси interactions / (interactions + 50).
  */
+function calculateComplexEngagementRate(metrics = {}) {
+  const likes = clampPositive(metrics.likes);
+  const comments = clampPositive(metrics.comments);
+  const shares = clampPositive(metrics.shares);
+  const views = clampPositive(metrics.views);
+  const interactions = likes + (comments * 2) + (shares * 3);
+
+  if (views > 0) {
+    return clamp01(interactions / views);
+  }
+  if (interactions > 0) {
+    return clamp01(interactions / (interactions + 50));
+  }
+  return 0;
+}
+
 function calculateEngagementRateFromMetrics(metrics) {
-  const { likes, shares, views } = metrics;
-  if (views === 0) return 0;
-  const raw = (likes + shares * 2) / Math.max(1, views);
-  return clamp01(raw);
+  return calculateComplexEngagementRate(metrics);
 }
 
 function runPythonModel(mode, modelKey, payload) {
@@ -529,11 +544,13 @@ async function predictContentPlanMetrics(planOrPublications, options = {}) {
   const cappedPredicted = capContentPlanMetrics(rawPredicted, metadata);
   
   const [likes, shares, views] = cappedPredicted;
-  
+  const predictedComplexEr = calculateComplexEngagementRate({ likes, shares, views });
+
   return {
     predictedLikes: likes,
     predictedShares: shares,
     predictedViews: views,
+    predictedComplexEr,
     normalizedLikes: normalizeMetricToUnitInterval(likes, metadata, 'total_likes'),
     normalizedShares: normalizeMetricToUnitInterval(shares, metadata, 'total_shares'),
     normalizedViews: normalizeMetricToUnitInterval(views, metadata, 'total_views'),
@@ -663,6 +680,7 @@ export {
   normalizeMetricToUnitInterval,
   normalizeLikesToUnitInterval,
   calculateEngagementRateFromMetrics,
+  calculateComplexEngagementRate,
   // Устаревшие, но оставленные для совместимости
   predictPostLikesByFeatureVectors,
   predictPostLikesForPublications,

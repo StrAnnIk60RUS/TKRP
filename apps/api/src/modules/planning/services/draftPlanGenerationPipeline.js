@@ -70,6 +70,91 @@ const SEMANTIC_STOP_WORDS = new Set([
   'да', 'нет', 'the', 'and', 'or', 'for', 'with', 'from', 'into', 'your', 'our', 'this', 'that', 'are', 'is'
 ]);
 
+export const PLAN_SKELETON_JSON_SCHEMA = {
+  type: 'object',
+  properties: {
+    title: { type: 'string' },
+    planning_horizon: {
+      type: 'object',
+      properties: {
+        start_date: { type: 'string' },
+        end_date: { type: 'string' },
+        duration_days: { type: 'number' },
+        duration_weeks: { type: 'number' },
+        posts_per_week: { type: 'number' }
+      },
+      required: ['start_date', 'end_date']
+    },
+    platforms: {
+      type: 'array',
+      items: { type: 'string' }
+    },
+    content_strategy: {
+      type: 'object',
+      properties: {
+        brand_voice: { type: 'string' },
+        target_audience: { type: 'string' },
+        primary_objectives: {
+          type: 'array',
+          items: { type: 'string' }
+        }
+      }
+    },
+    calendar_plan: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          month: { type: 'string' },
+          slots: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                slot_id: { type: 'string' },
+                planned_date: { type: 'string' },
+                platform: { type: 'string' },
+                format: { type: 'string' },
+                objective: { type: 'string' },
+                tone: { type: 'string' }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  required: ['planning_horizon']
+};
+
+export const PLAN_MONTH_BATCH_JSON_SCHEMA = {
+  type: 'object',
+  properties: {
+    publications: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          slot_id: { type: 'string' },
+          publication_id: { type: 'string' },
+          planned_date: { type: 'string' },
+          platform: { type: 'string' },
+          format: { type: 'string' },
+          topic: { type: 'string' },
+          objective: { type: 'string' },
+          tone: { type: 'string' },
+          key_message: { type: 'string' },
+          summary: { type: 'string' },
+          cta: { type: 'string' },
+          creativity: { type: 'number' }
+        },
+        required: ['topic', 'key_message', 'summary']
+      }
+    }
+  },
+  required: ['publications']
+};
+
 function normalizePublicationDayMode(value) {
   return value === 'shared' ? 'shared' : 'spread';
 }
@@ -1426,7 +1511,9 @@ ${targetPublicationCount}
     async () =>
       callOpenRouterChat(systemPrompt, userPrompt, {
         temperature: 0.4,
-        responseFormat: 'json'
+        jsonSchema: PLAN_SKELETON_JSON_SCHEMA,
+        schemaName: 'content_plan_skeleton',
+        responseFormat: 'json_schema'
       })
   );
   const parsed = extractJsonFromLlmContent(llmResponse.content || '');
@@ -1529,7 +1616,9 @@ ${JSON.stringify(slots, null, 2)}
     async () =>
       callOpenRouterChat(systemPrompt, userPrompt, {
         temperature: 0.62,
-        responseFormat: 'json'
+        jsonSchema: PLAN_MONTH_BATCH_JSON_SCHEMA,
+        schemaName: 'content_plan_month_batch',
+        responseFormat: 'json_schema'
       })
   );
   const parsed = extractJsonFromLlmContent(llmResponse.content || '');

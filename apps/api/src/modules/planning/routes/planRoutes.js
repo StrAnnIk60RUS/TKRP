@@ -6,7 +6,7 @@ import { searchPrecedents } from '../../precedents/repositories/precedentReposit
 import { buildRagQueryFromForm, mergePinnedPublications, normalizeDraftPlanResponse } from './shared/planUtils.js';
 import { sendRouteError } from '../../../shared/http/routeUtils.js';
 import { loadDraft, saveDraft } from '../services/draftStore.js';
-import { deleteSnapshot, loadSnapshot, saveSnapshot } from '../services/planSnapshotStore.js';
+import { deleteSnapshot, listSnapshots, loadSnapshot, saveSnapshot } from '../services/planSnapshotStore.js';
 import { resolveSession } from '../../auth/services/authStore.js';
 import { requireSessionOrAdminApiKey } from '../../auth/services/sessionGate.js';
 import { rejectInstagramIfForbidden } from '../../auth/services/instagramAccess.js';
@@ -265,6 +265,21 @@ router.put('/draft/current', requireSessionOrAdminApiKey, async (req, res) => {
     draft,
     request_id: req.requestId
   });
+});
+
+router.get('/snapshots', requireSessionOrAdminApiKey, async (req, res) => {
+  try {
+    const userId = await resolveUserId(req);
+    const limit = Number(req.query?.limit) || 50;
+    const snapshots = await listSnapshots(limit, userId);
+    return res.json({
+      success: true,
+      snapshots,
+      request_id: req.requestId
+    });
+  } catch (error) {
+    return sendRouteError(res, req, 500, 'Внутренняя ошибка сервера в GET /api/plan/snapshots', error);
+  }
 });
 
 router.post('/snapshots', requireSessionOrAdminApiKey, async (req, res) => {

@@ -2,7 +2,11 @@
  * Сервис для регистрация, логin и logout пользователей
  */
 
-const API_URL = import.meta.env.VITE_ENRICHMENT_API_URL || 'http://localhost:3001';
+const API_URL =
+  import.meta.env.VITE_ENRICHMENT_API_URL !== undefined &&
+  import.meta.env.VITE_ENRICHMENT_API_URL !== ''
+    ? import.meta.env.VITE_ENRICHMENT_API_URL
+    : (import.meta.env.DEV ? 'http://localhost:3001' : '');
 
 const SESSION_KEY = 'tkrp_session';
 const USER_ID_KEY = 'tkrp_user_id';

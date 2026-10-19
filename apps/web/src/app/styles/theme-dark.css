@@ -85,6 +85,8 @@ body.theme-dark :is(
   .calendar-day-card,
   .calendar-platform-lane,
   .calendar-publication-card,
+  .auth-card,
+  .not-found-card,
   .auth-form,
   .auth-gate,
   .modal-content,
@@ -230,8 +232,8 @@ body.theme-dark .app-main :is(
   color: #e6c57a;
 }
 
-body.theme-dark .not-found-link {
-  color: #e48aa8;
+body.theme-dark :is(.not-found-link, .not-found-btn) {
+  color: inherit;
 }
 
 body.theme-dark :is(
@@ -399,21 +401,120 @@ body.theme-dark .precedent-modal-score {
 }
 
 body.theme-dark :is(.submit-button, .btn-edit, .primary-btn, .btn-primary) {
-  background: var(--bg-control);
-  border-color: #222433;
+  background: #ff6b9d;
+  border-color: #ff6b9d;
+  color: #0c0e14 !important;
+  font-weight: 800;
+  box-shadow: 4px 4px 0 0 #000000;
 }
 
-body.theme-dark .submit-button.primary:hover:not(:disabled),
-body.theme-dark .submit-button.secondary:hover:not(:disabled) {
-  background: #222433;
-  border-color: #222433;
+body.theme-dark :is(.submit-button, .btn-edit, .primary-btn, .btn-primary) > *,
+body.theme-dark :is(.submit-button, .btn-edit, .primary-btn, .btn-primary) span {
+  color: #0c0e14 !important;
+}
+
+body.theme-dark :is(.submit-button, .btn-edit, .primary-btn, .btn-primary):hover:not(:disabled) {
+  background: #f8b500;
+  border-color: #f8b500;
+  color: #0c0e14 !important;
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 0 #ff6b9d;
+}
+
+body.theme-dark :is(.submit-button, .btn-edit, .primary-btn, .btn-primary):hover:not(:disabled) > *,
+body.theme-dark :is(.submit-button, .btn-edit, .primary-btn, .btn-primary):hover:not(:disabled) span {
+  color: #0c0e14 !important;
+}
+
+body.theme-dark :is(.submit-button, .btn-edit, .primary-btn, .btn-primary):active:not(:disabled) {
+  transform: translate(0, 0);
+  box-shadow: 2px 2px 0 0 #000000;
+}
+
+body.theme-dark .submit-button.secondary,
+body.theme-dark .secondary-btn {
+  background: #1c1e28;
+  border-color: #383b4c;
+  color: #ffffff !important;
+  box-shadow: 4px 4px 0 0 #000000;
+}
+
+body.theme-dark .submit-button.secondary > *,
+body.theme-dark .submit-button.secondary span,
+body.theme-dark .secondary-btn > *,
+body.theme-dark .secondary-btn span {
+  color: #ffffff !important;
+}
+
+body.theme-dark .submit-button.secondary:hover:not(:disabled),
+body.theme-dark .secondary-btn:hover:not(:disabled) {
+  background: #2a222e;
+  border-color: #ff6b9d;
+  color: #ffffff !important;
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 0 #ff6b9d;
+}
+
+body.theme-dark .submit-button.secondary:hover:not(:disabled) > *,
+body.theme-dark .submit-button.secondary:hover:not(:disabled) span,
+body.theme-dark .secondary-btn:hover:not(:disabled) > *,
+body.theme-dark .secondary-btn:hover:not(:disabled) span {
+  color: #ffffff !important;
+}
+
+body.theme-dark .submit-button:disabled {
+  opacity: 0.45;
+  background: #14161e !important;
+  border-color: #2a2c38 !important;
+  color: #717182 !important;
+  box-shadow: 2px 2px 0 0 #000000 !important;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+body.theme-dark .submit-button:disabled > *,
+body.theme-dark .submit-button:disabled span {
+  color: #717182 !important;
+}
+
+/* Publication day mode options in dark theme */
+body.theme-dark .publication-day-mode-option {
+  background: var(--bg-inset, #101218);
+  border-color: var(--line, #2a2c38);
+  color: var(--ink, #d4d2de);
+  box-shadow: 4px 4px 0 0 var(--shadow, #101218);
+}
+
+body.theme-dark .publication-day-mode-option:hover {
+  background: #181a24;
+  border-color: #ff6b9d;
+  box-shadow: 4px 4px 0 0 rgba(255, 107, 157, 0.25);
+}
+
+body.theme-dark .publication-day-mode-option.is-active {
+  background: #221824;
+  border-color: #ff6b9d;
+  box-shadow: 4px 4px 0 0 #ff6b9d;
+}
+
+body.theme-dark .publication-day-mode-option-title {
+  color: #ffffff;
+}
+
+body.theme-dark .publication-day-mode-option.is-active .publication-day-mode-option-title {
+  color: #ff6b9d;
+}
+
+body.theme-dark .publication-day-mode-option-hint {
+  color: var(--ink-muted, #8e8ca0);
 }
 
 body.theme-dark .quick-actions,
 body.theme-dark .onboarding-master,
 body.theme-dark .process-indicator {
   background: #101218;
-  box-shadow: none;
+  border-color: #222433;
+  box-shadow: 4px 4px 0 0 #000000;
 }
 
 body.theme-dark .action-btn:not(:hover):not(.danger),
@@ -422,11 +523,27 @@ body.theme-dark .onboarding-master-btn:not(:hover):not(.primary),
 body.theme-dark .demo-horizon-select {
   background: var(--bg-control);
   border-color: #222433;
+  color: var(--ink) !important;
 }
 
-body.theme-dark .submit-button.secondary,
-body.theme-dark .secondary-btn {
-  box-shadow: 4px 4px 0 0 #101218;
+body.theme-dark .action-btn:hover:not(.danger),
+body.theme-dark .onboarding-master-btn:hover:not(:disabled):not(.primary) {
+  background: #ff6b9d;
+  border-color: #ff6b9d;
+  color: #0c0e14 !important;
+}
+
+body.theme-dark .onboarding-master-btn.primary {
+  background: #ff6b9d;
+  border-color: #ff6b9d;
+  color: #0c0e14 !important;
+  box-shadow: 4px 4px 0 0 #f8b500;
+}
+
+body.theme-dark .onboarding-master-btn.primary:hover:not(:disabled) {
+  background: #f8b500;
+  border-color: #f8b500;
+  color: #0c0e14 !important;
 }
 
 body.theme-dark .ui-panel,
@@ -438,7 +555,7 @@ body.theme-dark .precedent-empty-state {
 
 body.theme-dark .spinner {
   border-color: #2a2c38;
-  border-top-color: #d4d2de;
+  border-top-color: #ff6b9d;
 }
 
 body.theme-dark .page-header,
@@ -446,6 +563,127 @@ body.theme-dark .evolution-settings-subblock,
 body.theme-dark .post-header,
 body.theme-dark .post-metrics {
   border-color: var(--line);
+}
+
+/* Fixes for dark theme details & callouts */
+body.theme-dark .ui-callout {
+  background: #141824;
+  border-color: var(--line);
+}
+
+body.theme-dark .ui-callout-title {
+  color: #ff6b9d;
+}
+
+body.theme-dark .ui-callout-text {
+  color: var(--ink);
+}
+
+body.theme-dark .ui-mono {
+  background: #090a0f;
+  border-color: var(--line);
+  color: #e2e8f0;
+}
+
+body.theme-dark .ui-empty {
+  background: #12141c;
+  border-color: #2a2c38;
+}
+
+body.theme-dark .workflow-risk-summary {
+  background: #231d10;
+  border-color: #92400e;
+}
+
+body.theme-dark .workflow-risk-summary-title {
+  color: #fcd34d;
+}
+
+body.theme-dark .workflow-overview-value {
+  color: #ffffff;
+}
+
+body.theme-dark .plan-summary-metric-value,
+body.theme-dark .plan-summary-value {
+  color: #ffffff;
+}
+
+body.theme-dark .plan-summary-metric-meta,
+body.theme-dark .plan-summary-metric-meta-list {
+  color: var(--ink-muted);
+}
+
+body.theme-dark .plan-summary-metric-meta-key {
+  color: var(--ink);
+}
+
+body.theme-dark .platform-name,
+body.theme-dark .post-date,
+body.theme-dark .post-metrics-section-title {
+  color: var(--ink);
+}
+
+body.theme-dark .post-metrics-list {
+  color: var(--ink-muted);
+}
+
+body.theme-dark .section-title {
+  color: #ffffff;
+}
+
+body.theme-dark .form-label {
+  color: var(--ink);
+}
+
+body.theme-dark .progress-bar-container {
+  background: #161822;
+  border-color: #2a2c38;
+}
+
+body.theme-dark .progress-bar-fill {
+  background: linear-gradient(90deg, #ff6b9d, #c44569);
+}
+
+body.theme-dark .progress-text {
+  color: var(--ink);
+}
+
+body.theme-dark .wizard-nav-summary {
+  background: var(--bg-raised);
+  border-color: var(--line);
+}
+
+body.theme-dark .wizard-nav-summary-step {
+  color: var(--ink);
+}
+
+body.theme-dark .wizard-main-nav {
+  background: var(--bg-raised);
+  border-color: var(--line);
+}
+
+body.theme-dark .plan-calendar-month h3,
+body.theme-dark .plan-calendar-intro-title,
+body.theme-dark .plan-calendar-mobile-title,
+body.theme-dark .plan-calendar-dot,
+body.theme-dark .plan-calendar-card-title {
+  color: var(--ink);
+}
+
+body.theme-dark .plan-calendar-intro p,
+body.theme-dark .plan-calendar-mobile-copy,
+body.theme-dark .plan-calendar-card-meta {
+  color: var(--ink-muted);
+}
+
+body.theme-dark .plan-calendar-mobile-selection-label {
+  color: #ff6b9d;
+}
+
+body.theme-dark .plan-calendar-mobile-empty {
+  background: #12141c;
+  border-color: #2a2c38;
+  color: var(--ink-muted);
 }
 
 @media (max-width: 768px) {

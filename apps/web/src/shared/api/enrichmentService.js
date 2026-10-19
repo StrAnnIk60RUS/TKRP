@@ -2,7 +2,11 @@
  * Сервис для обогащения данных конкурентов через LLM
  */
 
-const API_URL = import.meta.env.VITE_ENRICHMENT_API_URL || 'http://localhost:3001';
+const API_URL =
+  import.meta.env.VITE_ENRICHMENT_API_URL !== undefined &&
+  import.meta.env.VITE_ENRICHMENT_API_URL !== ''
+    ? import.meta.env.VITE_ENRICHMENT_API_URL
+    : (import.meta.env.DEV ? 'http://localhost:3001' : '');
 
 const buildFetchErrorMessage = async (response) => {
   let errorMessage = `HTTP ${response.status}: ${response.statusText}`
@@ -26,7 +30,8 @@ const safeFetch = async (endpoint, options = {}) => {
     return await fetch(endpoint, options);
   } catch (error) {
     if (error?.name === 'TypeError') {
-      throw new Error(`Не удалось подключиться к серверу (${API_URL}). Проверьте, что сервер запущен и адрес страницы разрешён.`);
+      const serverDesc = API_URL || 'сервер';
+      throw new Error(`Не удалось подключиться к серверу (${serverDesc}). Проверьте, что сервер запущен и адрес страницы разрешён.`);
     }
     throw error;
   }
@@ -384,6 +389,18 @@ export async function getPlanSnapshotFromServer(token, requestOptions = {}) {
     })
   } catch (error) {
     console.error('Ошибка в getPlanSnapshotFromServer:', error)
+    throw error
+  }
+}
+
+export async function listPlanSnapshotsFromServer(limit = 50, requestOptions = {}) {
+  try {
+    return await fetchJsonOrThrow(`${API_URL}/api/plan/snapshots?limit=${encodeURIComponent(limit)}`, {
+      method: 'GET',
+      signal: requestOptions.signal
+    })
+  } catch (error) {
+    console.error('Ошибка в listPlanSnapshotsFromServer:', error)
     throw error
   }
 }

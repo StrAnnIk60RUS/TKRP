@@ -385,6 +385,48 @@ function clamp01(value) {
   return numeric >= 0 && numeric <= 1;
 }
 
+export const SEMANTIC_ENRICHMENT_BATCH_JSON_SCHEMA = {
+  type: 'object',
+  required: ['competitors'],
+  properties: {
+    competitors: {
+      type: 'array',
+      items: {
+        type: 'object',
+        required: ['posts'],
+        properties: {
+          competitor_id: { type: 'string' },
+          posts: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['source_post_id', 'topic', 'tone', 'objective', 'summary'],
+              properties: {
+                source_post_id: { type: 'string' },
+                topic: { type: 'string' },
+                tone: { type: 'string' },
+                target_audience: {
+                  type: 'array',
+                  items: { type: 'string' }
+                },
+                objective: {
+                  type: 'string',
+                  enum: ALLOWED_ENRICHMENT_OBJECTIVES
+                },
+                summary: { type: 'string' },
+                key_entities: {
+                  type: 'array',
+                  items: { type: 'string' }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+};
+
 // Structural contract для normalized enrichment result (types + required keys);
 // semantic checks (objective enum, 0..1 ranges) stay ниже в validateNormalizedEnrichmentResult.
 const ENRICHMENT_RESULT_SCHEMA = {

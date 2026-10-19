@@ -38,7 +38,10 @@ function buildInitialDraft(publication) {
     key_message: coerceString(normalized?.key_message || ''),
     cta: coerceString(normalized?.cta || ''),
     media_prompt: coerceString(normalized?.media_prompt || ''),
-    media: normalized?.media && typeof normalized.media === 'object' ? normalized.media : null
+    media: normalized?.media && typeof normalized.media === 'object' ? normalized.media : null,
+    status: coerceString(normalized?.status || 'draft'),
+    post_url: coerceString(normalized?.post_url || ''),
+    actual_kpi: normalized?.actual_kpi || null
   }
 }
 
@@ -48,7 +51,7 @@ function mediaForDraft(format, media) {
   return media
 }
 
-const PostEditModal = ({ publication, onSave, onCancel, platforms }) => {
+const PostEditModal = ({ publication, onSave, onCancel, platforms, onToast }) => {
   const platformChoices =
     Array.isArray(platforms) && platforms.length
       ? platforms
@@ -127,7 +130,10 @@ const PostEditModal = ({ publication, onSave, onCancel, platforms }) => {
       key_message: draft.key_message.trim(),
       cta: draft.cta.trim(),
       media_prompt: kind ? draft.media_prompt.trim() : '',
-      media
+      media,
+      status: draft.status || 'draft',
+      post_url: draft.post_url ? draft.post_url.trim() : null,
+      actual_kpi: draft.actual_kpi || null
     }
   }
 
@@ -135,16 +141,22 @@ const PostEditModal = ({ publication, onSave, onCancel, platforms }) => {
     const maybeError = validate()
     if (maybeError) {
       setError(maybeError)
+      if (typeof onToast === 'function') onToast(maybeError, 'error')
       return
     }
     const saved = await onSave(buildPayload())
-    if (saved === false) setError('Не удалось сохранить пост')
+    if (saved === false) {
+      const saveErr = 'Не удалось сохранить пост'
+      setError(saveErr)
+      if (typeof onToast === 'function') onToast(saveErr, 'error')
+    }
   }
 
   const handleGenerate = async () => {
     const maybeError = validate({ requireMediaPrompt: true })
     if (maybeError) {
       setError(maybeError)
+      if (typeof onToast === 'function') onToast(maybeError, 'error')
       return
     }
     const format = normalizeFormat(draft.format)
@@ -166,10 +178,16 @@ const PostEditModal = ({ publication, onSave, onCancel, platforms }) => {
       )
       setDraft((prev) => ({ ...prev, media }))
       const saved = await onSave(buildPayload(media))
-      if (saved === false) setError('Медиа готово, но сохранить пост не удалось')
+      if (saved === false) {
+        const saveErr = 'Медиа готово, но сохранить пост не удалось'
+        setError(saveErr)
+        if (typeof onToast === 'function') onToast(saveErr, 'error')
+      }
     } catch (err) {
       if (err?.name === 'AbortError') return
-      setError(err?.message || 'Не удалось сгенерировать медиа')
+      const genErr = err?.message || 'Не удалось сгенерировать медиа'
+      setError(genErr)
+      if (typeof onToast === 'function') onToast(genErr, 'error')
     } finally {
       if (generateAbortRef.current === controller) setGenerating(false)
     }
@@ -246,6 +264,32 @@ const PostEditModal = ({ publication, onSave, onCancel, platforms }) => {
                   ))}
                 </select>
               </label>
+
+              <label className="editor-field">
+                Статус публикации
+                <select
+                  className="editor-input"
+                  value={draft.status}
+                  onChange={(e) => setField('status', e.target.value)}
+                >
+                  <option value="draft">📝 Черновик</option>
+                  <option value="scheduled">⏰ Запланирован автопостинг</option>
+                  <option value="published">🟢 Опубликован</option>
+                </select>
+              </label>
+
+              {draft.status === 'published' && (
+                <label className="editor-field editor-field-wide">
+                  Ссылка на публикацию в соцсети
+                  <input
+                    className="editor-input"
+                    type="url"
+                    value={draft.post_url}
+                    onChange={(e) => setField('post_url', e.target.value)}
+                    placeholder="https://t.me/... или https://vk.com/wall-..."
+                  />
+                </label>
+              )}
 
               <label className="editor-field editor-field-wide">
                 Тема
