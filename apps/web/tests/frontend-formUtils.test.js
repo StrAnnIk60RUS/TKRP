@@ -27,7 +27,7 @@ test('validateFormData reports required field errors', () => {
 
 test('wizard steps keep original order with STEP_META for every step', () => {
   assert.deepEqual(wizardStepIdsExtended, ['competitors', 'project', 'audience', 'precedents', 'draft', 'optimize'])
-  assert.deepEqual(wizardStepIdsSmm, ['competitors', 'project', 'audience', 'draft', 'optimize'])
+  assert.deepEqual(wizardStepIdsSmm, ['competitors', 'project', 'audience'])
 
   for (const stepId of wizardStepIdsExtended) {
     assert.ok(STEP_META[stepId]?.title)

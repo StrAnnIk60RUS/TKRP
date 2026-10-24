@@ -889,8 +889,13 @@ function applyGenomeToPlan(
   _precedentContext = {},
   bodySyncOptions = {}
 ) {
+  const DAY_NAMES = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+  const startMs = planningHorizon?.start_date ? new Date(planningHorizon.start_date).getTime() : Date.now();
+  const endMs = planningHorizon?.end_date ? new Date(planningHorizon.end_date).getTime() : null;
+  const durationDays = Math.max(1, Number(planningHorizon?.duration_days) || 7);
+
   const publications = genome.map((gene, index) => {
-    const [topic, format, objective, tone, hasCta, creativity] = Array.isArray(gene) ? gene : [];
+    const [topic, format, objective, tone, hasCta, creativity, dayOffset] = Array.isArray(gene) ? gene : [];
     const base = cloneJson(basePublications[index] || {});
     const semanticCore = base?.semantic_core || buildDraftSemanticCore(base);
     const nextCreativity = clamp01(creativity, asNumber(base?.ontology_features?.creativity, 0.5));
@@ -917,6 +922,19 @@ function applyGenomeToPlan(
       bodySyncOptions
     );
 
+    // Temporal Slot Gene evolution: compute planned_date and day_of_week
+    const offset = Number.isFinite(Number(dayOffset)) ? Math.round(Number(dayOffset)) : 0;
+    const baseSlotDateMs = base.planned_date
+      ? new Date(base.planned_date).getTime()
+      : startMs + Math.round((index / Math.max(1, basePublications.length - 1)) * (durationDays - 1)) * 86400000;
+
+    let evolvedMs = baseSlotDateMs + offset * 86400000;
+    if (startMs && evolvedMs < startMs) evolvedMs = startMs;
+    if (endMs && evolvedMs > endMs) evolvedMs = endMs;
+    const evolvedDate = new Date(evolvedMs);
+    const plannedDateStr = evolvedDate.toISOString().slice(0, 10);
+    const dayOfWeek = DAY_NAMES[evolvedDate.getUTCDay()];
+
     return {
       ...base,
       publication_id: base.publication_id || `evo_publication_${String(index + 1).padStart(3, '0')}`,
@@ -927,6 +945,9 @@ function applyGenomeToPlan(
       tone: resolvedTone,
       key_message,
       summary,
+      planned_date: plannedDateStr,
+      day_of_week: dayOfWeek,
+      day_offset: offset,
       platform: base.platform || draftContentPlan?.platforms?.[0] || null,
       cta: hasCta ? base.cta || 'Свяжитесь с нами, чтобы получить детали.' : '',
       ontology_features: {
@@ -1204,21 +1225,95 @@ function scoreGenomeOntologyAlignment(genome, precedentContext = {}) {
   return clamp01(score / genome.length, 0);
 }
 
+export function scorePlanTemporalCadence(publications = [], _planningHorizon = {}) {
+  if (!Array.isArray(publications) || publications.length <= 1) return 1.0;
+
+  const ANALYTICAL_FORMATS = new Set([
+    'case_study', 'longread', 'article', 'analytics', 'guide', 'checklist', 'comparison'
+  ]);
+  const LIGHT_FORMATS = new Set([
+    'meme', 'digest', 'story', 'poll', 'entertainment', 'roundup', 'quiz', 'humor'
+  ]);
+
+  let affinitySum = 0;
+  const dateCounts = new Map();
+
+  for (const pub of publications) {
+    const format = String(pub.format || '').toLowerCase();
+    const objective = String(pub.objective || '').toLowerCase();
+    const day = String(pub.day_of_week || '').toLowerCase();
+
+    let fit = 0.70;
+
+    if (ANALYTICAL_FORMATS.has(format) || objective === 'educate' || objective === 'inform') {
+      if (['tue', 'wed', 'thu'].includes(day)) {
+        fit = 1.0;
+      } else if (['mon'].includes(day)) {
+        fit = 0.85;
+      } else if (['fri'].includes(day)) {
+        fit = 0.60;
+      } else {
+        fit = 0.40;
+      }
+    } else if (LIGHT_FORMATS.has(format) || objective === 'engage') {
+      if (['fri', 'sat', 'sun'].includes(day)) {
+        fit = 1.0;
+      } else if (['thu'].includes(day)) {
+        fit = 0.80;
+      } else {
+        fit = 0.55;
+      }
+    } else if (objective === 'convert' || pub.cta) {
+      if (['tue', 'wed', 'thu', 'fri'].includes(day)) {
+        fit = 0.95;
+      } else {
+        fit = 0.60;
+      }
+    }
+
+    affinitySum += fit;
+
+    const dateKey = pub.planned_date || 'unknown';
+    dateCounts.set(dateKey, (dateCounts.get(dateKey) || 0) + 1);
+  }
+
+  const affinityScore = affinitySum / publications.length;
+
+  let collisionPenalty = 0;
+  for (const count of dateCounts.values()) {
+    if (count > 1) {
+      collisionPenalty += (count - 1) * 0.15;
+    }
+  }
+  const cadenceScore = Math.max(0.1, 1.0 - Math.min(0.8, collisionPenalty / publications.length));
+
+  return clamp01(affinityScore * 0.65 + cadenceScore * 0.35);
+}
+
 function calculateFitness(predictedMetrics, metadata, publications = [], options = {}) {
   const commentRatio = commentRatioFromPublications(publications);
+  const lcbMetrics = options.lcbMetrics || predictedMetrics;
+
   const metricsForKpi = commentRatio != null
     ? [predictedMetrics[0], predictedMetrics[1], predictedMetrics[2], asNumber(predictedMetrics[0], 0) * commentRatio]
     : predictedMetrics;
-  const kpi = kpiScore(metricsForKpi, metadata, { keyPrefix: 'total_' });
+  const metricsForLcb = commentRatio != null
+    ? [lcbMetrics[0], lcbMetrics[1], lcbMetrics[2], asNumber(lcbMetrics[0], 0) * commentRatio]
+    : lcbMetrics;
+
+  const displayKpi = kpiScore(metricsForKpi, metadata, { keyPrefix: 'total_' });
+  const optimizationKpi = kpiScore(metricsForLcb, metadata, { keyPrefix: 'total_' });
 
   const diversityScore = scorePlanDiversity(publications);
   const stemSpreadScore = scoreTopicStemSpread(publications);
   const summaryPrefixScore = scorePlanSummaryPrefixDiversity(publications, 112);
   const bodyLexScore = scorePlanBodyLexicalDiversity(publications);
+  const temporalScore = scorePlanTemporalCadence(publications, options.planningHorizon);
+
   const textBlend = clamp01(asNumber(options?.textDiversityBlend, 0.42), 0.42);
   const structuralBlend = 1 - textBlend;
   const blendedStructural = clamp01(
-    diversityScore * 0.66 + stemSpreadScore * 0.17 + summaryPrefixScore * 0.17,
+    diversityScore * 0.50 + stemSpreadScore * 0.15 + summaryPrefixScore * 0.15 + temporalScore * 0.20,
     0
   );
   const blendedDiversity = clamp01(blendedStructural * structuralBlend + bodyLexScore * textBlend, 0);
@@ -1229,15 +1324,40 @@ function calculateFitness(predictedMetrics, metadata, publications = [], options
   const draftAlignment = scorePlanDraftGeneAlignment(options?.genome, options?.basePublications);
   const draftWeight = clampProbability(options?.draftPreservationWeight ?? undefined, 0.11);
 
-  return combineFitness({
-    kpi,
+  const combined = combineFitness({
+    kpi: optimizationKpi,
+    displayKpi,
     diversity: blendedDiversity,
     diversityWeight,
     draftAlignment,
     draftWeight,
     ontologyBonus: ontologyConsistencyBonus,
     ontologyWeight
-  }).optimization;
+  });
+
+  const ctaCount = publications.filter((p) => p?.ontology_features?.has_cta || p?.has_cta || Boolean(p?.cta)).length;
+  const ctaShare = publications.length > 0 ? ctaCount / publications.length : 0;
+  const leadCount = publications.filter((p) =>
+    ['lead', 'conversion', 'sell', 'offer', 'cta', 'action'].includes(String(p?.objective || '').toLowerCase())
+  ).length;
+  const leadShare = publications.length > 0 ? leadCount / publications.length : 0;
+  const conversionScore = clamp01(ctaShare * 0.60 + leadShare * 0.40);
+
+  return {
+    optimization: combined.optimization,
+    display: combined.display,
+    objectives: [optimizationKpi, conversionScore, blendedDiversity],
+    breakdown: {
+      kpi: optimizationKpi,
+      display_kpi: displayKpi,
+      viral: optimizationKpi,
+      conversion: conversionScore,
+      diversity: blendedDiversity,
+      temporal: temporalScore,
+      ontology: ontologyConsistencyBonus,
+      draft_alignment: draftAlignment
+    }
+  };
 }
 
 export async function optimizeContentPlanEvolution(draftContentPlan, config = {}) {
@@ -1310,7 +1430,8 @@ export async function optimizeContentPlanEvolution(draftContentPlan, config = {}
   
   const CTA_GENE_VALUES = [0, 1];
   const CREATIVITY_GENE_VALUES = [0.25, 0.5, 0.75, 1];
-  const geneDomains = [...domains, CTA_GENE_VALUES, CREATIVITY_GENE_VALUES];
+  const DAY_OFFSET_GENE_VALUES = [-3, -2, -1, 0, 1, 2, 3];
+  const geneDomains = [...domains, CTA_GENE_VALUES, CREATIVITY_GENE_VALUES, DAY_OFFSET_GENE_VALUES];
 
   const createPublicationGene = (rng, fallback = {}) => {
     let topic = domains[0][Math.floor(rng() * Math.max(1, domains[0].length))] || fallback.topic || 'unspecified';
@@ -1319,6 +1440,7 @@ export async function optimizeContentPlanEvolution(draftContentPlan, config = {}
     let tone = domains[3][Math.floor(rng() * Math.max(1, domains[3].length))] || fallback.tone || 'expert';
     let hasCta = CTA_GENE_VALUES[Math.floor(rng() * CTA_GENE_VALUES.length)] ?? (fallback?.ontology_features?.has_cta ? 1 : 0);
     let creativity = CREATIVITY_GENE_VALUES[Math.floor(rng() * CREATIVITY_GENE_VALUES.length)] ?? clamp01(fallback?.ontology_features?.creativity, 0.5);
+    let dayOffset = DAY_OFFSET_GENE_VALUES[Math.floor(rng() * DAY_OFFSET_GENE_VALUES.length)] ?? (fallback?.day_offset ?? 0);
     
     // Принудительно устанавливаем заблокированные поля
     if (lockedFields.topic && fallback.topic) topic = fallback.topic;
@@ -1330,8 +1452,9 @@ export async function optimizeContentPlanEvolution(draftContentPlan, config = {}
     if (lockedFields.tone && fallback.tone) tone = fallback.tone;
     if (lockedFields.has_cta !== undefined) hasCta = lockedFields.has_cta ? 1 : 0;
     if (lockedFields.creativity !== undefined) creativity = lockedFields.creativity;
+    if (lockedFields.day_offset !== undefined) dayOffset = lockedFields.day_offset;
     
-    return [topic, format, objective, tone, hasCta, creativity];
+    return [topic, format, objective, tone, hasCta, creativity, dayOffset];
   };
 
   const createIndividual = (rng) => basePublications.map((publication) => createPublicationGene(rng, publication));
@@ -1360,6 +1483,9 @@ export async function optimizeContentPlanEvolution(draftContentPlan, config = {}
     }
     if (lockedFields.creativity !== undefined) {
       nextGene[5] = lockedFields.creativity;
+    }
+    if (lockedFields.day_offset !== undefined) {
+      nextGene[6] = lockedFields.day_offset;
     }
     return nextGene;
   };
@@ -1419,11 +1545,15 @@ export async function optimizeContentPlanEvolution(draftContentPlan, config = {}
         targetAudience: draftContentPlan?.target_audience || []
       }));
       
-      const predictionResult = await predictPlanMetricsByFeatureVectors(featureVectors, { forceTrain: false });
+      const predictionResult = await predictPlanMetricsByFeatureVectors(featureVectors, {
+        forceTrain: false,
+        platform: lockedFields.platforms?.[0] || draftContentPlan?.platforms?.[0]
+      });
       
       return predictionResult.predictions.map((predictedMetrics, index) => {
         const ontologyConsistencyBonus = scoreGenomeOntologyAlignment(population[index], precedentContext);
-        const fitness = calculateFitness(
+        const lcbMetrics = predictionResult.lcbPredictions?.[index] || predictedMetrics;
+        const fitnessResult = calculateFitness(
           predictedMetrics,
           predictionResult.metadata,
           candidatePlans[index]?.publications || [],
@@ -1433,9 +1563,12 @@ export async function optimizeContentPlanEvolution(draftContentPlan, config = {}
             textDiversityBlend,
             draftPreservationWeight,
             genome: population[index],
-            basePublications
+            basePublications,
+            lcbMetrics,
+            planningHorizon
           }
         );
+        const fitness = fitnessResult.optimization;
         
         return {
           score: fitness,
@@ -1443,13 +1576,28 @@ export async function optimizeContentPlanEvolution(draftContentPlan, config = {}
             predicted_likes: predictedMetrics[0],
             predicted_shares: predictedMetrics[1],
             predicted_views: predictedMetrics[2],
-            fitness
+            lcb_likes: lcbMetrics[0],
+            lcb_shares: lcbMetrics[1],
+            lcb_views: lcbMetrics[2],
+            fitness,
+            display_fitness: fitnessResult.display,
+            objectives_vector: fitnessResult.objectives,
+            objective_breakdown: fitnessResult.breakdown
           }
         };
       });
     },
     onGeneration: (entry) => {
       traces.push(entry);
+      if (typeof config?.onProgress === 'function') {
+        config.onProgress({
+          generation: entry.generation,
+          max_generations: normalizedMaxGenerations,
+          best_score: entry.best_score,
+          avg_score: entry.generation_avg_score,
+          summary: entry.best_meta
+        });
+      }
       console.log('[GA:content-plan]', JSON.stringify({
         generation: entry.generation,
         best_score: entry.best_score,
@@ -1478,12 +1626,68 @@ export async function optimizeContentPlanEvolution(draftContentPlan, config = {}
     targetAudience: draftContentPlan?.target_audience || []
   });
 
+  const buildStrategyPlan = (archetypeCandidate, strategyKey, title, description) => {
+    const genome = archetypeCandidate?.individual || result.best || createIndividual(GA_UTILS.makeRng(ga.seed ?? null));
+    const meta = archetypeCandidate?.meta || result.best_meta || {};
+    const plan = applyGenomeToPlan(
+      basePublications,
+      draftContentPlan,
+      genome,
+      planningHorizon,
+      precedentContext,
+      bodySyncOptions
+    );
+    plan.publications = enforceCtaCoverage(plan.publications, lockedFields);
+    const fMap = buildPlanFeatureMap(plan.publications, {
+      durationDays: planningHorizon.duration_days,
+      startDate: planningHorizon.start_date,
+      endDate: planningHorizon.end_date,
+      expectedPlatforms: lockedFields.platforms || draftContentPlan?.platforms || [],
+      targetAudience: draftContentPlan?.target_audience || []
+    });
+    return {
+      strategy_key: strategyKey,
+      title,
+      description,
+      plan,
+      planFeatureMap: fMap,
+      predictedLikes: asNumber(meta?.predicted_likes, 0),
+      predictedShares: asNumber(meta?.predicted_shares, 0),
+      predictedViews: asNumber(meta?.predicted_views, 0),
+      fitness: asNumber(meta?.fitness, 0),
+      objectives: meta?.objectives_vector || null
+    };
+  };
+
+  const paretoArchetypes = result.pareto_archetypes;
+  const paretoStrategies = {
+    balanced: buildStrategyPlan(
+      paretoArchetypes?.balanced || { individual: result.best, meta: result.best_meta },
+      'balanced',
+      'Сбалансированный брендовый план',
+      'Оптимальный баланс охвата, разнообразия тем и регулярности сетки'
+    ),
+    viral_reach: buildStrategyPlan(
+      paretoArchetypes?.viral_reach || { individual: result.best, meta: result.best_meta },
+      'viral_reach',
+      'Максимальный вирусный охват',
+      'Акцент на прогнозируемых просмотрах, реакциях и виральности тем'
+    ),
+    conversion: buildStrategyPlan(
+      paretoArchetypes?.conversion || { individual: result.best, meta: result.best_meta },
+      'conversion',
+      'Максимальная конверсия и продажи',
+      'Акцент на лидогенерации, офферах и насыщенности CTA'
+    )
+  };
+
   return {
     optimizedPlan,
     planFeatureMap: featureMap,
     predictedLikes: asNumber(result.best_meta?.predicted_likes, 0),
     predictedShares: asNumber(result.best_meta?.predicted_shares, 0),
     predictedViews: asNumber(result.best_meta?.predicted_views, 0),
+    paretoStrategies,
     ga: {
       ...result,
       history: traces

@@ -124,3 +124,40 @@ test('buildMlTrainingDatasets excludes ga_optimized synthetic targets when inclu
   assert.equal(datasets.contentPlanDataset.targets.length, 0);
 });
 
+
+test('buildMlTrainingDatasets computes source baselines and platform reference baselines for relative normalization', () => {
+  const snapshot = {
+    publications: [
+      {
+        competitor_id: 'comp_vk',
+        platform: 'vk',
+        raw_metrics: { likes: 500, shares: 50, views: 5000 }
+      },
+      {
+        competitor_id: 'comp_vk',
+        platform: 'vk',
+        raw_metrics: { likes: 700, shares: 70, views: 7000 }
+      },
+      {
+        competitor_id: 'comp_b2b',
+        platform: 'telegram',
+        raw_metrics: { likes: 10, shares: 2, views: 100 }
+      }
+    ],
+    content_plans: []
+  };
+
+  const datasets = buildMlTrainingDatasets(snapshot, []);
+  assert.ok(Array.isArray(datasets.postDataset.baselines));
+  assert.equal(datasets.postDataset.baselines.length, 3);
+  // First two belong to VK competitor with median ~600
+  assert.equal(datasets.postDataset.baselines[0][0], 600);
+  assert.equal(datasets.postDataset.baselines[1][0], 600);
+  // Third belongs to Telegram competitor with median ~10
+  assert.equal(datasets.postDataset.baselines[2][0], 10);
+
+  // Platform and reference baselines exist
+  assert.ok(datasets.postDataset.platformBaselines.vk);
+  assert.ok(datasets.postDataset.platformBaselines.telegram);
+  assert.ok(Array.isArray(datasets.postDataset.referenceBaseline));
+});

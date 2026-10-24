@@ -163,7 +163,8 @@ def parse_vk_account(url: str, headers: Optional[Dict[str, str]] = None) -> List
     if not url.startswith("http"):
         url = "https://" + url
 
-    screen_name = url.split("/")[-1].split("?")[0]
+    path_parts = [p for p in url.split("?")[0].split("/") if p]
+    screen_name = path_parts[-1] if path_parts else ''
 
     # --- VK API (только API, без Selenium) ---
     api_token = os.getenv("VK_API_TOKEN", "")

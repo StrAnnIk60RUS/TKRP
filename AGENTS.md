@@ -30,6 +30,9 @@ Read in order: `rules.md` (universal agent rules) -> `README.md` (product/archit
 - ML artifacts (`*.joblib` in `data/ml`) go stale when feature engineering changes — retrain, and check feature dimension/name alignment when behavior looks unstable.
 - Ontology LLM flags default OFF (`ONTOLOGY_LLM_ENRICHMENT_MODE=off`); scoring rollout default 0%.
 
-## 6. Workflow Conventions (from rules.md)
+## 6. Workflow Conventions (from rules.md & .agents/rules/)
+- **Zero dead code**: Delete replaced code, clean up unused imports/vars, sweep orphans (`rules.md` §4).
+- **Anti-overengineering**: No speculative architecture, minimal viable diff, rule of three (`rules.md` §5).
+- **Pragmatic testing**: No coverage theater or mock-heavy trivial tests (`rules.md` §6).
 - Plan before non-trivial edits; minimal sufficient changes; no unrelated refactoring; no commits without explicit request; atomic commits (`feat:`/`fix:`/`refactor:`/`docs:`/`test:`).
 - No stubs/TODOs; verify with `lint`/`test` after changes; no new dependencies unless essential.

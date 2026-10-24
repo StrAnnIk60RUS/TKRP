@@ -155,3 +155,79 @@ test('requireLocalOrApiKey rejects 172.2.x.x and 172.200.x.x but allows RFC1918 
     else delete process.env.SERVER_API_KEY;
   }
 });
+
+test('applySecurityHeaders sets standard OWASP protection headers', () => {
+  import('../src/shared/http/security.js').then(({ applySecurityHeaders }) => {
+    const headers = {};
+    const req = { headers: {} };
+    const res = {
+      setHeader(name, value) {
+        headers[name.toLowerCase()] = value;
+      }
+    };
+    let nextCalled = false;
+    applySecurityHeaders(req, res, () => { nextCalled = true; });
+
+    assert.equal(nextCalled, true);
+    assert.equal(headers['x-content-type-options'], 'nosniff');
+    assert.equal(headers['x-frame-options'], 'SAMEORIGIN');
+    assert.equal(headers['referrer-policy'], 'strict-origin-when-cross-origin');
+    assert.equal(headers['x-xss-protection'], '0');
+    assert.equal(headers['cross-origin-opener-policy'], 'same-origin');
+  });
+});
+
+test('requireLocalOrAdminApiKey in production strictly rejects local IP without key', () => {
+  const prevEnv = process.env.NODE_ENV;
+  const prevKey = process.env.ADMIN_API_KEY;
+  process.env.NODE_ENV = 'production';
+  process.env.ADMIN_API_KEY = 'prod-secret-admin';
+
+  try {
+    const req = { clientIp: '127.0.0.1', headers: {}, requestId: 'r-prod-local' };
+    const res = createMockRes();
+    let nextCalled = false;
+    requireLocalOrAdminApiKey(req, res, () => { nextCalled = true; });
+
+    assert.equal(nextCalled, false);
+    assert.equal(res.statusCode, 403);
+    assert.equal(res.payload.error, 'Admin API key required for this endpoint.');
+
+    // With valid admin key in production, it succeeds
+    const reqWithKey = { clientIp: '127.0.0.1', headers: { authorization: 'Bearer prod-secret-admin' }, requestId: 'r-prod-ok' };
+    const resOk = createMockRes();
+    let nextOkCalled = false;
+    requireLocalOrAdminApiKey(reqWithKey, resOk, () => { nextOkCalled = true; });
+
+    assert.equal(nextOkCalled, true);
+  } finally {
+    if (prevEnv !== undefined) process.env.NODE_ENV = prevEnv;
+    else delete process.env.NODE_ENV;
+    if (prevKey !== undefined) process.env.ADMIN_API_KEY = prevKey;
+    else delete process.env.ADMIN_API_KEY;
+  }
+});
+
+test('attachRequestContext prioritizes X-Real-IP when TRUST_PROXY is enabled', () => {
+  const prevTrust = process.env.TRUST_PROXY;
+  process.env.TRUST_PROXY = 'true';
+  try {
+    const req = {
+      headers: {
+        'x-real-ip': '198.51.100.42',
+        'x-forwarded-for': '127.0.0.1, 10.0.0.1'
+      },
+      socket: { remoteAddress: '172.18.0.2' }
+    };
+    const res = { setHeader() {} };
+    let nextCalled = false;
+    attachRequestContext(req, res, () => {
+      nextCalled = true;
+    });
+    assert.equal(nextCalled, true);
+    assert.equal(req.clientIp, '198.51.100.42');
+  } finally {
+    if (prevTrust !== undefined) process.env.TRUST_PROXY = prevTrust;
+    else delete process.env.TRUST_PROXY;
+  }
+});

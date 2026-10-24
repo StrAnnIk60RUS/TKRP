@@ -189,3 +189,55 @@ test('buildOntologyLlmEnrichment validates mock candidates from env', async () =
     process.env.ONTOLOGY_LLM_MOCK_CANDIDATES_JSON = prevMock
   }
 })
+
+test('buildOntologyLlmEnrichment extracts pain_points, trust_triggers and tone_patterns', async () => {
+  const prevMode = process.env.ONTOLOGY_LLM_ENRICHMENT_MODE
+  const prevTest = process.env.TEST_MODE
+  const prevMock = process.env.ONTOLOGY_LLM_MOCK_CANDIDATES_JSON
+  try {
+    process.env.ONTOLOGY_LLM_ENRICHMENT_MODE = 'active'
+    process.env.TEST_MODE = 'true'
+    delete process.env.ONTOLOGY_LLM_MOCK_CANDIDATES_JSON
+
+    const context = {
+      context_id: 'b2b_saas_linkedin',
+      competitor_name: 'B2B SaaS',
+      platform: 'linkedin',
+      entities: [
+        { class_id: 'audience_segment', label: 'IT-директора' },
+        { class_id: 'publication_topic', label: 'DevSecOps интеграция' }
+      ],
+      triples: [
+        { subject_label: 'DevSecOps интеграция', predicate: 'targets_audience', object_label: 'IT-директора' }
+      ]
+    }
+
+    const enrichment = await buildOntologyLlmEnrichment([context], {})
+    assert.equal(enrichment.mode, 'active')
+    assert.ok(enrichment.metrics.candidates_total > 0)
+    assert.ok(enrichment.metrics.pain_points_total > 0)
+    assert.ok(enrichment.metrics.trust_triggers_total > 0)
+    assert.ok(enrichment.metrics.tone_patterns_total > 0)
+
+    const candidates = enrichment.by_context.b2b_saas_linkedin
+    assert.ok(Array.isArray(candidates.pain_points))
+    assert.ok(candidates.pain_points.some((p) => p.audience_segment === 'IT-директора'))
+    assert.ok(Array.isArray(candidates.trust_triggers))
+    assert.ok(candidates.trust_triggers.some((t) => t.trigger_type === 'metric'))
+    assert.ok(Array.isArray(candidates.tone_patterns))
+
+    const snapshot = { publications: [], content_plans: [] }
+    const base = { contexts: [context], global: {} }
+    const merged = mergeOntologyWithTrustedLlmAdditions(snapshot, base, enrichment, { highConfidenceThreshold: 0.8 })
+    assert.equal(merged.trusted_llm_additions.enabled, true)
+    assert.ok(merged.global.pain_points.length > 0)
+    assert.ok(merged.global.trust_triggers.length > 0)
+    assert.ok(merged.global.tone_patterns.length > 0)
+  } finally {
+    process.env.ONTOLOGY_LLM_ENRICHMENT_MODE = prevMode
+    process.env.TEST_MODE = prevTest
+    if (prevMock !== undefined) {
+      process.env.ONTOLOGY_LLM_MOCK_CANDIDATES_JSON = prevMock
+    }
+  }
+})

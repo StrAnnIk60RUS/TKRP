@@ -30,7 +30,8 @@ const formatDuration = (ms) => {
   return `${(ms / 1000).toFixed(1)}s`
 }
 
-const OperationStatusPanel = ({ operations, telemetry, onCancel, onRetry, isDeveloper = false }) => {
+const OperationStatusPanel = ({ operations, telemetry, onCancel, onRetry, isAnalyst = false, isDeveloper = false }) => {
+  const isDetailed = Boolean(isAnalyst || isDeveloper);
   const entries = Object.entries(operations).filter(([id]) => OPERATION_TITLES[id])
   const hasVisible = entries.some(([, op]) => op.status !== 'idle')
   const hasRunning = entries.some(([, op]) => op.status === 'running')
@@ -46,9 +47,9 @@ const OperationStatusPanel = ({ operations, telemetry, onCancel, onRetry, isDeve
     >
       <div className="workflow-section-heading">
         <div>
-          <h2 className="section-title">{isDeveloper ? 'Статус конвейера' : 'Статус операций'}</h2>
+          <h2 className="section-title">{isDetailed ? 'Статус конвейера (телеметрия)' : 'Статус операций'}</h2>
           <p className="workflow-section-subtitle">
-            {isDeveloper
+            {isDetailed
               ? 'Отслеживание долгих операций: статус, длительность, попытки, отмена и повтор.'
               : 'Показывает прогресс долгих действий: выполнение, ошибки и повторный запуск.'}
           </p>

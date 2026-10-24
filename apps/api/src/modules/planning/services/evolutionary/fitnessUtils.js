@@ -116,6 +116,7 @@ export function kpiScore(predictedMetrics, metadata = null, options = {}) {
  */
 export function combineFitness(options = {}) {
   const kpi = clamp01(asNumber(options.kpi, 0), 0);
+  const displayKpi = options.displayKpi !== undefined ? clamp01(asNumber(options.displayKpi, 0), 0) : kpi;
   const diversity = clamp01(asNumber(options.diversity, 0), 0);
   const diversityWeight = clampProbability(options.diversityWeight, 0);
   const ontologyBonus = clamp01(asNumber(options.ontologyBonus, 0), 0);
@@ -143,9 +144,10 @@ export function combineFitness(options = {}) {
 
   return {
     optimization,
-    display: kpi,
+    display: displayKpi,
     components: {
       kpi,
+      displayKpi,
       diversity,
       diversityWeight,
       ontologyBonus,

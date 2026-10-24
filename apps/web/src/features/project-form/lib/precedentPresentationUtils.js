@@ -17,6 +17,12 @@ export function formatReliabilityLabel(reliability) {
 
 export function renderMatchExplanation(matchedTokens = [], retrieval = null) {
   const type = retrieval?.type
+  if (type === 'hybrid_rrf' || type === 'pgvector_ann' || type === 'db_linear_version_guard') {
+    if (matchedTokens.length) {
+      return `Гибридный поиск (BM25 + Вектор): совпадения по терминам [${matchedTokens.join(', ')}] и смыслу`
+    }
+    return 'Гибридный поиск: совпадение по смыслу и ключевым терминам'
+  }
   if (type === 'embedding_cosine') {
     return 'Поиск по смыслу: совпадение считается по смыслу, а не по словам'
   }
@@ -28,24 +34,35 @@ export function renderMatchExplanation(matchedTokens = [], retrieval = null) {
   return matchedTokens.join(', ')
 }
 
-export function buildRetrievalBadge(retrieval, { isDeveloper = true } = {}) {
-  const type = retrieval?.type
+export function buildRetrievalBadge(retrieval, options = {}) {
+  const { isAnalyst = false, isDeveloper = false, detailed = false } = options;
+  const showDetailed = Boolean(isAnalyst || isDeveloper || detailed);
+  const type = retrieval?.type;
+  if (type === 'hybrid_rrf' || type === 'pgvector_ann' || type === 'db_linear_version_guard') {
+    return showDetailed
+      ? {
+          label: 'Гибридный поиск (RRF)',
+          hint: retrieval?.embedding_model ? `${retrieval.embedding_model} + BM25` : 'BM25 + Вектор',
+          tone: 'success'
+        }
+      : { label: 'Гибридный поиск (RRF)', hint: '', tone: 'success' };
+  }
   if (type === 'embedding_cosine') {
-    return isDeveloper
+    return showDetailed
       ? {
           label: 'Поиск по смыслу',
           hint: retrieval?.embedding_model ? `${retrieval.embedding_model}` : 'эмбеддинги',
           tone: 'success'
         }
-      : { label: 'Поиск по смыслу', hint: '', tone: 'success' }
+      : { label: 'Поиск по смыслу', hint: '', tone: 'success' };
   }
   if (type === 'token_overlap' || type === 'token_overlap_fallback') {
-    return isDeveloper
+    return showDetailed
       ? { label: 'Поиск по ключевым словам', hint: 'запасной режим', tone: 'neutral' }
-      : { label: 'Поиск по ключевым словам', hint: '', tone: 'neutral' }
+      : { label: 'Поиск по ключевым словам', hint: '', tone: 'neutral' };
   }
-  if (!type) return null
-  return { label: type, hint: '', tone: 'neutral' }
+  if (!type) return null;
+  return { label: type, hint: '', tone: 'neutral' };
 }
 
 export function countPrecedentResults(results) {

@@ -13,7 +13,8 @@ import {
 } from '../lib/competitorsPipelineUtils';
 
 export function useCompetitorsPipeline(addToast, options = {}) {
-  const { isDeveloper = true } = options
+  const { isAnalyst = false, isDeveloper = false } = options;
+  const isAnalystMode = Boolean(isAnalyst || isDeveloper);
   const [isEnriching, setIsEnriching] = useState(false);
   const [competitorsData, setCompetitorsData] = useState(null);
   const [competitorsFileName, setCompetitorsFileName] = useState(null);
@@ -211,8 +212,8 @@ export function useCompetitorsPipeline(addToast, options = {}) {
       'success'
     );
 
-    // Для SMM: автоматическое обогащение после парсинга (без кнопки)
-    if (!isDeveloper) {
+    // Автоматическое обогащение спарсенных данных конкурентов
+    {
       setIsEnriching(true);
       addToast('Обогащение данных конкурентов...', 'info');
       try {
@@ -236,8 +237,8 @@ export function useCompetitorsPipeline(addToast, options = {}) {
       }
     }
 
-    // Скачиваем сырые спарсенные данные в JSON (только для разработчика)
-    if (isDeveloper) {
+    // Скачиваем сырые спарсенные данные в JSON (для аналитика)
+    if (isAnalystMode) {
       try {
         downloadJsonFile(merged, 'competitors_from_urls.json', addToast);
       } catch (downloadError) {

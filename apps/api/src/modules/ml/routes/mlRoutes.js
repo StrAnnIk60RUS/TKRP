@@ -13,8 +13,11 @@ import { reembedPrecedentsWithWrongDimension } from '../../precedents/repositori
 import { requireLocalOrAdminApiKey } from '../../../shared/http/security.js';
 import { requireSessionOrAdminApiKey } from '../../auth/services/sessionGate.js';
 import { sendRouteError } from '../../../shared/http/routeUtils.js';
+import { rejectInstagramIfForbidden } from '../../auth/services/instagramAccess.js';
 
 const router = Router();
+
+router.use(rejectInstagramIfForbidden);
 
 router.post('/relevance/reembed-and-train', requireLocalOrAdminApiKey, async (req, res) => {
   try {

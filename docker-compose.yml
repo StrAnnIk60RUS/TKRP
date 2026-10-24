@@ -50,6 +50,7 @@ services:
       PYTHON_BIN: /opt/tkrp-py/bin/python
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost}
+      TRUST_PROXY: 'true'
     env_file:
       - path: .env
         required: false

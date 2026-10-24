@@ -20,6 +20,19 @@
     "topic_recurrence",
     "timeline_density"
   ],
+  "target_transform": "relative_lift",
+  "reference_baseline": [
+    154.0,
+    19.0,
+    11519.0
+  ],
+  "platform_baselines": {},
+  "quantile_alphas": [
+    0.1,
+    0.5,
+    0.9
+  ],
+  "lcb_lambda_default": 1.0,
   "feature_set_version": "v2",
   "ontology_features_enabled": false,
   "n_features": 12,

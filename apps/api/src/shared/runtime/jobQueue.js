@@ -9,6 +9,12 @@
  * - JOB_QUEUE_MAX_RETAINED (default 200 — finished jobs kept in memory)
  */
 import crypto from 'crypto';
+import { EventEmitter } from 'events';
+import { logger } from '../logging/logger.js';
+import { getTraceContext, runWithContext } from '../logging/requestContext.js';
+
+export const jobEvents = new EventEmitter();
+jobEvents.setMaxListeners(200);
 
 const DEFAULT_CONCURRENCY = 1;
 const DEFAULT_RESULT_TTL_MS = 3600000;
@@ -35,14 +41,32 @@ function jobStatusById(jobId) {
   if (!job) return null;
   return {
     job_id: job.job_id,
+    trace_id: job.traceId || null,
     kind: job.kind,
     status: job.status,
     created_at: job.created_at,
     started_at: job.started_at,
     finished_at: job.finished_at,
     error: job.error,
-    result: job.result
+    result: job.result,
+    progress: job.progress || null,
+    userId: job.userId || null
   };
+}
+
+export function updateJobProgress(jobId, progressData) {
+  const job = jobs.get(jobId);
+  if (!job) return;
+  const progressPayload =
+    typeof progressData === 'object' && progressData !== null
+      ? progressData
+      : { message: String(progressData) };
+  job.progress = {
+    ...(job.progress || {}),
+    ...progressPayload,
+    updated_at: nowMs().toString()
+  };
+  jobEvents.emit(`progress:${jobId}`, job.progress);
 }
 
 function sweepExpiredAndTrim() {
@@ -71,32 +95,61 @@ function pumpQueue() {
     runningCount += 1;
     job.status = 'running';
     job.started_at = nowMs().toString();
+    jobEvents.emit(`status:${job.job_id}`, { status: 'running' });
+
     const runFn = job.runFn;
     const payload = job.payload;
-    (async () => {
+    const progressReporter = (prog) => {
+      updateJobProgress(job.job_id, prog);
+    };
+
+    const jobContext = {
+      traceId: job.traceId,
+      jobId: job.job_id,
+      userId: job.userId
+    };
+
+    runWithContext(jobContext, async () => {
+      const jobLog = logger.child({ module: 'jobQueue', job_id: job.job_id, kind: job.kind });
+      jobLog.info(`Async job started: [${job.kind}]`);
+      const startTime = Date.now();
+
       try {
-        const result = await runFn(payload);
+        const result = await runFn(payload, progressReporter);
         job.status = 'completed';
         job.result = result;
         completedTotal += 1;
+        const durationMs = Date.now() - startTime;
+        jobLog.info(`Async job completed: [${job.kind}] in ${durationMs}ms`, { duration_ms: durationMs });
+        jobEvents.emit(`completed:${job.job_id}`, { result });
       } catch (error) {
         job.status = 'failed';
         job.error = error?.message || String(error);
         failedTotal += 1;
+        const durationMs = Date.now() - startTime;
+        jobLog.error(`Async job failed: [${job.kind}] in ${durationMs}ms: ${job.error}`, {
+          duration_ms: durationMs,
+          error
+        });
+        jobEvents.emit(`failed:${job.job_id}`, { error: job.error });
       } finally {
         job.finished_at = nowMs().toString();
         runningCount -= 1;
         sweepExpiredAndTrim();
         pumpQueue();
       }
-    })();
+    });
   }
 }
 
-export function enqueueJob(kind, runFn, payload = null) {
+export function enqueueJob(kind, runFn, payload = null, options = {}) {
+  const activeTrace = getTraceContext();
+  const traceId = options.traceId || activeTrace.traceId || activeTrace.requestId || crypto.randomUUID();
+
   const job = {
     job_id: crypto.randomUUID().replace(/-/g, ''),
     seq: ++jobSeq,
+    traceId,
     kind,
     status: 'queued',
     created_at: nowMs().toString(),
@@ -104,8 +157,10 @@ export function enqueueJob(kind, runFn, payload = null) {
     finished_at: null,
     error: null,
     result: null,
+    progress: null,
     runFn,
-    payload
+    payload,
+    userId: options.userId || activeTrace.userId || null
   };
   jobs.set(job.job_id, job);
   readyQueue.push(job);
@@ -117,10 +172,10 @@ export function getJobStatus(jobId) {
   return jobStatusById(jobId);
 }
 
-export function listJobs(limit = 50) {
+export function listJobs(limit = 50, filterUserId = null) {
   const max = Math.max(0, Math.floor(Number(limit)));
   if (max === 0) return [];
-  const entries = Array.from(jobs.values())
+  const entries = Array.from(jobs.values()).filter(j => !filterUserId || !j.userId || j.userId === filterUserId)
     .sort((left, right) => {
       const byCreated = String(right.created_at || '').localeCompare(String(left.created_at || ''));
       if (byCreated !== 0) return byCreated;

@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { logger } from './src/shared/logging/logger.js';
 import { applyDeterministicPostProcessing } from './src/modules/enrichment/services/postDeterministicFeatures.js';
 import {
   normalizeCompetitorsContentData
@@ -100,7 +101,8 @@ async function callOpenRouterChatUncached(systemPrompt, userPrompt, options = {}
     responseFormat = null,
     jsonSchema = null,
     schemaName = 'response',
-    schemaStrict = true
+    schemaStrict = true,
+    reasoningEffort = process.env.OPENROUTER_REASONING_EFFORT || 'none'
   } = options;
   const maxTokens =
     options.maxTokens != null && Number.isFinite(Number(options.maxTokens))
@@ -123,6 +125,12 @@ async function callOpenRouterChatUncached(systemPrompt, userPrompt, options = {}
     max_tokens: maxTokens
   };
 
+  // Управление reasoning для моделей-рассуждателей (DeepSeek R1/V4, OpenAI o1/o3 и т.д.)
+  // 'none' отключает трату токенов на reasoning, спасая от исчерпания max_tokens при генерации JSON
+  if (reasoningEffort && reasoningEffort !== 'default') {
+    requestBody.reasoning = { effort: reasoningEffort };
+  }
+
   // Нативный JSON Schema mode или JSON object mode
   if (jsonSchema && typeof jsonSchema === 'object') {
     requestBody.response_format = {
@@ -139,9 +147,14 @@ async function callOpenRouterChatUncached(systemPrompt, userPrompt, options = {}
     requestBody.response_format = { type: 'json_object' };
   }
 
+  const llmLog = logger.child({ module: 'openrouter' });
+
   try {
-    console.log(`[LLM] Отправка запроса`);  
-    console.log(`[LLM] Размер промпта: ${(systemPrompt.length + userPrompt.length) / 1024} KB`);
+    const promptKb = Math.round((systemPrompt.length + userPrompt.length) / 10.24) / 100;
+    llmLog.debug('Отправка запроса к OpenRouter', {
+      model: requestBody.model,
+      prompt_kb: promptKb
+    });
     
     const response = await axios.post(
       OPENROUTER_API_URL,
@@ -157,13 +170,32 @@ async function callOpenRouterChatUncached(systemPrompt, userPrompt, options = {}
       }
     );
 
-    console.log(`[LLM] Ответ получен. Статус: ${response.status}`);
-    console.log(`[LLM] Использовано токенов: ${response.data.usage?.total_tokens || 'N/A'}`);
+    const totalTokens = response.data.usage?.total_tokens || null;
+    llmLog.info('Ответ от OpenRouter получен', {
+      status: response.status,
+      total_tokens: totalTokens
+    });
     
-    const content = response.data.choices?.[0]?.message?.content || null;
+    const choice = response.data.choices?.[0];
+    let content = choice?.message?.content || null;
+
+    // Вторичный фоллбэк: если контент пуст, но есть reasoning, пробуем извлечь JSON из reasoning
+    if (!content && choice?.message?.reasoning) {
+      const reasoningText = String(choice.message.reasoning);
+      const jsonMatch = reasoningText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        content = jsonMatch[0];
+        llmLog.warn('Контент извлечён из reasoning (content был null в ответе)', {
+          extracted_len: content.length
+        });
+      }
+    }
+
     if (!content) {
-      console.warn('[LLM] Внимание: контент отсутствует в ответе');
-      console.log('[LLM] Полный ответ:', JSON.stringify(response.data, null, 2));
+      llmLog.warn('Контент отсутствует в ответе OpenRouter', {
+        finish_reason: choice?.finish_reason,
+        response_preview: JSON.stringify(response.data).slice(0, 500)
+      });
     }
 
     return {
@@ -173,13 +205,27 @@ async function callOpenRouterChatUncached(systemPrompt, userPrompt, options = {}
       usage: response.data.usage || null
     };
   } catch (error) {
+    // Мягкий fallback: если провайдер не поддерживает reasoning, повторяем без него
+    if (
+      requestBody.reasoning &&
+      error.response?.status === 400 &&
+      /reasoning/i.test(String(error.response?.data?.error?.message || error.message || ''))
+    ) {
+      llmLog.warn('Провайдер не поддерживает reasoning, повтор без reasoning параметра');
+      const { reasoningEffort: _, ...restOptions } = options;
+      return await callOpenRouterChatUncached(systemPrompt, userPrompt, {
+        ...restOptions,
+        reasoningEffort: 'default'
+      });
+    }
+
     // Мягкий fallback: если провайдер в OpenRouter не поддерживает json_schema, повторяем с type: 'json_object'
     if (
       requestBody.response_format?.type === 'json_schema' &&
       error.response?.status === 400 &&
       /json_schema|response_format|schema/i.test(String(error.response?.data?.error?.message || error.message || ''))
     ) {
-      console.warn('[LLM] Provider does not support json_schema; retrying with type: json_object fallback...');
+      llmLog.warn('Провайдер не поддерживает json_schema, повтор с type: json_object');
       return await callOpenRouterChatUncached(systemPrompt, userPrompt, {
         ...options,
         jsonSchema: null,
@@ -187,7 +233,10 @@ async function callOpenRouterChatUncached(systemPrompt, userPrompt, options = {}
       });
     }
 
-    console.error('Ошибка при вызове LLM API:', error.response?.data || error.message);
+    llmLog.error('Ошибка при вызове LLM API', {
+      status: error.response?.status,
+      error: error.response?.data || error.message
+    });
 
     let errorMessage = 'Ошибка при обращении к LLM API';
     if (error.response?.data?.error) {

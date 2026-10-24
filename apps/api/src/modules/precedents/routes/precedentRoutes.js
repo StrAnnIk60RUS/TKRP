@@ -16,11 +16,14 @@ import {
 import { requireLocalOrAdminApiKey } from '../../../shared/http/security.js';
 import { requireSessionOrAdminApiKey } from '../../auth/services/sessionGate.js';
 import { sendRouteError } from '../../../shared/http/routeUtils.js';
+import { rejectInstagramIfForbidden } from '../../auth/services/instagramAccess.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEMO_FIXTURE_PATH = path.join(__dirname, '..', 'fixtures', 'demoPrecedents.json');
 
 const router = Router();
+
+router.use(rejectInstagramIfForbidden);
 
 router.get('/summary', requireSessionOrAdminApiKey, async (req, res) => {
   try {

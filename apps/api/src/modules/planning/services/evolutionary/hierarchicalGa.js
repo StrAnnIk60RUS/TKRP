@@ -236,11 +236,25 @@ export async function runHierarchicalOptimization(payload = {}) {
 
    validateOptimizationInputs(draft, stage1Config);
   
+  const onProgress = typeof payload?.onProgress === 'function' ? payload.onProgress : null;
+  if (onProgress) {
+    onProgress({ phase: 'stage1_start', message: 'Эволюция структуры плана (Stage 1)' });
+  }
+
   // Stage 1: эволюция структуры плана
   const contentPlanResult = await optimizeContentPlanEvolution(draft, {
     ...stage1Config,
-    lockedFields
+    lockedFields,
+    onProgress: (p) => {
+      if (onProgress) {
+        onProgress({ phase: 'stage1', ...p });
+      }
+    }
   });
+
+  if (onProgress) {
+    onProgress({ phase: 'stage2_start', message: 'Эволюция параметров постов (Stage 2)' });
+  }
   
   // Подготовка lockedFields для stage2 на основе результатов stage1
   const planFeatureMap = contentPlanResult.planFeatureMap;
@@ -280,6 +294,11 @@ export async function runHierarchicalOptimization(payload = {}) {
        ...(stage2Config.ga || stage2Config),
        targetCtaShare: planFeatureMap.cta_share,
        targetUniqueTones: planFeatureMap.unique_tones,
+       onProgress: (p) => {
+         if (onProgress) {
+           onProgress({ phase: 'stage2_filling', ...p });
+         }
+       },
        llmContext: {
          form_input: formInput,
          ragResults
@@ -385,6 +404,7 @@ export async function runHierarchicalOptimization(payload = {}) {
   const optimizedContentPlan = {
     ...contentPlanResult.optimizedPlan,
     publications: finalPublications,
+    pareto_strategies: contentPlanResult.paretoStrategies || null,
     expected_kpi: {
       ...(contentPlanResult.optimizedPlan.expected_kpi || {}),
       predicted_total_likes: safeFinalPredictedLikes,
@@ -403,12 +423,15 @@ export async function runHierarchicalOptimization(payload = {}) {
       predicted_total_views: contentPlanResult.predictedViews,
       target_posts_count: contentPlanResult.planFeatureMap.posts_count,
       plan_features: contentPlanResult.planFeatureMap,
+      pareto_strategies: contentPlanResult.paretoStrategies || null,
       ga: {
         best_score: contentPlanResult.ga.best_score,
         best_meta: contentPlanResult.ga.best_meta || null,
         generations: contentPlanResult.ga.generations,
         stop_reason: contentPlanResult.ga.stop_reason,
-        history: contentPlanResult.ga.history
+        history: contentPlanResult.ga.history,
+        pareto_front: contentPlanResult.ga.pareto_front || null,
+        pareto_archetypes: contentPlanResult.ga.pareto_archetypes || null
       }
     },
     stage3: {
@@ -448,6 +471,7 @@ export async function runHierarchicalOptimization(payload = {}) {
         unfixable: repairedConstraints.unfixable
       }
     },
+    pareto_strategies: contentPlanResult.paretoStrategies || null,
     optimized_publications: finalPublications,
     best_publication: postResult.bestPublication,
     optimized_content_plan: optimizedContentPlan

@@ -67,12 +67,14 @@ const DraftPlanWorkflowPanel = ({
   canSearchPrecedents = true,
   smmSearchBlockedReasons = [],
   publicationDayMode = 'spread',
+  isAnalyst = false,
   isDeveloper = false,
   isEmbedded = false,
   combineSearchAndDraft = false,
   isFlatSmmFlow = false,
   phase = 'draft'
 }) => {
+  const isAnalystMode = Boolean(isAnalyst || isDeveloper)
   const draftPlan = draftPlanResult?.draft?.draft_content_plan || null
   const optimizedPlan = optimizationResult?.optimized_content_plan || null
   const planFeatures = optimizedPlan?.plan_features || optimizationResult?.stage1?.plan_features || null
@@ -257,8 +259,8 @@ const DraftPlanWorkflowPanel = ({
                   isEnrichmentServerAvailable === false
                 }
                 title={
-                  isDeveloper
-                    ? 'Запустить оптимизацию плана (этап 1), затем постов (этап 2)'
+                  isAnalystMode
+                    ? 'Запустить оптимизацию структуры плана (этап 1), затем параметров постов (этап 2)'
                     : 'Улучшить план на основе модели прогноза вовлечённости и эволюционного поиска'
                 }
               >
@@ -331,7 +333,7 @@ const DraftPlanWorkflowPanel = ({
           <div className="workflow-result-card">
             <div className="workflow-result-header">
               <h3>Черновой план</h3>
-              <span className="ui-badge ui-badge-neutral">{isDeveloper ? 'Поиск и генерация' : 'Черновик ИИ'}</span>
+              <span className="ui-badge ui-badge-neutral">{isAnalystMode ? 'RAG + LLM генерация' : 'Черновик ИИ'}</span>
             </div>
             <div className="workflow-result-list">
               <div>План: {draftPlan.plan_id || '—'}</div>
@@ -405,10 +407,10 @@ const DraftPlanWorkflowPanel = ({
                 {planFeatures && <div>Уникальных тонов: {planFeatures.unique_tones ?? '—'}</div>}
                 {planFeatures && <div>Средняя креативность (шкала 0-1): {formatNumber(planFeatures.avg_creativity)}</div>}
                 {planFeatures && <div>Доля постов с призывом: {formatPercent(planFeatures.cta_share)}</div>}
-                {isDeveloper && <div>Целевое число постов: {optimizationResult?.stage1?.target_posts_count ?? '—'}</div>}
-                {isDeveloper && <div>Этап 1, причина остановки: {optimizationResult?.stage1?.ga?.stop_reason ?? '—'}</div>}
-                {isDeveloper && <div>Этап 1 поколений: {optimizationResult?.stage1?.ga?.generations ?? '—'}</div>}
-                {isDeveloper && <div>Лучший пост: {optimizationResult?.best_publication?.publication_id ?? '—'}</div>}
+                {isAnalystMode && <div>Целевое число постов: {optimizationResult?.stage1?.target_posts_count ?? '—'}</div>}
+                {isAnalystMode && <div>Этап 1, причина остановки: {optimizationResult?.stage1?.ga?.stop_reason ?? '—'}</div>}
+                {isAnalystMode && <div>Этап 1 поколений: {optimizationResult?.stage1?.ga?.generations ?? '—'}</div>}
+                {isAnalystMode && <div>Лучший пост: {optimizationResult?.best_publication?.publication_id ?? '—'}</div>}
                 {bestPublication && <div>Лайки лучшего поста (максимум по постам): {formatNumber(bestPostPredictedLikes)}</div>}
                 {bestPublicationFeatures && <div>Креативность лучшего поста (шкала 0-1): {formatNumber(bestPublicationFeatures.creativity)}</div>}
                 {bestPublicationFeatures && <div>Призыв у лучшего поста: {bestPublicationFeatures.has_cta ? 'да' : 'нет'}</div>}
@@ -445,8 +447,8 @@ const DraftPlanWorkflowPanel = ({
                       ))}
                     </div>
                   )}
-                {isDeveloper && <div>Изменено ограничений алгоритма: {gaChanges.length}</div>}
-                {isDeveloper &&
+                {isAnalystMode && <div>Изменено ограничений алгоритма: {gaChanges.length}</div>}
+                {isAnalystMode &&
                   gaChanges.map(([key, beforeValue, afterValue]) => (
                     <div key={key}>
                       {key === 'min_publications' ? 'Минимум публикаций' : key}: {String(beforeValue ?? '—')} → {String(afterValue ?? '—')}
@@ -458,7 +460,7 @@ const DraftPlanWorkflowPanel = ({
               <OptimizationTracePanel
                 optimizationResult={optimizationResult}
                 bestPublication={bestPublication}
-                isDeveloper={isDeveloper}
+                isAnalyst={isAnalystMode}
               />
             )}
           </div>

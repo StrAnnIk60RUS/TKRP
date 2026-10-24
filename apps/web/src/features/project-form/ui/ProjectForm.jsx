@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect, useRef, useReducer, useCallback } from 'react'
+import React, { useState, useMemo, useEffect, useRef, useReducer, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ToastContainer } from '../../../shared/ui/Toast'
 import CompetitorsStep from './competitors/CompetitorsStep'
@@ -29,6 +29,10 @@ import {
   exportOntologyToExcel,
   generateDraftContentPlan,
   optimizeDraftContentPlan,
+  getActiveOptimizationJobId,
+  clearActiveOptimizationJobId,
+  getJobStatusFromServer,
+  trackOptimizationJob,
   getServerDraft,
   saveServerDraft
 } from '../../../shared/api/enrichmentService'
@@ -155,17 +159,17 @@ function buildPinnedPublications(competitorsData) {
 
 const ProjectForm = () => {
   const navigate = useNavigate()
-  const { isDeveloper, isAnalyst, isExtendedMode } = useUserRole()
+  const { isAnalyst, isSmm, isExtendedMode } = useUserRole()
   const allowInstagram = useInstagramAccess()
   const visiblePlatformOptions = useMemo(
     () => (allowInstagram ? [...platformOptions, instagramPlatformOption] : platformOptions),
     [allowInstagram]
   )
-  const isSmm = !isDeveloper && !isAnalyst
+  // SMM и Аналитик — основные роли системы
   const [wizardState, dispatch] = useReducer(wizardReducer, initialWizardState)
 
-  const wizardStepIds = getWizardStepIds(isDeveloper, isAnalyst)
-  const wizardSteps = getWizardSteps(isDeveloper, isAnalyst)
+  const wizardStepIds = getWizardStepIds(isAnalyst)
+  const wizardSteps = getWizardSteps(isAnalyst)
 
   const {
     formData,
@@ -200,12 +204,13 @@ const ProjectForm = () => {
   const operationRetryRef = useRef({})
   const restoreDraftCancelledRef = useRef(false)
   const hasRestoredDraftRef = useRef(false)
+  const [optimizationLiveProgress, setOptimizationLiveProgress] = useState(null)
 
   const precedentRetrieval = precedentSearchResults?.retrieval || null
 
   const retrievalBadge = useMemo(
-    () => buildRetrievalBadge(precedentRetrieval, { isDeveloper }),
-    [precedentRetrieval, isDeveloper]
+    () => buildRetrievalBadge(precedentRetrieval, { isAnalyst }),
+    [precedentRetrieval, isAnalyst]
   )
 
   const filledRequired = useMemo(() => {
@@ -271,6 +276,12 @@ const ProjectForm = () => {
   useEffect(() => {
     window.scrollTo(0, 0)
   }, [currentStep])
+
+  useEffect(() => {
+    if (currentStep > wizardSteps.length) {
+      dispatch({ type: 'SET_CURRENT_STEP', payload: wizardSteps.length })
+    }
+  }, [wizardSteps.length, currentStep])
 
   const addToast = (message, type = 'success') => {
     toastCounterRef.current += 1
@@ -343,7 +354,7 @@ const ProjectForm = () => {
     handlePostsLimitChange,
     handleParseCompetitorsFromUrls,
     canEnrich
-  } = useCompetitorsPipeline(addToast, { isDeveloper })
+  } = useCompetitorsPipeline(addToast, { isAnalyst })
 
   const reviewChecklist = useMemo(
     () =>
@@ -433,16 +444,17 @@ const ProjectForm = () => {
       if (!precedentsDone) reasonsForGenerate.push('База прецедентов пуста (нажмите «Обновить демо-базу прецедентов» на шаге 1)')
 
       const canSearch = backendOk && requiredFieldsDone && competitorsDone
-      const canGen =
-        backendOk && requiredFieldsDone && competitorsDone && precedentsDone
+      const canGen = isSmm
+        ? Boolean(backendOk && requiredFieldsDone)
+        : Boolean(backendOk && requiredFieldsDone && competitorsDone && precedentsDone)
 
       return {
-        canSearchPrecedents: isDeveloper ? true : canSearch,
-        canGenerateDraft: isDeveloper ? true : canGen,
+        canSearchPrecedents: canSearch,
+        canGenerateDraft: canGen,
         smmBlockedReasonsForSearch: reasonsForSearch,
         smmBlockedReasonsForGenerate: reasonsForGenerate
       }
-    }, [reviewChecklist, isEnrichmentServerAvailable, isDeveloper])
+    }, [reviewChecklist, isEnrichmentServerAvailable, isSmm])
 
   const stepStatuses = useMemo(() => {
     const hasCompetitorUrls = competitorUrls.some((url) => typeof url === 'string' && url.trim() !== '')
@@ -627,6 +639,68 @@ const ProjectForm = () => {
   useEffect(() => {
     dispatch({ type: 'SET_CURRENT_STEP', payload: Math.min(currentStep, wizardSteps.length) })
   }, [currentStep, wizardSteps.length])
+
+  // Восстановление активной задачи оптимизации из sessionStorage (при перезагрузке страницы)
+  useEffect(() => {
+    const activeJobId = getActiveOptimizationJobId()
+    if (!activeJobId || isEnrichmentServerAvailable === false) return
+
+    let cancelled = false
+    const checkAndResumeJob = async () => {
+      try {
+        const res = await getJobStatusFromServer(activeJobId)
+        if (cancelled) return
+        const job = res?.job
+        if (job?.status === 'running' || job?.status === 'queued') {
+          addToast(`Восстановлена активная оптимизация плана (ID: ${activeJobId.slice(0, 8)}…)`, 'info')
+          goToStepById('optimize')
+          setOperationTelemetry({ backend: 'running', python: 'running', llm: 'running' })
+
+          await runTrackedOperation('optimizingPlan', async (signal) => {
+            const response = await trackOptimizationJob(activeJobId, {
+              signal,
+              onProgress: (prog) => {
+                if (!cancelled) setOptimizationLiveProgress(prog)
+              }
+            })
+            if (!cancelled) {
+              setOptimizationResult(response)
+              if (response?.optimized_content_plan) {
+                try {
+                  await savePlanSnapshot(response.optimized_content_plan, {
+                    type: 'optimized',
+                    optimization: {
+                      optimized_at: new Date().toISOString(),
+                      stage1: response.stage1 || null,
+                      stage2: response.stage2 || null
+                    }
+                  })
+                } catch (e) {
+                  console.error('Не удалось сохранить оптимизированный план в localStorage:', e)
+                }
+              }
+              addToast('Оптимизация завершена: план обновлён', 'success')
+              setOperationTelemetry({ backend: 'success', python: 'success', llm: 'success' })
+            }
+          })
+        } else if (job?.status === 'completed' && job.result) {
+          clearActiveOptimizationJobId()
+          setOptimizationResult(job.result)
+          addToast('Восстановлен результат завершённой оптимизации плана', 'success')
+        } else {
+          clearActiveOptimizationJobId()
+        }
+      } catch (err) {
+        clearActiveOptimizationJobId()
+        console.warn('Не удалось восстановить активную задачу оптимизации:', err)
+      }
+    }
+
+    checkAndResumeJob()
+    return () => {
+      cancelled = true
+    }
+  }, [isEnrichmentServerAvailable, goToStepById, runTrackedOperation])
 
   useEffect(() => {
     const firstPost = competitorsData?.competitors?.[0]?.posts?.[0]
@@ -927,7 +1001,20 @@ const ProjectForm = () => {
       }
     }
 
-    if (!isDeveloper && !hasWorkflowPrecedents) {
+    if (!hasWorkflowPrecedents && isSmm && isEnrichmentServerAvailable === true) {
+      addToast('В базе нет прецедентов. Автоматически загружаю демо-прецеденты для генерации...', 'info')
+      await handleSeedDemoPrecedents()
+      try {
+        const summaryResponse = await getPrecedentsSummary()
+        effectivePrecedentsSummary = summaryResponse.summary || null
+        setPrecedentsSummary(effectivePrecedentsSummary)
+        hasWorkflowPrecedents = hasPrecedentsForWorkflow(precedentSearchResults, effectivePrecedentsSummary)
+      } catch (error) {
+        console.error('Ошибка обновления сводки прецедентов после auto-seed:', error)
+      }
+    }
+
+    if (!hasWorkflowPrecedents) {
       addToast(
         'Перед генерацией нужны прецеденты в базе: загрузите демо-базу на шаге «Конкуренты и база» или запустите поиск.',
         'error'
@@ -1079,7 +1166,12 @@ const ProjectForm = () => {
     let optResponse = null
     try {
       await runTrackedOperation('optimizingPlan', async (signal) => {
-        const response = await optimizeDraftContentPlan(payload, { signal })
+        const response = await optimizeDraftContentPlan(payload, {
+          signal,
+          onProgress: (prog) => {
+            setOptimizationLiveProgress(prog)
+          }
+        })
         optResponse = response
         setOptimizationResult(response)
 
@@ -1112,11 +1204,42 @@ const ProjectForm = () => {
   const handleGenerateAndOptimizePlan = async () => {
     if (isSmm && canSearchPrecedents && !precedentSearchResults?.publications?.length) {
       const searchOk = await handleSearchPrecedents()
-      if (!searchOk) return
+      if (!searchOk) return null
     }
     const generated = await handleGenerateDraftPlan()
-    if (!generated?.draft?.draft_content_plan) return
-    await handleOptimizeDraftPlan(generated)
+    if (!generated?.draft?.draft_content_plan) return null
+    const optResult = await handleOptimizeDraftPlan(generated)
+    return optResult || generated
+  }
+
+  const handleSmmGenerateAndNavigate = async () => {
+    if (isGenerationBlockedByBackend(isEnrichmentServerAvailable)) {
+      addToast('Сервер API (порт 3001) недоступен. Убедитесь, что бэкенд запущен.', 'error')
+      return
+    }
+
+    const formValidation = validateFormData(formData)
+    if (!formValidation.isValid) {
+      setErrors(formValidation.errors)
+      setTouched(
+        Object.keys(formValidation.errors).reduce((acc, key) => ({ ...acc, [key]: true }), {})
+      )
+      const firstErrorMessage = Object.values(formValidation.errors)[0]
+      addToast(
+        firstErrorMessage
+          ? `Ошибка заполнения: ${firstErrorMessage}`
+          : 'Перед генерацией заполните обязательные поля формы',
+        'error'
+      )
+      return
+    }
+
+    addToast('Запуск формирования контент-плана: RAG-подбор, генерация и ML-оптимизация...', 'info')
+    const outcome = await handleGenerateAndOptimizePlan()
+    if (outcome) {
+      addToast('Контент-план успешно сформирован и оптимизирован! Открываю готовый план...', 'success')
+      navigate('/content-plan')
+    }
   }
 
   const hasError = (fieldName) => touched[fieldName] && errors[fieldName]
@@ -1155,7 +1278,7 @@ const ProjectForm = () => {
         telemetry={operationTelemetry}
         onCancel={cancelOperation}
         onRetry={retryOperation}
-        isDeveloper={isDeveloper}
+        isAnalyst={isAnalyst}
       />
 
       <form className="project-form">
@@ -1197,7 +1320,7 @@ const ProjectForm = () => {
             isProcessing={isProcessing}
             isEnrichmentServerAvailable={isEnrichmentServerAvailable}
             canEnrich={canEnrich}
-            showEnrichButton={isDeveloper}
+            showEnrichButton={isAnalyst || canEnrich}
             precedentsAlreadyInDb={hasPersistedPrecedentsInDb(precedentsSummary)}
             precedentsSummary={precedentsSummary}
             allowInstagram={allowInstagram}
@@ -2118,6 +2241,60 @@ const ProjectForm = () => {
           </small>
             </div>
           </details>
+
+          {isSmm && (
+            <div className="smm-generate-banner" style={{
+              background: 'linear-gradient(135deg, rgba(37,99,235,0.08) 0%, rgba(124,58,237,0.08) 100%)',
+              border: '1px solid rgba(99,102,241,0.25)',
+              borderRadius: '8px',
+              padding: '1.25rem',
+              marginTop: '1.5rem',
+              marginBottom: '1rem'
+            }}>
+              <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.1rem', color: '#1e293b' }}>
+                {hasGeneratedPlan ? 'Контент-план уже готов' : 'Финальный шаг: готовый контент-план в один клик'}
+              </h3>
+              <p style={{ margin: '0 0 1rem 0', color: '#475569', fontSize: '0.9rem' }}>
+                {hasGeneratedPlan
+                  ? 'Вы можете открыть сформированный контент-план в календаре или пересоздать его с новыми параметрами.'
+                  : 'Нажмите кнопку ниже — система автоматически подберёт прецеденты конкурентов, сгенерирует черновик с помощью ИИ и оптимизирует распределение тем и форматов.'}
+              </p>
+              <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="submit-button primary"
+                  onClick={handleSmmGenerateAndNavigate}
+                  disabled={isGeneratingDraftPlan || isOptimizingPlan || isProcessing || isEnrichmentServerAvailable === false || !canGenerateDraft}
+                  style={{ padding: '0.75rem 1.5rem', fontWeight: 600 }}
+                >
+                  <span>
+                    {isGeneratingDraftPlan
+                      ? 'ШАГ 1/2: ГЕНЕРАЦИЯ ЧЕРНОВИКА...'
+                      : isOptimizingPlan
+                        ? 'ШАГ 2/2: ОПТИМИЗАЦИЯ...'
+                        : hasGeneratedPlan
+                          ? 'ПЕРЕСОЗДАТЬ И ОПТИМИЗИРОВАТЬ ПЛАН'
+                          : 'СФОРМИРОВАТЬ КОНТЕНТ-ПЛАН'}
+                  </span>
+                </button>
+                {hasGeneratedPlan && (
+                  <button
+                    type="button"
+                    className="submit-button secondary"
+                    onClick={() => navigate('/content-plan')}
+                    style={{ padding: '0.75rem 1.25rem' }}
+                  >
+                    <span>ОТКРЫТЬ ГОТОВЫЙ ПЛАН В КАЛЕНДАРЕ</span>
+                  </button>
+                )}
+              </div>
+              {!canGenerateDraft && smmBlockedReasonsForGenerate.length > 0 && (
+                <div style={{ marginTop: '0.75rem', fontSize: '0.85rem', color: '#b91c1c' }}>
+                  Перед формированием: {smmBlockedReasonsForGenerate.join(' · ')}
+                </div>
+              )}
+            </div>
+          )}
         </section>}
 
         {currentStepId === 'precedents' && (
@@ -2197,7 +2374,7 @@ const ProjectForm = () => {
               canSearchPrecedents={canSearchPrecedents}
               smmSearchBlockedReasons={smmBlockedReasonsForSearch}
               publicationDayMode={formData.publicationDayMode}
-              isDeveloper={isDeveloper}
+              isAnalyst={isAnalyst}
               combineSearchAndDraft={isSmm}
             />
           </>
@@ -2205,6 +2382,56 @@ const ProjectForm = () => {
 
         {currentStepId === 'optimize' && (
           <>
+            {isOptimizingPlan && (
+              <div
+                className="sse-optimization-progress-card"
+                style={{
+                  marginBottom: '1rem',
+                  padding: '16px',
+                  background: '#f0f9ff',
+                  border: '2px solid #0284c7',
+                  borderRadius: '8px'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <strong style={{ color: '#0369a1', fontSize: '0.95rem' }}>
+                    ⚡ Потоковая оптимизация генетического алгоритма (SSE):
+                  </strong>
+                  <span style={{ fontSize: '0.85rem', color: '#0284c7', fontWeight: 600 }}>
+                    {optimizationLiveProgress?.generation
+                      ? `Поколение ${optimizationLiveProgress.generation} / ${optimizationLiveProgress.max_generations || 40}`
+                      : optimizationLiveProgress?.message || 'Инициализация эволюции плана…'}
+                  </span>
+                </div>
+
+                <div style={{ width: '100%', height: '8px', background: '#e0f2fe', borderRadius: '4px', overflow: 'hidden', marginBottom: '10px' }}>
+                  <div
+                    style={{
+                      height: '100%',
+                      width: `${
+                        optimizationLiveProgress?.generation
+                          ? Math.min(100, Math.round((optimizationLiveProgress.generation / (optimizationLiveProgress.max_generations || 40)) * 100))
+                          : 20
+                      }%`,
+                      background: '#0284c7',
+                      transition: 'width 0.3s ease'
+                    }}
+                  />
+                </div>
+
+                {optimizationLiveProgress?.best_score != null && (
+                  <div style={{ fontSize: '0.82rem', color: '#334155', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+                    <span>• Лучший фитнес (LCB): <strong>{Number(optimizationLiveProgress.best_score).toFixed(4)}</strong></span>
+                    {optimizationLiveProgress?.avg_score != null && (
+                      <span>• Средний фитнес популяции: <strong>{Number(optimizationLiveProgress.avg_score).toFixed(4)}</strong></span>
+                    )}
+                    {optimizationLiveProgress?.summary?.predicted_views != null && (
+                      <span>• Прогноз просмотров: <strong>{Number(optimizationLiveProgress.summary.predicted_views).toLocaleString('ru-RU')}</strong></span>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
             <DraftPlanWorkflowPanel
               phase="optimize"
               draftPlanResult={draftPlanResult}
@@ -2220,9 +2447,9 @@ const ProjectForm = () => {
               canGenerateDraft={canGenerateDraft}
               smmBlockedReasons={smmBlockedReasonsForGenerate}
               publicationDayMode={formData.publicationDayMode}
-              isDeveloper={isDeveloper}
+              isAnalyst={isAnalyst}
             />
-            {isDeveloper && (
+            {isAnalyst && (
               <TechnicalDetailsPanel
                 precedentSearchQuery={precedentSearchQuery}
                 precedentSearchResults={precedentSearchResults}
@@ -2238,17 +2465,51 @@ const ProjectForm = () => {
           goToNextStep={goToNextStep}
           isFirstStep={isFirstStep}
           isLastStep={isLastStep}
-          onLastStepNext={() => navigate('/content-plan')}
-          canProceedFromLastStep={hasGeneratedPlan}
+          onLastStepNext={
+            isSmm
+              ? hasGeneratedPlan
+                ? () => navigate('/content-plan')
+                : handleSmmGenerateAndNavigate
+              : () => navigate('/content-plan')
+          }
+          canProceedFromLastStep={
+            isSmm
+              ? hasGeneratedPlan
+                ? true
+                : canGenerateDraft &&
+                  !isProcessing &&
+                  !isGeneratingDraftPlan &&
+                  !isOptimizingPlan &&
+                  isEnrichmentServerAvailable !== false
+              : hasGeneratedPlan
+          }
           lastStepNextLabel={
-            optimizationResult?.optimized_content_plan ? 'К ОПТИМИЗИРОВАННОМУ ПЛАНУ' : 'К ЧЕРНОВИКУ'
+            isSmm
+              ? isGeneratingDraftPlan
+                ? 'ШАГ 1/2: ГЕНЕРАЦИЯ...'
+                : isOptimizingPlan
+                  ? 'ШАГ 2/2: ОПТИМИЗАЦИЯ...'
+                  : isProcessing
+                    ? 'ФОРМИРОВАНИЕ ПЛАНА...'
+                    : hasGeneratedPlan
+                      ? 'ОТКРЫТЬ ГОТОВЫЙ ПЛАН'
+                      : 'СФОРМИРОВАТЬ КОНТЕНТ-ПЛАН'
+              : optimizationResult?.optimized_content_plan
+                ? 'К ОПТИМИЗИРОВАННОМУ ПЛАНУ'
+                : 'К ЧЕРНОВИКУ'
           }
           lastStepNextTitle={
-            !hasGeneratedPlan
-              ? 'Сначала сформируйте черновик'
-              : optimizationResult?.optimized_content_plan
-                ? 'Открыть план после оптимизации'
-                : 'Открыть черновик без улучшения'
+            isSmm
+              ? hasGeneratedPlan
+                ? 'Открыть готовый план в календаре'
+                : !canGenerateDraft
+                  ? smmBlockedReasonsForGenerate.join(' · ')
+                  : 'Сформировать и оптимизировать контент-план в один клик'
+              : !hasGeneratedPlan
+                ? 'Сначала сформируйте черновик'
+                : optimizationResult?.optimized_content_plan
+                  ? 'Открыть план после оптимизации'
+                  : 'Открыть черновик без улучшения'
           }
           currentStep={currentStep}
           wizardSteps={wizardSteps}
@@ -2261,7 +2522,7 @@ const ProjectForm = () => {
           item={selectedPrecedentItem}
           retrieval={precedentRetrieval}
           onClose={() => setSelectedPrecedentItem(null)}
-          showTechnicalDetails={isDeveloper}
+          showTechnicalDetails={isAnalyst}
         />
       )}
     </>

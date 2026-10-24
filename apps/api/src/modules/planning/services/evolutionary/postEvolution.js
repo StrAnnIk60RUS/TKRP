@@ -22,7 +22,7 @@ import {
   choosePreferredTopic,
   normalizePublicationTopicForUi
 } from '../contentOutputUtils.js';
-import { generatePostContent } from '../llmPostGeneration.js';
+import { generatePostContent, generatePlanAnglesMatrix } from '../llmPostGeneration.js';
 import { buildFallbackMediaPrompt, mediaKindForFormat } from '../mediaGenerationService.js';
 
 const TONE_START = 24;
@@ -350,12 +350,22 @@ async function evolveSinglePublication(
     scorePopulation: async (population) => {
       const repaired = population.map((item) => repairDecision(item, constants));
       const projected = repaired.map((item) => projectDecisionToVector(item, baseVector, planFeatureMap));
-      const predictionResult = await predictPostMetricsByFeatureVectors(projected, { forceTrain: false });
+      const predictionResult = await predictPostMetricsByFeatureVectors(projected, {
+        forceTrain: false,
+        platform: publication.platform
+      });
       
       return predictionResult.predictions.map((predictedMetrics, index) => {
+        const lcbMetrics = predictionResult.lcbPredictions?.[index] || predictedMetrics;
         const capped = capPostPredictedMetrics(predictedMetrics, predictionResult.metadata);
-        const kpi = calculateFitness(
+        const cappedLcb = capPostPredictedMetrics(lcbMetrics, predictionResult.metadata);
+        const displayKpi = calculateFitness(
           [capped.cappedLikes, capped.cappedShares, capped.cappedViews],
+          predictionResult.metadata,
+          publication
+        );
+        const optimizationKpi = calculateFitness(
+          [cappedLcb.cappedLikes, cappedLcb.cappedShares, cappedLcb.cappedViews],
           predictionResult.metadata,
           publication
         );
@@ -366,7 +376,8 @@ async function evolveSinglePublication(
           ctaPenalty = ctaAlignmentWeight * Math.abs(geneCta - targetCtaShare);
         }
         const combined = combineFitness({
-          kpi,
+          kpi: optimizationKpi,
+          displayKpi,
           diversity,
           diversityWeight: peerGenomes.length ? peerWeight : 0,
           penalty: ctaPenalty
@@ -379,6 +390,9 @@ async function evolveSinglePublication(
             predicted_likes: capped.cappedLikes,
             predicted_shares: capped.cappedShares,
             predicted_views: capped.cappedViews,
+            lcb_likes: cappedLcb.cappedLikes,
+            lcb_shares: cappedLcb.cappedShares,
+            lcb_views: cappedLcb.cappedViews,
             fitness,
             display_fitness: combined.display,
             peer_diversity: diversity,
@@ -748,6 +762,21 @@ export async function optimizePublicationsEvolution(publications = [], planFeatu
   };
 }
 
+async function asyncMapConcurrent(items, limit, asyncFn) {
+  if (!Array.isArray(items) || items.length === 0) return [];
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  const workerCount = Math.max(1, Math.min(limit, items.length));
+  const workers = new Array(workerCount).fill(0).map(async () => {
+    while (nextIndex < items.length) {
+      const current = nextIndex++;
+      results[current] = await asyncFn(items[current], current);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
 export async function fillPlanWithBestPublication(publications = [], publicationResults, planFeatureMap = {}, options = {}) {
   const slotResults = Array.isArray(publicationResults)
     ? publicationResults.filter((item) => item?.optimizedPublication || item?.publication_id)
@@ -780,12 +809,8 @@ export async function fillPlanWithBestPublication(publications = [], publication
     slotResults[index] ||
     selectArchetypeForPublication(publication, archetypes, usageByKey, toneUsage, targetUniqueTones)
   );
-  
-  const avoidOpenings = [];
-  const avoidTopics = [];
-  const drafts = [];
-  for (let index = 0; index < publications.length; index += 1) {
-    const publication = publications[index];
+
+  const slotConfigs = publications.map((publication, index) => {
     const source = selectedSources[index]?.optimizedPublication || selectedSources[index] || archetypes[0];
     const slotFeatureMap = selectedSources[index]?.featureMap || source?.ontology_features || {};
     const brief = resolveWritingBrief(selectedSources[index], publication, slotFeatureMap);
@@ -793,44 +818,88 @@ export async function fillPlanWithBestPublication(publications = [], publication
     const topic = publication?.topic || source?.topic;
     const format = publication?.format || source?.format;
     const objective = publication?.objective || source?.objective;
-    const generated = await generatePostContent(
+    return {
+      index,
       publication,
+      source,
+      brief,
+      evolvedTone,
+      topic,
+      format,
+      objective,
+      platform: publication?.platform || source?.platform,
+      has_cta: brief.has_cta,
+      creativity: brief.creativity,
+      hook: brief.hook,
+      length: brief.length,
+      lists: brief.lists
+    };
+  });
+
+  const anglesMatrix = await generatePlanAnglesMatrix(slotConfigs, formInput, ragResults, {});
+  const angleByIndex = new Map(anglesMatrix.map((item) => [item.index, item]));
+  const allPlannedOpenings = anglesMatrix.map((item) => item.hook_opening).filter(Boolean);
+  const allPlannedTopics = anglesMatrix.map((item) => item.angle_title).filter(Boolean);
+
+  const concurrency = Math.max(1, Math.min(8, Number(process.env.STAGE2_BATCH_CONCURRENCY) || 5));
+  const onProgress = typeof options?.onProgress === 'function' ? options.onProgress : null;
+  const totalSlots = slotConfigs.length;
+  let completedSlots = 0;
+
+  const drafts = await asyncMapConcurrent(slotConfigs, concurrency, async (cfg) => {
+    const assignedAngle = angleByIndex.get(cfg.index) || null;
+    const avoidOpenings = allPlannedOpenings.filter((_, idx) => idx !== cfg.index).slice(-16);
+    const avoidTopics = allPlannedTopics.filter((_, idx) => idx !== cfg.index).slice(-24);
+
+    const generated = await generatePostContent(
+      cfg.publication,
       {
-        topic,
-        format,
-        objective,
-        tone: evolvedTone || source?.tone,
-        platform: publication?.platform || source?.platform,
-        has_cta: brief.has_cta,
-        creativity: brief.creativity,
-        hook: brief.hook,
-        length: brief.length,
-        lists: brief.lists,
-        index,
-        avoid_openings: avoidOpenings.slice(-12),
-        avoid_topics: avoidTopics.slice(-24)
+        topic: cfg.topic,
+        format: cfg.format,
+        objective: cfg.objective,
+        tone: cfg.evolvedTone || cfg.source?.tone,
+        platform: cfg.platform,
+        has_cta: cfg.has_cta,
+        creativity: cfg.creativity,
+        hook: cfg.hook,
+        length: cfg.length,
+        lists: cfg.lists,
+        index: cfg.index,
+        assigned_angle: assignedAngle,
+        avoid_openings: avoidOpenings,
+        avoid_topics: avoidTopics
       },
       formInput,
       ragResults,
       {}
     );
+
+    completedSlots += 1;
+    if (onProgress && (completedSlots % 3 === 0 || completedSlots === totalSlots)) {
+      onProgress({
+        progress: 50 + Math.round((completedSlots / totalSlots) * 45),
+        message: `Генерация текстов постов: ${completedSlots}/${totalSlots}`,
+        completed: completedSlots,
+        total: totalSlots
+      });
+    }
+
     const keyMessage = generated?.key_message || generated?.keyMessage || '';
     const summary = generated?.summary || '';
     const cta = generated?.cta || '';
-    if (summary) avoidOpenings.push(String(summary).replace(/\s+/g, ' ').trim().slice(0, 120));
-    if (topic) avoidTopics.push(String(topic));
-    drafts.push({
-      publication,
-      source,
-      brief,
-      evolvedTone,
+
+    return {
+      publication: cfg.publication,
+      source: cfg.source,
+      brief: cfg.brief,
+      evolvedTone: cfg.evolvedTone,
       keyMessage,
       summary,
       cta,
       mediaPrompt: String(generated?.media_prompt || '').trim(),
       textOrigin: generated?.text_origin || 'llm'
-    });
-  }
+    };
+  });
 
   const featureOptions = {
     tonesCount: planFeatureMap.unique_tones,

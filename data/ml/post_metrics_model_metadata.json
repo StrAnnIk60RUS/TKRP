@@ -44,6 +44,30 @@
     "tones_count",
     "creativity_from_best_plan"
   ],
+  "target_transform": "relative_lift",
+  "reference_baseline": [
+    6.0,
+    1.0,
+    494.0
+  ],
+  "platform_baselines": {
+    "vk": [
+      6.0,
+      1.0,
+      492.5
+    ],
+    "linkedin": [
+      53.5,
+      16.0,
+      1500.0
+    ]
+  },
+  "quantile_alphas": [
+    0.1,
+    0.5,
+    0.9
+  ],
+  "lcb_lambda_default": 1.0,
   "feature_set_version": "v2",
   "ontology_features_enabled": false,
   "n_features": 36,

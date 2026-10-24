@@ -21,7 +21,15 @@ const buildFetchErrorMessage = async (response) => {
   return errorMessage
 }
 
-import { authHeaders } from './authService.js';
+import { authHeaders, getSessionToken } from './authService.js';
+import { addBreadcrumb } from '../lib/telemetry/breadcrumbs.js';
+
+function createTraceId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'tr-' + Math.random().toString(36).slice(2, 10);
+}
 
 // Network/CORS-level fetch failures (TypeError: "Failed to fetch") are opaque for users;
 // convert them into an actionable message. HTTP errors keep their own handling.
@@ -38,12 +46,63 @@ const safeFetch = async (endpoint, options = {}) => {
 };
 
 const fetchJsonOrThrow = async (endpoint, options = {}) => {
-  const headers = { ...(options.headers || {}), ...authHeaders() };
-  const response = await safeFetch(endpoint, { ...options, headers });
-  if (!response.ok) {
-    throw new Error(await buildFetchErrorMessage(response))
+  const traceId = options.headers?.['x-trace-id'] || createTraceId();
+  const headers = {
+    'x-trace-id': traceId,
+    ...(options.headers || {}),
+    ...authHeaders()
+  };
+
+  const method = options.method || 'GET';
+  addBreadcrumb({
+    category: 'http.request',
+    message: `${method} ${endpoint}`,
+    data: { trace_id: traceId }
+  });
+
+  const startTime = Date.now();
+  let response;
+  try {
+    response = await safeFetch(endpoint, { ...options, headers });
+  } catch (error) {
+    addBreadcrumb({
+      category: 'http.error',
+      level: 'error',
+      message: `${method} ${endpoint} failed: ${error?.message || error}`,
+      data: { trace_id: traceId, duration_ms: Date.now() - startTime }
+    });
+    error.traceId = traceId;
+    throw error;
   }
-  return await response.json()
+
+  const durationMs = Date.now() - startTime;
+  const responseTraceId =
+    response.headers?.get?.('x-trace-id') ||
+    response.headers?.get?.('x-request-id') ||
+    traceId;
+
+  if (!response.ok) {
+    addBreadcrumb({
+      category: 'http.response',
+      level: 'warn',
+      message: `${method} ${endpoint} -> ${response.status} (${durationMs}ms)`,
+      data: { trace_id: responseTraceId, status: response.status }
+    });
+
+    const error = new Error(await buildFetchErrorMessage(response));
+    error.status = response.status;
+    error.traceId = responseTraceId;
+    throw error;
+  }
+
+  addBreadcrumb({
+    category: 'http.response',
+    level: 'info',
+    message: `${method} ${endpoint} -> ${response.status} (${durationMs}ms)`,
+    data: { trace_id: responseTraceId, status: response.status }
+  });
+
+  return await response.json();
 }
 
 /**
@@ -303,6 +362,182 @@ function waitForJob(ms, signal) {
   })
 }
 
+export function getActiveOptimizationJobId() {
+  try {
+    return sessionStorage.getItem('active_optimization_job_id') || null
+  } catch {
+    return null
+  }
+}
+
+export function clearActiveOptimizationJobId() {
+  try {
+    sessionStorage.removeItem('active_optimization_job_id')
+  } catch {}
+}
+
+export async function getJobStatusFromServer(jobId, requestOptions = {}) {
+  return await fetchJsonOrThrow(`${API_URL}/api/plan/jobs/${encodeURIComponent(jobId)}`, {
+    method: 'GET',
+    headers: authHeaders(),
+    signal: requestOptions.signal
+  })
+}
+
+export async function trackOptimizationJob(jobId, requestOptions = {}) {
+  try {
+    sessionStorage.setItem('active_optimization_job_id', jobId)
+  } catch {}
+
+  const onProgress = requestOptions.onProgress
+  const signal = requestOptions.signal
+
+  return new Promise((resolve, reject) => {
+    let finished = false
+    let eventSource = null
+    let pollTimer = null
+
+    const cleanup = () => {
+      finished = true
+      clearActiveOptimizationJobId()
+      if (eventSource) {
+        try {
+          eventSource.close()
+        } catch (_) {}
+        eventSource = null
+      }
+      if (pollTimer) {
+        clearTimeout(pollTimer)
+        pollTimer = null
+      }
+    }
+
+    if (signal) {
+      if (signal.aborted) {
+        cleanup()
+        reject(new DOMException('Aborted', 'AbortError'))
+        return
+      }
+      signal.addEventListener(
+        'abort',
+        () => {
+          cleanup()
+          reject(new DOMException('Aborted', 'AbortError'))
+        },
+        { once: true }
+      )
+    }
+
+    const startPollingFallback = async () => {
+      const deadline = Date.now() + 15 * 60 * 1000
+      let consecutiveErrors = 0
+      while (!finished && Date.now() < deadline) {
+        try {
+          await waitForJob(2000, signal)
+          if (finished) return
+          const statusRes = await getJobStatusFromServer(jobId, { signal })
+          consecutiveErrors = 0
+          const job = statusRes?.job
+          if (job?.progress && typeof onProgress === 'function') {
+            onProgress(job.progress)
+          }
+          if (job?.status === 'completed') {
+            cleanup()
+            resolve({ success: true, ...(job.result || {}) })
+            return
+          }
+          if (job?.status === 'failed') {
+            cleanup()
+            reject(new Error(job.error || 'Оптимизация завершилась с ошибкой'))
+            return
+          }
+        } catch (pollErr) {
+          if (pollErr?.name === 'AbortError') return
+          const isNotFound =
+            pollErr?.status === 404 ||
+            pollErr?.message?.includes('404') ||
+            pollErr?.message?.includes('Job не найден')
+          if (isNotFound) {
+            cleanup()
+            reject(
+              new Error(
+                `Задача оптимизации не найдена на сервере (ID: ${jobId.slice(0, 8)}…). Возможно, сервер был перезапущен. Попробуйте запустить оптимизацию снова.`
+              )
+            )
+            return
+          }
+          consecutiveErrors += 1
+          if (consecutiveErrors >= 5) {
+            cleanup()
+            reject(new Error(`Сбой проверки статуса оптимизации: ${pollErr?.message || 'ошибка сети'}`))
+            return
+          }
+        }
+      }
+      if (!finished) {
+        cleanup()
+        reject(new Error('Оптимизация не завершилась за отведённое время'))
+      }
+    }
+
+    if (typeof EventSource !== 'undefined') {
+      try {
+        const token = getSessionToken()
+        const tokenQuery = token ? `?token=${encodeURIComponent(token)}` : ''
+        const sseUrl = `${API_URL}/api/plan/jobs/${encodeURIComponent(jobId)}/events${tokenQuery}`
+        eventSource = new EventSource(sseUrl)
+
+        eventSource.addEventListener('progress', (e) => {
+          try {
+            const data = JSON.parse(e.data)
+            if (typeof onProgress === 'function' && data?.progress) {
+              onProgress(data.progress)
+            }
+          } catch (_) {}
+        })
+
+        eventSource.addEventListener('completed', (e) => {
+          try {
+            const data = JSON.parse(e.data)
+            cleanup()
+            resolve({ success: true, ...(data.result || {}) })
+          } catch (err) {
+            cleanup()
+            reject(err)
+          }
+        })
+
+        eventSource.addEventListener('failed', (e) => {
+          try {
+            const data = JSON.parse(e.data)
+            cleanup()
+            reject(new Error(data.error || 'Оптимизация завершилась с ошибкой'))
+          } catch (err) {
+            cleanup()
+            reject(err)
+          }
+        })
+
+        eventSource.onerror = () => {
+          if (!finished) {
+            if (eventSource) {
+              try {
+                eventSource.close()
+              } catch (_) {}
+              eventSource = null
+            }
+            startPollingFallback()
+          }
+        }
+      } catch (_) {
+        startPollingFallback()
+      }
+    } else {
+      startPollingFallback()
+    }
+  })
+}
+
 export async function optimizeDraftContentPlan(payload, requestOptions = {}) {
   try {
     const started = await fetchJsonOrThrow(`${API_URL}/api/plan/optimize:async`, {
@@ -317,25 +552,11 @@ export async function optimizeDraftContentPlan(payload, requestOptions = {}) {
     if (!jobId) {
       throw new Error('Сервер не вернул job_id для оптимизации')
     }
-    const deadline = Date.now() + 15 * 60 * 1000
-    while (Date.now() < deadline) {
-      await waitForJob(2000, requestOptions.signal)
-      const status = await fetchJsonOrThrow(`${API_URL}/api/plan/jobs/${jobId}`, {
-        method: 'GET',
-        signal: requestOptions.signal
-      })
-      const job = status?.job
-      if (job?.status === 'completed') {
-        return { success: true, ...(job.result || {}) }
-      }
-      if (job?.status === 'failed') {
-        throw new Error(job.error || 'Оптимизация завершилась с ошибкой')
-      }
-    }
-    throw new Error('Оптимизация не завершилась за отведённое время')
+    return await trackOptimizationJob(jobId, requestOptions)
   } catch (error) {
-    console.error('Ошибка в optimizeDraftContentPlan:', error);
-    throw error;
+    clearActiveOptimizationJobId()
+    console.error('Ошибка в optimizeDraftContentPlan:', error)
+    throw error
   }
 }
 
@@ -479,4 +700,22 @@ export async function predictPostMetricsLive(publications, requestOptions = {}) 
     signal: requestOptions.signal
   })
 }
+
+export async function fetchMlModelsMetadata(requestOptions = {}) {
+  return await fetchJsonOrThrow(`${API_URL}/api/ml/models/metadata`, {
+    method: 'GET',
+    headers: authHeaders(),
+    signal: requestOptions.signal
+  })
+}
+
+export async function triggerMlRetrain(requestOptions = {}) {
+  return await fetchJsonOrThrow(`${API_URL}/api/ml/relevance/train`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({}),
+    signal: requestOptions.signal
+  })
+}
+
 

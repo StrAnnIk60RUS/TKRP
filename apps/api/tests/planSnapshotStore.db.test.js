@@ -85,11 +85,11 @@ test('invalid token rejected on load and delete (negative)', async () => {
 });
 
 test('expired snapshot swept and load returns null (negative TTL)', async () => {
-  process.env.PLAN_SNAPSHOT_TTL_MS = '1';
+  process.env.PLAN_SNAPSHOT_TTL_MS = '50';
   const expiredToken = 'test_snap_db_expired';
   await saveSnapshot(plan, null, expiredToken);
   assert.equal(await dbTokenCount(expiredToken), 1);
-  await new Promise((resolve) => setTimeout(resolve, 10));
+  await new Promise((resolve) => setTimeout(resolve, 70));
   assert.equal(await loadSnapshot(expiredToken), null);
   assert.equal(await dbTokenCount(expiredToken), 0);
   delete process.env.PLAN_SNAPSHOT_TTL_MS;

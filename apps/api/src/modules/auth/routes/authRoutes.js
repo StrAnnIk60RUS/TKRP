@@ -2,8 +2,10 @@ import { Router } from 'express';
 import { createUser, getCurrentUser, loginUser, logoutSession } from '../services/authStore.js';
 import { instagramFeatures } from '../services/instagramAccess.js';
 import { sendRouteError } from '../../../shared/http/routeUtils.js';
+import { createAuthRateLimitMiddleware } from '../../../shared/http/security.js';
 
 const router = Router();
+const authRateLimiter = createAuthRateLimitMiddleware();
 
 function readBearerToken(req) {
   const header = req.headers?.authorization;
@@ -12,7 +14,7 @@ function readBearerToken(req) {
   return match ? match[1].trim() : null;
 }
 
-router.post('/register', async (req, res) => {
+router.post('/register', authRateLimiter, async (req, res) => {
   try {
     const body = req.body || {};
     const username = body.username;
@@ -43,7 +45,7 @@ router.post('/register', async (req, res) => {
   }
 });
 
-router.post('/login', async (req, res) => {
+router.post('/login', authRateLimiter, async (req, res) => {
   try {
     const body = req.body || {};
     const username = body.username;

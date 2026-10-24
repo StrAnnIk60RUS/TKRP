@@ -155,6 +155,144 @@ export function calculateTokenScore(queryTokens, text, options = {}) {
   };
 }
 
+/**
+ * BM25 lexical ranking for candidate documents with domain term / ontology entity weighting.
+ * @param {Array<string>} queryTokens
+ * @param {Array<Object>} documents
+ * @param {Object} options - { getText, extractKeyEntities, boostExactPhrase, k1, b }
+ * @returns {Array<{ document: Object, bm25_score: number, matched_tokens: Array<string> }>}
+ */
+export function calculateBm25Corpus(queryTokens, documents = [], options = {}) {
+  if (!Array.isArray(queryTokens) || !queryTokens.length || !Array.isArray(documents) || !documents.length) {
+    return documents.map((doc) => ({ document: doc, bm25_score: 0, matched_tokens: [] }));
+  }
+
+  const getText = options.getText || ((doc) => String(doc?.text || ''));
+  const extractKeyEntities = options.extractKeyEntities || ((doc) => doc?.key_entities || []);
+  const k1 = options.k1 ?? 1.2;
+  const b = options.b ?? 0.75;
+  const boostPhrase = options.boostExactPhrase ? normalizeText(options.boostExactPhrase) : '';
+
+  const parsedDocs = documents.map((doc) => {
+    const rawText = getText(doc);
+    const tokens = tokenize(rawText);
+    const uniqueTokensList = uniqueTokens(tokens);
+    const keyEntities = (extractKeyEntities(doc) || []).map((e) => normalizeText(e)).filter(Boolean);
+    const keyEntityTokens = uniqueTokens(keyEntities.flatMap((e) => tokenize(e)));
+
+    const termFrequencies = new Map();
+    tokens.forEach((t) => {
+      const weight = keyEntityTokens.includes(t) ? 2.0 : 1.0;
+      termFrequencies.set(t, (termFrequencies.get(t) || 0) + weight);
+    });
+
+    return {
+      doc,
+      rawText,
+      docLength: Math.max(1, tokens.length),
+      uniqueTokensSet: new Set(uniqueTokensList),
+      termFrequencies
+    };
+  });
+
+  const N = parsedDocs.length;
+  const totalLength = parsedDocs.reduce((acc, d) => acc + d.docLength, 0);
+  const avgdl = totalLength / Math.max(1, N);
+
+  // Compute document frequencies and Okapi IDF for each query token
+  const idfMap = new Map();
+  queryTokens.forEach((token) => {
+    const df = parsedDocs.filter((d) => d.uniqueTokensSet.has(token)).length;
+    // Standard Okapi / Lucene non-negative IDF
+    const rawIdf = Math.log(1 + (N - df + 0.5) / (df + 0.5));
+    idfMap.set(token, Math.max(0.1, rawIdf));
+  });
+
+  const rawScores = parsedDocs.map((item) => {
+    let score = 0;
+    const matchedTokens = [];
+
+    queryTokens.forEach((token) => {
+      const tf = item.termFrequencies.get(token) || 0;
+      if (tf > 0) {
+        matchedTokens.push(token);
+        const idf = idfMap.get(token) || 0.1;
+        const numerator = tf * (k1 + 1);
+        const denominator = tf + k1 * (1 - b + b * (item.docLength / avgdl));
+        score += idf * (numerator / denominator);
+      }
+    });
+
+    if (boostPhrase && normalizeText(item.rawText).includes(boostPhrase)) {
+      score += 0.5;
+    }
+
+    return {
+      document: item.doc,
+      rawScore: score,
+      matched_tokens: uniqueTokens(matchedTokens)
+    };
+  });
+
+  const maxScore = Math.max(...rawScores.map((s) => s.rawScore), 0);
+  return rawScores.map((item) => ({
+    document: item.document,
+    bm25_score: maxScore > 0 ? Number(Math.min(1, item.rawScore / maxScore).toFixed(4)) : 0,
+    raw_bm25_score: Number(item.rawScore.toFixed(4)),
+    matched_tokens: item.matched_tokens
+  }));
+}
+
+/**
+ * Reciprocal Rank Fusion (RRF) to blend dense vector similarity with sparse BM25 lexical ranking.
+ * RRF(d) = sum_r ( w_r / (k + rank_r(d)) )
+ * @param {Array<{ name: string, rankedItems: Array<Object>, weight: number, getId: Function }>} runs
+ * @param {Object} options - { k }
+ * @returns {Array<{ item: Object, rrf_score: number, normalized_score: number, ranks: Object }>}
+ */
+export function reciprocalRankFusion(runs = [], options = {}) {
+  const k = options.k ?? 60;
+  if (!Array.isArray(runs) || runs.length === 0) return [];
+
+  const itemsMap = new Map();
+  let totalWeight = 0;
+
+  runs.forEach((run) => {
+    const weight = Number.isFinite(Number(run.weight)) ? Number(run.weight) : 1;
+    totalWeight += weight;
+    const getId = run.getId || ((item, idx) => item?.id || item?.publication_id || item?.plan_id || String(idx));
+    const items = Array.isArray(run.rankedItems) ? run.rankedItems : [];
+
+    items.forEach((item, index) => {
+      const id = getId(item, index);
+      const rank = index + 1; // 1-based rank
+      if (!itemsMap.has(id)) {
+        itemsMap.set(id, {
+          item,
+          rrf_score: 0,
+          ranks: {}
+        });
+      }
+      const entry = itemsMap.get(id);
+      entry.rrf_score += weight / (k + rank);
+      entry.ranks[run.name || 'default'] = rank;
+    });
+  });
+
+  // Theoretical maximum RRF score (rank 1 in all runs)
+  const maxPossibleRrf = totalWeight / (k + 1);
+
+  const results = Array.from(itemsMap.values()).map((entry) => ({
+    item: entry.item,
+    rrf_score: Number(entry.rrf_score.toFixed(6)),
+    normalized_score: Number(Math.min(1, entry.rrf_score / maxPossibleRrf).toFixed(4)),
+    ranks: entry.ranks
+  }));
+
+  results.sort((a, b) => b.rrf_score - a.rrf_score);
+  return results;
+}
+
 export function getEmbeddingForItem(item) {
   const embedding = item?.embedding;
   return Array.isArray(embedding) && embedding.length > 0 ? embedding : null;
@@ -351,13 +489,16 @@ export function scoreRetrievalHit({
   embeddingScore = 0,
   tokenScore = 0,
   engagementSignal = 0,
-  trustSignal = 0
+  trustSignal = 0,
+  rrfScore = null
 } = {}) {
-  const semantic = Math.min(
-    1,
-    Math.max(0, Number(embeddingScore) || 0) * RETRIEVAL_EMBEDDING_WEIGHT +
-      Math.max(0, Number(tokenScore) || 0) * RETRIEVAL_TOKEN_WEIGHT
-  );
+  const semantic = rrfScore !== null && Number.isFinite(Number(rrfScore))
+    ? Math.min(1, Math.max(0, Number(rrfScore)))
+    : Math.min(
+        1,
+        Math.max(0, Number(embeddingScore) || 0) * RETRIEVAL_EMBEDDING_WEIGHT +
+          Math.max(0, Number(tokenScore) || 0) * RETRIEVAL_TOKEN_WEIGHT
+      );
   const engagement = Math.max(0, Math.min(1, Number(engagementSignal) || 0));
   const trust = Math.max(0, Math.min(1, Number(trustSignal) || 0));
   const blended = semantic * 0.72 + engagement * 0.16 + trust * 0.12;

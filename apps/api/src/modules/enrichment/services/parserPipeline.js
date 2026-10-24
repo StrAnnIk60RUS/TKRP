@@ -59,7 +59,7 @@ function missingCookieEnvName(url) {
   const platform = detectPlatform(url);
   if (platform === 'vk' && !String(process.env.VK_API_TOKEN || '').trim()) return 'VK_API_TOKEN';
   if (platform === 'linkedin' && !String(process.env.LINKEDIN_COOKIE || '').trim()) return 'LINKEDIN_COOKIE';
-  if (platform === 'instagram' && !String(process.env.INSTAGRAM_COOKIE || '').trim()) return 'INSTAGRAM_COOKIE';
+  if (platform === 'instagram' && !String(process.env.INSTAGRAM_COOKIE || '').trim() && !String(process.env.APIFY_API_TOKEN || '').trim()) return 'INSTAGRAM_COOKIE or APIFY_API_TOKEN';
   return null;
 }
 

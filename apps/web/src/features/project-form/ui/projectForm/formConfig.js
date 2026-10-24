@@ -97,7 +97,7 @@ export const STEP_META = {
   }
 }
 
-/** Аналитик и разработчик: все 6 шагов, включая отдельный шаг поиска прецедентов. */
+/** Маркетолог-аналитик: все 6 шагов, включая отдельный шаг поиска прецедентов. */
 export const wizardStepIdsExtended = [
   'competitors',
   'project',
@@ -107,8 +107,8 @@ export const wizardStepIdsExtended = [
   'optimize'
 ]
 
-/** SMM: 5 шагов без отдельного экрана «Прецеденты» — подбор выполняется автоматически перед черновиком. */
-export const wizardStepIdsSmm = ['competitors', 'project', 'audience', 'draft', 'optimize']
+/** SMM: 3 шага — конкуренты, проект, аудитория; контент-план генерируется и оптимизируется в 1 клик. */
+export const wizardStepIdsSmm = ['competitors', 'project', 'audience']
 
 export const wizardSteps = wizardStepIdsExtended.map((id) => STEP_LABELS[id])
 export const wizardStepsSmm = wizardStepIdsSmm.map((id) => STEP_LABELS[id])
@@ -116,15 +116,18 @@ export const wizardStepsSmm = wizardStepIdsSmm.map((id) => STEP_LABELS[id])
 /** Быстрый vs расширенный режим онбординга. */
 export const ONBOARDING_MODES = {
   quick: { label: 'Быстрый режим', hint: 'Минимум полей, для SMM', roleHint: 'smm' },
-  extended: { label: 'Расширенный режим', hint: 'Полная форма, параметры оптимизации', roleHint: 'dev' }
+  extended: { label: 'Расширенный режим', hint: 'Полная форма, параметры оптимизации', roleHint: 'analyst' }
 }
 
-export function getWizardStepIds(isDeveloper, isAnalyst = false) {
-  return isDeveloper || isAnalyst ? wizardStepIdsExtended : wizardStepIdsSmm
+export function getWizardStepIds(isAnalyst = false, legacyDeveloper = false) {
+  const isExtended = typeof isAnalyst === 'object' && isAnalyst !== null
+    ? Boolean(isAnalyst.isAnalyst || isAnalyst.isExtendedMode || isAnalyst.isDeveloper)
+    : Boolean(isAnalyst || legacyDeveloper);
+  return isExtended ? wizardStepIdsExtended : wizardStepIdsSmm;
 }
 
-export function getWizardSteps(isDeveloper, isAnalyst = false) {
-  return getWizardStepIds(isDeveloper, isAnalyst).map((id) => STEP_LABELS[id])
+export function getWizardSteps(isAnalyst = false, legacyDeveloper = false) {
+  return getWizardStepIds(isAnalyst, legacyDeveloper).map((id) => STEP_LABELS[id]);
 }
 
 export const requiredFields = [

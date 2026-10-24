@@ -39,6 +39,7 @@ import {
   getPlanSnapshotFromServer,
   listPlanSnapshotsFromServer
 } from '../../../shared/api/enrichmentService'
+import OptimizationTracePanel from '../../../features/project-form/ui/projectForm/OptimizationTracePanel'
 import { useInstagramAccess } from '../../../shared/lib/useInstagramAccess'
 import { ToastContainer } from '../../../shared/ui/Toast'
 import AuthGate from '../../../shared/ui/AuthGate'
@@ -99,7 +100,7 @@ const normalizeMetricByTotal = (items, rawKey, totalValue) => {
 
 const ContentPlanPage = () => {
   const navigate = useNavigate()
-  const { isDeveloper } = useUserRole()
+  const { isAnalyst } = useUserRole()
   const allowInstagram = useInstagramAccess()
   const editorPlatforms = allowInstagram
     ? ['vk', 'telegram', 'linkedin', 'instagram']
@@ -123,6 +124,28 @@ const ContentPlanPage = () => {
   const [openingToken, setOpeningToken] = useState(false)
   const [toasts, setToasts] = useState([])
   const toastCounterRef = useRef(0)
+
+  const [activeStrategyKey, setActiveStrategyKey] = useState('balanced')
+  const paretoStrategies = optimizationMeta?.pareto_strategies || contentPlan?.pareto_strategies || null
+
+  const handleSelectStrategy = (key) => {
+    if (!paretoStrategies?.[key]?.plan) return
+    setActiveStrategyKey(key)
+    const selected = paretoStrategies[key]
+    const updatedPubs = ensureUniquePublicationIds(selected.plan.publications || [])
+    setContentPlan((prev) => ({
+      ...prev,
+      ...selected.plan,
+      publications: updatedPubs,
+      expected_kpi: {
+        ...(prev?.expected_kpi || {}),
+        predicted_total_likes: selected.predictedLikes,
+        predicted_total_shares: selected.predictedShares,
+        predicted_total_views: selected.predictedViews
+      }
+    }))
+    addToast(`Применена стратегия «${selected.title}»`, 'info')
+  }
 
   const addToast = useCallback((message, type = 'error') => {
     toastCounterRef.current += 1
@@ -824,13 +847,17 @@ const ContentPlanPage = () => {
                         PDF
                       </button>
                     </li>
-                    {isDeveloper && (
+
                       <li>
-                        <button type="button" onClick={handleDownloadJson}>
+                        <button
+                          type="button"
+                          onClick={handleDownloadJson}
+                          title={isAnalyst ? 'Экспорт полного плана в JSON для аналитики' : 'Скачать план в JSON'}
+                        >
                           JSON
                         </button>
                       </li>
-                    )}
+
                   </ul>
                 </>
               )}
@@ -889,6 +916,67 @@ const ContentPlanPage = () => {
             optimizationMeta={optimizationMeta}
             planExpectedKpi={safePlan?.expected_kpi}
           />
+
+          {paretoStrategies && (
+            <div
+              className="pareto-strategies-bar"
+              style={{
+                marginTop: '0.85rem',
+                padding: '0.75rem 1rem',
+                background: '#ffffff',
+                border: '1px solid #cbd5e1',
+                borderRadius: '6px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '10px'
+              }}
+            >
+              <div>
+                <strong style={{ fontSize: '0.88rem', color: '#0f172a' }}>
+                  🎯 Стратегия Парето-фронта (NSGA-II):
+                </strong>
+                <span style={{ fontSize: '0.8rem', color: '#64748b', marginLeft: '6px' }}>
+                  {paretoStrategies[activeStrategyKey]?.description || 'Переключение между опорными решениями'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                {Object.entries(paretoStrategies).map(([key, strat]) => {
+                  const isActive = activeStrategyKey === key
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      className={`secondary-btn ${isActive ? 'active' : ''}`}
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: '0.8rem',
+                        fontWeight: isActive ? 600 : 400,
+                        borderColor: isActive ? '#0284c7' : '#cbd5e1',
+                        background: isActive ? '#f0f9ff' : '#ffffff',
+                        color: isActive ? '#0369a1' : '#334155'
+                      }}
+                      onClick={() => handleSelectStrategy(key)}
+                    >
+                      {key === 'viral_reach' && '⚡ '}
+                      {key === 'balanced' && '✨ '}
+                      {key === 'conversion' && '🎯 '}
+                      {strat.title}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {optimizationMeta && (
+            <OptimizationTracePanel
+              optimizationResult={optimizationMeta}
+              bestPublication={optimizationMeta?.stage2?.best_post || null}
+              isAnalyst={isAnalyst}
+            />
+          )}
         </section>
 
         <PlanFilters

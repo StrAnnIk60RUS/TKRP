@@ -1,4 +1,5 @@
 import { GA_UTILS } from './gaCore.js';
+import { fastNonDominatedSort, extractParetoArchetypes } from './paretoUtils.js';
 
 /**
  * Async GA core: production-recommended settings (population 40, generations 40,
@@ -46,15 +47,25 @@ function tournamentSelect(population, scored, rng, tournamentSize, comparator) {
 /**
  * Пропорциональный отбор (рулетка) — вероятность пропорциональна fitness
  */
-function rouletteSelect(population, scored, rng) {
-  const totalScore = scored.reduce((sum, item) => sum + Math.max(0, item.score), 0);
+function rouletteSelect(population, scored, rng, direction = 'max') {
+  const scores = scored.map((item) => Number(item?.score) || 0);
+  let adjusted;
+  if (direction === 'min') {
+    const maxVal = Math.max(...scores);
+    adjusted = scores.map((s) => Math.max(0.0001, maxVal - s + 0.0001));
+  } else {
+    const minVal = Math.min(...scores);
+    const shift = minVal < 0 ? -minVal + 0.0001 : 0;
+    adjusted = scores.map((s) => Math.max(0.0001, s + shift));
+  }
+  const totalScore = adjusted.reduce((sum, val) => sum + val, 0);
   if (totalScore <= 0) {
     return population[Math.floor(rng() * population.length)];
   }
   let threshold = rng() * totalScore;
   let accumulated = 0;
   for (let i = 0; i < population.length; i++) {
-    accumulated += Math.max(0, scored[i].score);
+    accumulated += adjusted[i];
     if (accumulated >= threshold) return population[i];
   }
   return population[population.length - 1];
@@ -63,12 +74,12 @@ function rouletteSelect(population, scored, rng) {
 /**
  * Ранговый отбор — вероятность пропорциональна рангу (более стабилен)
  */
-function rankSelect(population, scored, rng) {
-  // Сортируем по убыванию score
+function rankSelect(population, scored, rng, direction = 'max') {
+  // Сортируем с учётом направления (min vs max)
   const sorted = scored
-    .map((item, idx) => ({ idx, score: item.score }))
-    .sort((a, b) => b.score - a.score);
-  
+    .map((item, idx) => ({ idx, score: Number(item?.score) || 0 }))
+    .sort((a, b) => (direction === 'min' ? a.score - b.score : b.score - a.score));
+
   // Ранги: лучший получает ранг population.length, худший — 1
   const totalRank = (population.length * (population.length + 1)) / 2;
   let threshold = rng() * totalRank;
@@ -93,6 +104,63 @@ function defaultStop(state, config) {
     return { stop: true, reason: 'stagnation' };
   }
   return { stop: false };
+}
+
+function buildGaResult({
+  best,
+  bestScore,
+  bestMeta,
+  generations,
+  stopReason,
+  history,
+  ranked = [],
+  cloneIndividual = (x) => x
+}) {
+  const hasObjectives = ranked.some(
+    (item) => Array.isArray(item?.meta?.objectives_vector) || Array.isArray(item?.meta?.objectives)
+  );
+
+  let paretoFront = null;
+  let paretoArchetypes = null;
+
+  if (hasObjectives) {
+    const candidates = ranked.map((r) => ({
+      individual: cloneIndividual(r.individual),
+      score: r.score,
+      meta: r.meta,
+      objectives: Array.isArray(r.meta?.objectives_vector)
+        ? r.meta.objectives_vector
+        : Array.isArray(r.meta?.objectives)
+          ? r.meta.objectives
+          : [r.score]
+    }));
+    const fronts = fastNonDominatedSort(candidates, (c) => c.objectives);
+    if (fronts.length > 0 && Array.isArray(fronts[0])) {
+      paretoFront = fronts[0].map((c) => ({
+        individual: c.individual,
+        score: c.score,
+        meta: c.meta,
+        objectives: c.objectives
+      }));
+      paretoArchetypes = extractParetoArchetypes(fronts[0], (c) => c.objectives);
+    }
+  }
+
+  const result = {
+    best,
+    best_score: bestScore,
+    best_meta: bestMeta,
+    generations,
+    stop_reason: stopReason,
+    history
+  };
+
+  if (paretoFront) {
+    result.pareto_front = paretoFront;
+    result.pareto_archetypes = paretoArchetypes;
+  }
+
+  return result;
 }
 
 export async function runAsyncGeneticAlgorithm(options = {}) {
@@ -144,9 +212,9 @@ export async function runAsyncGeneticAlgorithm(options = {}) {
         const selectParent = () => {
       switch (selectionMethod) {
         case 'roulette':
-          return rouletteSelect(population, scored, rng);
+          return rouletteSelect(population, scored, rng, direction);
         case 'rank':
-          return rankSelect(population, scored, rng);
+          return rankSelect(population, scored, rng, direction);
         case 'tournament':
         default:
           return tournamentSelect(population, scoreValues, rng, tournamentSize, comparator);
@@ -267,24 +335,28 @@ export async function runAsyncGeneticAlgorithm(options = {}) {
       normalizedMinImprovementGenerations > 0 &&
       lowDeltaStreak >= normalizedMinImprovementGenerations
     ) {
-      return {
+      return buildGaResult({
         best,
-        best_score: bestScore,
-        best_meta: bestMeta,
+        bestScore,
+        bestMeta,
         generations: generation,
-        stop_reason: 'low_improvement',
-        history
-      };
+        stopReason: 'low_improvement',
+        history,
+        ranked,
+        cloneIndividual
+      });
     }
     if (stop?.stop) {
-      return {
+      return buildGaResult({
         best,
-        best_score: bestScore,
-        best_meta: bestMeta,
+        bestScore,
+        bestMeta,
         generations: generation,
-        stop_reason: stop.reason || 'stop_condition',
-        history
-      };
+        stopReason: stop.reason || 'stop_condition',
+        history,
+        ranked,
+        cloneIndividual
+      });
     }
 
     const nextPopulation = [];
@@ -332,12 +404,14 @@ export async function runAsyncGeneticAlgorithm(options = {}) {
     population = nextPopulation;
   }
 
-  return {
+  return buildGaResult({
     best,
-    best_score: bestScore,
-    best_meta: bestMeta,
+    bestScore,
+    bestMeta,
     generations: GA_UTILS.clampInt(maxGenerations, 1, 100000),
-    stop_reason: 'max_generations',
-    history
-  };
+    stopReason: 'max_generations',
+    history,
+    ranked,
+    cloneIndividual
+  });
 }

@@ -1220,15 +1220,16 @@ function buildFallbackKeyMessage(formInput, slot = {}) {
   return `${source.slice(0, 180)}${source.length > 180 ? '...' : ''}`;
 }
 
-function buildFallbackPublication(slot, formInput, compactRagContext, skeleton, index) {
-  const projectName = typeof formInput.projectName === 'string' && formInput.projectName.trim()
-    ? formInput.projectName.trim()
-    : typeof formInput.brandName === 'string' && formInput.brandName.trim()
-      ? formInput.brandName.trim()
+function buildFallbackPublication(slot, formInput = {}, compactRagContext, skeleton, index) {
+  const safeForm = formInput || {};
+  const projectName = typeof safeForm.projectName === 'string' && safeForm.projectName.trim()
+    ? safeForm.projectName.trim()
+    : typeof safeForm.brandName === 'string' && safeForm.brandName.trim()
+      ? safeForm.brandName.trim()
       : 'Project';
   const avgKpi = averagePrecedentKpi(compactRagContext);
   const precedentIds = toArray(compactRagContext?.summary?.precedent_ids).slice(0, 2);
-  const topic = buildFallbackTopic(slot, formInput, index);
+  const topic = buildFallbackTopic(slot, safeForm, index);
   const tone = alignToneToObjective(topic, slot.tone, slot.objective);
   const cta = buildObjectiveCta(slot.objective, projectName, topic, index);
   const basePublication = {
@@ -1236,7 +1237,7 @@ function buildFallbackPublication(slot, formInput, compactRagContext, skeleton, 
     format: slot.format,
     objective: slot.objective,
     tone,
-    summary: buildFallbackSummary(slot, formInput),
+    summary: buildFallbackSummary(slot, safeForm),
     key_message: buildNaturalKeyMessage({
       topic,
       objective: slot.objective,
@@ -1707,11 +1708,13 @@ function keepMeasuredEngagement(publication, calibrated) {
 }
 
 export async function generateDraftPlanBatched({
-  formInput,
+  formInput: rawFormInput,
+  form_input,
   query,
   ragResults,
   ragLimit
 }) {
+  const formInput = rawFormInput || form_input || {};
   const compactRagContext = buildCompactRagContext(ragResults);
   const requestedPublicationCount = getRequestedPublicationCount(formInput);
   const targetPublicationCount = getTargetPublicationCount(formInput);

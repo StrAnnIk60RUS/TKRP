@@ -2,23 +2,20 @@ import React, { createContext, useContext, useState, useEffect } from 'react'
 
 export const ROLES = {
   SMM: 'smm',
-  ANALYST: 'analyst',
-  DEVELOPER: 'developer'
+  ANALYST: 'analyst'
 }
 
 /** Краткое описание режима для отображения в UI */
 export const ROLE_MODE_LABELS = {
   [ROLES.SMM]: {
-    short: 'Быстрый режим',
-    detail: '5 шагов: конкуренты, проект, аудитория, черновик, оптимизация'
+    name: 'Маркетолог (SMM)',
+    short: 'Быстрый прикладной режим',
+    detail: '3 шага: конкуренты, проект, аудитория — и генерация готового плана в 1 клик'
   },
   [ROLES.ANALYST]: {
-    short: 'Расширенный режим',
-    detail: '6 шагов: отдельно прецеденты и параметры оптимизации'
-  },
-  [ROLES.DEVELOPER]: {
-    short: 'Полный режим',
-    detail: '6 шагов, те же экраны плюс технические детали и обход чеклиста'
+    name: 'Маркетолог-аналитик',
+    short: 'Глубокий аналитический режим',
+    detail: '6 шагов: ручной RAG-поиск по прецедентам, метрики моделей ML, трассировка GA и выгрузка JSON'
   }
 }
 
@@ -31,23 +28,38 @@ export function UserRoleProvider({ children }) {
 
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY)
-    if (saved === ROLES.SMM || saved === ROLES.ANALYST || saved === ROLES.DEVELOPER) {
+    if (saved === ROLES.SMM || saved === ROLES.ANALYST) {
       setRoleState(saved)
+    } else if (saved === 'developer') {
+      // Автоматическая миграция устаревшей роли разработчика на роль аналитика
+      setRoleState(ROLES.ANALYST)
+      localStorage.setItem(STORAGE_KEY, ROLES.ANALYST)
     }
   }, [])
 
   const setRole = (value) => {
-    if (value !== ROLES.SMM && value !== ROLES.ANALYST && value !== ROLES.DEVELOPER) return
+    if (value !== ROLES.SMM && value !== ROLES.ANALYST) return
     setRoleState(value)
     localStorage.setItem(STORAGE_KEY, value)
   }
 
-  const isDeveloper = role === ROLES.DEVELOPER
   const isAnalyst = role === ROLES.ANALYST
-  const isExtendedMode = isDeveloper || isAnalyst
+  const isSmm = role === ROLES.SMM
+  const isExtendedMode = isAnalyst
+  // Роль программиста удалена; флаг оставлен со значением false для обратной совместимости
+  const isDeveloper = false
 
   return (
-    <UserRoleContext.Provider value={{ role, setRole, isDeveloper, isAnalyst, isExtendedMode }}>
+    <UserRoleContext.Provider
+      value={{
+        role,
+        setRole,
+        isAnalyst,
+        isSmm,
+        isExtendedMode,
+        isDeveloper
+      }}
+    >
       {children}
     </UserRoleContext.Provider>
   )

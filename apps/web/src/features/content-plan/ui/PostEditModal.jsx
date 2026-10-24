@@ -139,6 +139,24 @@ const PostEditModal = ({ publication, onSave, onCancel, platforms, onToast }) =>
     publication
   ])
 
+  const featureHints = useMemo(() => {
+    const hints = []
+    const topic = draft.topic.trim()
+    const summary = draft.summary.trim()
+    const cta = draft.cta.trim()
+
+    if (topic && !topic.includes('?') && !/\d/.test(topic)) {
+      hints.push('Добавьте вопрос или конкретную цифру в тему/заголовок (+15–18% к прогнозу кликабельности)')
+    }
+    if (summary && summary.length < 160) {
+      hints.push('Разверните тезисы поста подробнее (глубина прочтения повышает расчетный охват в лентах)')
+    }
+    if (!cta || cta.length < 5) {
+      hints.push('Укажите конкретный призыв к действию (CTA) для конверсии читателей в переходы и комментарии')
+    }
+    return hints
+  }, [draft.topic, draft.summary, draft.cta])
+
   const setField = (name, value) => {
     setDraft((prev) => ({
       ...prev,
@@ -490,6 +508,26 @@ const PostEditModal = ({ publication, onSave, onCancel, platforms, onToast }) =>
                       </>
                     )}
                   </p>
+                  {featureHints.length > 0 && (
+                    <div
+                      style={{
+                        marginTop: '0.5rem',
+                        fontSize: '0.8rem',
+                        color: '#0369a1',
+                        background: '#f0f9ff',
+                        padding: '6px 10px',
+                        borderRadius: '4px',
+                        border: '1px solid #bae6fd'
+                      }}
+                    >
+                      <strong>💡 Рекомендации ML для роста метрик:</strong>
+                      <ul style={{ margin: '4px 0 0 16px', padding: 0 }}>
+                        {featureHints.map((hint, idx) => (
+                          <li key={idx}>{hint}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

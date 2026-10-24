@@ -200,6 +200,9 @@ async function getTrainingPayload(modelKey) {
     return {
       features: sanitized.matrix,
       targets: datasets.postDataset.targets,
+      baselines: datasets.postDataset.baselines,
+      platform_baselines: datasets.postDataset.platformBaselines,
+      reference_baseline: datasets.postDataset.referenceBaseline,
       feature_names: datasets.postDataset.featureNames,
       feature_set_version: FEATURE_SET_VERSION,
       ontology_features_enabled: Boolean(ontologyState.enabled)
@@ -209,6 +212,9 @@ async function getTrainingPayload(modelKey) {
   return {
     features: sanitized.matrix,
     targets: datasets.contentPlanDataset.targets,
+    baselines: datasets.contentPlanDataset.baselines,
+    platform_baselines: datasets.contentPlanDataset.platformBaselines,
+    reference_baseline: datasets.contentPlanDataset.referenceBaseline,
     feature_names: datasets.contentPlanDataset.featureNames,
     feature_set_version: FEATURE_SET_VERSION,
     ontology_features_enabled: Boolean(ontologyState.enabled)
@@ -405,8 +411,21 @@ function buildHeuristicFallbackResult(modelKey, featureVectors) {
     ];
   });
 
+  const lcbPredictions = predictions.map((p) => [
+    Math.max(0, Math.round(p[0] * 0.78)),
+    Math.max(0, Math.round(p[1] * 0.78)),
+    Math.max(0, Math.round(p[2] * 0.78))
+  ]);
+  const uncertainties = predictions.map((p) => [
+    Math.round(p[0] * 0.22 * 100) / 100,
+    Math.round(p[1] * 0.22 * 100) / 100,
+    Math.round(p[2] * 0.22 * 100) / 100
+  ]);
+
   return {
     predictions,
+    lcb_predictions: lcbPredictions,
+    uncertainties,
     model_metadata: metadata,
     fallback: true,
     fallback_reason: 'node_heuristic_fallback'
@@ -428,19 +447,27 @@ async function predictPostMetricsByFeatureVectors(featureVectors, options = {}) 
   checkModelFeatureSetVersion('post');
   const batches = chunkArray(sanitized.matrix, 128);
   const allPredictions = [];
+  const allLcbPredictions = [];
+  const allUncertainties = [];
   let metadata = null;
 
   for (const batch of batches) {
     let result = null;
+    const reqPayload = {
+      features: batch,
+      baselines: options.baselines,
+      platform: options.platform,
+      lcb_lambda: options.lcbLambda
+    };
     try {
-      result = await runPythonModel('predict', 'post', { features: batch });
+      result = await runPythonModel('predict', 'post', reqPayload);
     } catch (err) {
       console.warn(
         `[relevancePredictionService] predict post failed (${err.message}). Attempting automatic self-healing retrain...`
       );
       try {
         await trainMetricsModel('post');
-        result = await runPythonModel('predict', 'post', { features: batch });
+        result = await runPythonModel('predict', 'post', reqPayload);
       } catch (retryErr) {
         console.error(
           `[relevancePredictionService] self-healing retrain failed for post: ${retryErr.message}. Using heuristic fallback.`
@@ -458,6 +485,14 @@ async function predictPostMetricsByFeatureVectors(featureVectors, options = {}) 
     }
 
     allPredictions.push(...result.predictions);
+    const lcbBatch = Array.isArray(result.lcb_predictions)
+      ? result.lcb_predictions
+      : result.predictions.map((p) => p.map((v) => Math.max(0, Math.round(v * 0.78))));
+    allLcbPredictions.push(...lcbBatch);
+    const uncBatch = Array.isArray(result.uncertainties)
+      ? result.uncertainties
+      : result.predictions.map((p) => p.map((v) => Math.round(v * 0.22 * 100) / 100));
+    allUncertainties.push(...uncBatch);
     metadata = result.model_metadata || metadata;
   }
 
@@ -465,7 +500,7 @@ async function predictPostMetricsByFeatureVectors(featureVectors, options = {}) 
     metadata = getModelMetadata('post');
   }
 
-  return { predictions: allPredictions, metadata };
+  return { predictions: allPredictions, lcbPredictions: allLcbPredictions, uncertainties: allUncertainties, metadata };
 }
 
 /**
@@ -480,8 +515,12 @@ async function predictPlanMetricsByFeatureVectors(featureVectors, options = {}) 
   if (process.env.ML_CONTENT_PLAN_PREDICT_STUB === '1') {
     const n = featureVectors.length;
     const stubRow = [100, 10, 1000];
+    const stubLcb = [80, 8, 800];
+    const stubUnc = [20, 2, 200];
     return {
       predictions: Array.from({ length: n }, () => stubRow.slice()),
+      lcbPredictions: Array.from({ length: n }, () => stubLcb.slice()),
+      uncertainties: Array.from({ length: n }, () => stubUnc.slice()),
       metadata: getModelMetadata('content_plan')
     };
   }
@@ -491,19 +530,27 @@ async function predictPlanMetricsByFeatureVectors(featureVectors, options = {}) 
   checkModelFeatureSetVersion('content_plan');
   const batches = chunkArray(sanitized.matrix, 128);
   const allPredictions = [];
+  const allLcbPredictions = [];
+  const allUncertainties = [];
   let metadata = null;
 
   for (const batch of batches) {
     let result = null;
+    const reqPayload = {
+      features: batch,
+      baselines: options.baselines,
+      platform: options.platform,
+      lcb_lambda: options.lcbLambda
+    };
     try {
-      result = await runPythonModel('predict', 'content_plan', { features: batch });
+      result = await runPythonModel('predict', 'content_plan', reqPayload);
     } catch (err) {
       console.warn(
         `[relevancePredictionService] predict content_plan failed (${err.message}). Attempting automatic self-healing retrain...`
       );
       try {
         await trainMetricsModel('content_plan');
-        result = await runPythonModel('predict', 'content_plan', { features: batch });
+        result = await runPythonModel('predict', 'content_plan', reqPayload);
       } catch (retryErr) {
         console.error(
           `[relevancePredictionService] self-healing retrain failed for content_plan: ${retryErr.message}. Using heuristic fallback.`
@@ -521,6 +568,14 @@ async function predictPlanMetricsByFeatureVectors(featureVectors, options = {}) 
     }
 
     allPredictions.push(...result.predictions);
+    const lcbBatch = Array.isArray(result.lcb_predictions)
+      ? result.lcb_predictions
+      : result.predictions.map((p) => p.map((v) => Math.max(0, Math.round(v * 0.78))));
+    allLcbPredictions.push(...lcbBatch);
+    const uncBatch = Array.isArray(result.uncertainties)
+      ? result.uncertainties
+      : result.predictions.map((p) => p.map((v) => Math.round(v * 0.22 * 100) / 100));
+    allUncertainties.push(...uncBatch);
     metadata = result.model_metadata || metadata;
   }
 
@@ -528,7 +583,7 @@ async function predictPlanMetricsByFeatureVectors(featureVectors, options = {}) 
     metadata = getModelMetadata('content_plan');
   }
 
-  return { predictions: allPredictions, metadata };
+  return { predictions: allPredictions, lcbPredictions: allLcbPredictions, uncertainties: allUncertainties, metadata };
 }
 
 /**
