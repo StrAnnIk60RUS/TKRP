@@ -19,26 +19,59 @@ function asNumber(value, fallback = 0) {
   return Number.isFinite(numeric) ? numeric : fallback;
 }
 
-function validateOptimizationInputs(draft, stage1Config = {}) {
+function validateOptimizationInputs(draft, stage1Config = {}, formInput = null) {
+  if (!stage1Config.constraints || typeof stage1Config.constraints !== 'object') {
+    stage1Config.constraints = {};
+  }
+  const constraints = stage1Config.constraints;
+
+  const startDate =
+    constraints.date_min ||
+    draft?.planning_horizon?.start_date ||
+    formInput?.contentPlanStartDate;
+  const endDate =
+    constraints.date_max ||
+    draft?.planning_horizon?.end_date ||
+    formInput?.contentPlanEndDate;
+
+  let computedDuration = 0;
+  if (startDate && endDate) {
+    const diff = Math.round((new Date(endDate) - new Date(startDate)) / (1000 * 60 * 60 * 24));
+    if (diff > 0) computedDuration = diff;
+  }
+
   const durationDays =
-    asNumber(stage1Config?.constraints?.duration_days, 0) ||
-    asNumber(draft?.planning_horizon?.duration_days, 0);
-  const postsPerWeek = asNumber(stage1Config?.constraints?.posts_per_week, 0);
+    asNumber(constraints.duration_days, 0) ||
+    asNumber(draft?.planning_horizon?.duration_days, 0) ||
+    computedDuration ||
+    14;
+
+  constraints.duration_days = durationDays;
+  if (!constraints.date_min && startDate) constraints.date_min = startDate;
+  if (!constraints.date_max && endDate) constraints.date_max = endDate;
+
+  const pubCount = Array.isArray(draft?.publications) ? draft.publications.length : 0;
+  const derivedPostsPerWeek = durationDays > 0 && pubCount > 0
+    ? Math.max(1, Math.round((pubCount / durationDays) * 7))
+    : 3;
+
+  const postsPerWeek =
+    asNumber(constraints.posts_per_week, 0) ||
+    asNumber(draft?.planning_horizon?.posts_per_week, 0) ||
+    derivedPostsPerWeek;
+
+  constraints.posts_per_week = postsPerWeek;
+  if (!constraints.min_publications) {
+    constraints.min_publications = Math.max(1, Math.min(pubCount, Math.floor((postsPerWeek * durationDays) / 7)));
+  }
 
   console.log('[GA:input]', JSON.stringify({
     duration_days: durationDays,
     posts_per_week: postsPerWeek,
-    min_publications: stage1Config?.constraints?.min_publications ?? null,
-    date_min: stage1Config?.constraints?.date_min ?? null,
-    date_max: stage1Config?.constraints?.date_max ?? null
+    min_publications: constraints.min_publications,
+    date_min: constraints.date_min,
+    date_max: constraints.date_max
   }));
-
-  if (durationDays <= 0) {
-    throw new Error('Для эволюции контент-плана требуется положительная длительность плана (duration_days).');
-  }
-  if (postsPerWeek <= 0) {
-    throw new Error('Для эволюции контент-плана требуется posts_per_week > 0. Проверьте форму и demo-настройки.');
-  }
 }
 
 function pickPositiveInt(value) {
@@ -234,7 +267,7 @@ export async function runHierarchicalOptimization(payload = {}) {
      8
    );
 
-   validateOptimizationInputs(draft, stage1Config);
+   validateOptimizationInputs(draft, stage1Config, formInput);
   
   const onProgress = typeof payload?.onProgress === 'function' ? payload.onProgress : null;
   if (onProgress) {
