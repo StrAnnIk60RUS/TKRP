@@ -40,6 +40,17 @@ function sanitizeCellForExport(value) {
   return s || '—'
 }
 
+/** Сохраняет переносы строк для многострочного текста постов в Excel. */
+function sanitizeMultilineTextForExport(value) {
+  if (value === null || value === undefined) return '—'
+  const s = String(value)
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/\t/g, ' ')
+    .trim()
+  return s || '—'
+}
+
 /**
  * Подготавливает строки публикаций для экспорта
  * @param {Array} publications
@@ -53,14 +64,20 @@ const COLUMN_KEYS = [
   'Формат',
   'Цель',
   'Ключевое сообщение',
+  'Текст поста',
   'Призыв',
   'Тон',
+  'Медиа: Тип',
+  'Медиа: Ссылка',
+  'Медиа: Промпт',
   'Вовлечённость %',
   'Конверсия %',
   'Охват %',
   'Прогноз лайков',
   'Прогноз репостов',
-  'Прогноз просмотров'
+  'Прогноз просмотров',
+  'Статус публикации',
+  'Ссылка на публикацию'
 ]
 
 export function buildPublicationRows(publications) {
@@ -75,22 +92,36 @@ export function buildPublicationRows(publications) {
       toFiniteNumberOrNull(pub.expected_kpi?.ml_predicted_views) ??
       toFiniteNumberOrNull(pub.expected_kpi?.predicted_views)
 
+    const mediaKind =
+      pub.media?.kind ||
+      (pub.format === 'video'
+        ? 'video'
+        : pub.format === 'image' || pub.format === 'combined'
+          ? 'image'
+          : '')
+
     return {
-      [COLUMN_KEYS[0]]: idx + 1,
-      [COLUMN_KEYS[1]]: sanitizeCellForExport(pub.planned_date),
-      [COLUMN_KEYS[2]]: sanitizeCellForExport((pub.platform || '—').toUpperCase()),
-      [COLUMN_KEYS[3]]: sanitizeCellForExport(pub.topic),
-      [COLUMN_KEYS[4]]: sanitizeCellForExport(pub.format),
-      [COLUMN_KEYS[5]]: sanitizeCellForExport(pub.objective),
-      [COLUMN_KEYS[6]]: sanitizeCellForExport(pub.key_message),
-      [COLUMN_KEYS[7]]: sanitizeCellForExport(pub.cta),
-      [COLUMN_KEYS[8]]: sanitizeCellForExport(pub.tone),
-      [COLUMN_KEYS[9]]: formatPercent(pub.expected_kpi?.engagement_rate),
-      [COLUMN_KEYS[10]]: formatPercent(pub.expected_kpi?.conversion_potential),
-      [COLUMN_KEYS[11]]: formatPercent(pub.expected_kpi?.reach_potential),
-      [COLUMN_KEYS[12]]: mlLikes != null ? String(Math.round(mlLikes)) : '—',
-      [COLUMN_KEYS[13]]: mlShares != null ? String(Math.round(mlShares)) : '—',
-      [COLUMN_KEYS[14]]: mlViews != null ? String(Math.round(mlViews)) : '—'
+      '№': idx + 1,
+      'Дата': sanitizeCellForExport(pub.planned_date),
+      'Платформа': sanitizeCellForExport((pub.platform || '—').toUpperCase()),
+      'Тема': sanitizeCellForExport(pub.topic),
+      'Формат': sanitizeCellForExport(pub.format),
+      'Цель': sanitizeCellForExport(pub.objective),
+      'Ключевое сообщение': sanitizeCellForExport(pub.key_message),
+      'Текст поста': sanitizeMultilineTextForExport(pub.summary || pub.text || pub.content),
+      'Призыв': sanitizeCellForExport(pub.cta),
+      'Тон': sanitizeCellForExport(pub.tone),
+      'Медиа: Тип': sanitizeCellForExport(mediaKind),
+      'Медиа: Ссылка': sanitizeCellForExport(pub.media?.url || pub.post_url),
+      'Медиа: Промпт': sanitizeCellForExport(pub.media_prompt || pub.media?.prompt),
+      'Вовлечённость %': formatPercent(pub.expected_kpi?.engagement_rate),
+      'Конверсия %': formatPercent(pub.expected_kpi?.conversion_potential),
+      'Охват %': formatPercent(pub.expected_kpi?.reach_potential),
+      'Прогноз лайков': mlLikes != null ? String(Math.round(mlLikes)) : '—',
+      'Прогноз репостов': mlShares != null ? String(Math.round(mlShares)) : '—',
+      'Прогноз просмотров': mlViews != null ? String(Math.round(mlViews)) : '—',
+      'Статус публикации': sanitizeCellForExport(pub.status || 'черновик'),
+      'Ссылка на публикацию': sanitizeCellForExport(pub.post_url)
     }
   })
 }
@@ -481,19 +512,42 @@ export async function exportToExcel(contentPlan, filename, options = {}) {
     const metrics = resolvePostMlMetrics(pubs[index], resolveStage2(pubs[index], index))
     return {
       ...row,
-      [COLUMN_KEYS[12]]: metrics.likes != null ? String(Math.round(metrics.likes)) : '—',
-      [COLUMN_KEYS[13]]: metrics.shares != null ? String(Math.round(metrics.shares)) : '—',
-      [COLUMN_KEYS[14]]: metrics.views != null ? String(Math.round(metrics.views)) : '—'
+      'Прогноз лайков': metrics.likes != null ? String(Math.round(metrics.likes)) : row['Прогноз лайков'],
+      'Прогноз репостов': metrics.shares != null ? String(Math.round(metrics.shares)) : row['Прогноз репостов'],
+      'Прогноз просмотров': metrics.views != null ? String(Math.round(metrics.views)) : row['Прогноз просмотров']
     }
   })
 
   const wb = XLSX.utils.book_new()
 
   const wsData = rows.length
-    ? [COLUMN_KEYS, ...rows.map((r) => Object.values(r))]
+    ? [COLUMN_KEYS, ...rows.map((r) => COLUMN_KEYS.map((colKey) => r[colKey] ?? '—'))]
     : [COLUMN_KEYS]
 
   const ws = XLSX.utils.aoa_to_sheet(wsData)
+  ws['!cols'] = [
+    { wch: 5 },
+    { wch: 12 },
+    { wch: 12 },
+    { wch: 28 },
+    { wch: 14 },
+    { wch: 16 },
+    { wch: 32 },
+    { wch: 60 },
+    { wch: 22 },
+    { wch: 14 },
+    { wch: 14 },
+    { wch: 34 },
+    { wch: 42 },
+    { wch: 16 },
+    { wch: 14 },
+    { wch: 12 },
+    { wch: 16 },
+    { wch: 18 },
+    { wch: 20 },
+    { wch: 18 },
+    { wch: 34 }
+  ]
   XLSX.utils.book_append_sheet(wb, ws, 'Публикации')
 
   const displayName =
@@ -552,16 +606,437 @@ export async function exportToExcel(contentPlan, filename, options = {}) {
   XLSX.writeFile(wb, `${base}.xlsx`)
 }
 
+async function blobToCompatibleImageDataUrl(blob) {
+  if (typeof FileReader === 'undefined' || !blob) return null
+
+  if (blob.type === 'image/jpeg' || blob.type === 'image/png') {
+    return new Promise((resolve) => {
+      const reader = new FileReader()
+      reader.onloadend = () => resolve(typeof reader.result === 'string' ? reader.result : null)
+      reader.onerror = () => resolve(null)
+      reader.readAsDataURL(blob)
+    })
+  }
+
+  if (typeof document !== 'undefined' && typeof Image !== 'undefined') {
+    try {
+      const objectUrl = URL.createObjectURL(blob)
+      const dataUrl = await new Promise((resolve) => {
+        const img = new Image()
+        img.onload = () => {
+          try {
+            const canvas = document.createElement('canvas')
+            canvas.width = img.naturalWidth || img.width || 400
+            canvas.height = img.naturalHeight || img.height || 300
+            const ctx = canvas.getContext('2d')
+            ctx.drawImage(img, 0, 0)
+            const result = canvas.toDataURL('image/png')
+            resolve(result)
+          } catch {
+            resolve(null)
+          }
+        }
+        img.onerror = () => resolve(null)
+        img.src = objectUrl
+      })
+      URL.revokeObjectURL(objectUrl)
+      if (dataUrl) return dataUrl
+    } catch {
+      // fallback to FileReader
+    }
+  }
+
+  return new Promise((resolve) => {
+    const reader = new FileReader()
+    reader.onloadend = () => resolve(typeof reader.result === 'string' ? reader.result : null)
+    reader.onerror = () => resolve(null)
+    reader.readAsDataURL(blob)
+  })
+}
+
+async function preloadPublicationImages(publications = []) {
+  const map = new Map()
+  if (typeof window === 'undefined' || typeof fetch === 'undefined') {
+    return map
+  }
+
+  const tasks = publications.map(async (pub, idx) => {
+    const key = pub?.publication_id || pub?.__global_index || idx
+    const rawDataUrl = pub?.media?.dataUrl || pub?.dataUrl
+    if (typeof rawDataUrl === 'string' && rawDataUrl.startsWith('data:image/')) {
+      map.set(key, rawDataUrl)
+      return
+    }
+
+    const rawUrl = pub?.media?.url || pub?.image_url || pub?.photo_url
+    if (!rawUrl || typeof rawUrl !== 'string') return
+    if (rawUrl.startsWith('data:image/')) {
+      map.set(key, rawUrl)
+      return
+    }
+
+    try {
+      let blob = null
+      if (rawUrl.startsWith('/api/plan/media/files/')) {
+        try {
+          const { fetchPlanMediaBlob } = await import('../api/enrichmentService.js')
+          blob = await fetchPlanMediaBlob(rawUrl)
+        } catch {
+          blob = null
+        }
+      }
+      if (!blob) {
+        const controller = new AbortController()
+        const timer = setTimeout(() => controller.abort(), 3500)
+        const res = await fetch(rawUrl, { signal: controller.signal })
+        clearTimeout(timer)
+        if (res.ok) {
+          blob = await res.blob()
+        }
+      }
+      if (blob && (blob.type.startsWith('image/') || !blob.type)) {
+        const dataUrl = await blobToCompatibleImageDataUrl(blob)
+        if (dataUrl) {
+          map.set(key, dataUrl)
+        }
+      }
+    } catch {
+      // Игнорируем сетевые сбои при загрузке отдельных картинок
+    }
+  })
+
+  await Promise.allSettled(tasks)
+  return map
+}
+
+function buildPublicationDetailCard(pub, index, imageMap, stage2Match = null) {
+  const metrics = resolvePostMlMetrics(pub, stage2Match)
+  const platform = String(pub.platform || '—').toUpperCase()
+  const format = String(pub.format || 'текст')
+  const objective = String(pub.objective || '—')
+  const tone = String(pub.tone || 'экспертный')
+  const topic = String(pub.topic || 'Без темы')
+  const fullText = String(pub.summary || pub.text || pub.content || 'Текст публикации не сформирован')
+  const keyMessage = String(pub.key_message || '—')
+  const cta = String(pub.cta || '—')
+  const status = String(pub.status || 'черновик')
+  const postUrl = typeof pub.post_url === 'string' && pub.post_url.trim() ? pub.post_url.trim() : null
+  const mediaPrompt = String(pub.media_prompt || pub.media?.prompt || '').trim()
+  const mediaKind =
+    pub.media?.kind ||
+    (format === 'video' ? 'video' : format === 'image' || format === 'combined' ? 'image' : null)
+  const isVideo = mediaKind === 'video' || format === 'video'
+  const postKey = pub.publication_id || pub.__global_index || index
+  const imageDataUrl = imageMap?.get(postKey) || null
+  const isImage = !isVideo && (mediaKind === 'image' || format === 'image' || format === 'combined' || !!imageDataUrl)
+
+  let platformColor = '#1e40af'
+  if (platform === 'VK') platformColor = '#0077ff'
+  else if (platform === 'TELEGRAM') platformColor = '#0284c7'
+  else if (platform === 'LINKEDIN') platformColor = '#0369a1'
+  else if (platform === 'INSTAGRAM') platformColor = '#b91c1c'
+
+  let mediaBlock
+  if (isImage) {
+    const mediaStack = [
+      { text: '[ИЗОБРАЖЕНИЕ К ПУБЛИКАЦИИ]', bold: true, fontSize: 7.5, color: '#0f172a', margin: [0, 0, 0, 3] }
+    ]
+    if (imageDataUrl) {
+      mediaStack.push({
+        image: imageDataUrl,
+        fit: [260, 150],
+        alignment: 'center',
+        margin: [0, 2, 0, 4]
+      })
+    } else {
+      mediaStack.push({
+        text: 'Файл изображения: ожидает генерации или загрузки',
+        italics: true,
+        fontSize: 7,
+        color: '#64748b',
+        margin: [0, 2, 0, 3]
+      })
+    }
+    if (mediaPrompt) {
+      mediaStack.push({
+        text: [
+          { text: 'Промпт генерации: ', bold: true, fontSize: 6.8, color: '#475569' },
+          { text: mediaPrompt, fontSize: 6.8, color: '#475569' }
+        ],
+        margin: [0, 2, 0, 2]
+      })
+    }
+    if (pub.media?.url) {
+      mediaStack.push({
+        text: [
+          { text: 'Файл: ', bold: true, fontSize: 6.5, color: '#64748b' },
+          { text: pub.media.file_name || pub.media.url, fontSize: 6.5, color: '#64748b' }
+        ],
+        margin: [0, 1, 0, 0]
+      })
+    }
+    mediaBlock = {
+      table: {
+        widths: ['*'],
+        body: [[
+          {
+            fillColor: '#f8fafc',
+            border: [true, true, true, true],
+            borderColor: ['#e2e8f0', '#e2e8f0', '#e2e8f0', '#e2e8f0'],
+            padding: [6, 5, 6, 5],
+            stack: mediaStack
+          }
+        ]]
+      },
+      layout: 'noBorders',
+      margin: [0, 0, 0, 5]
+    }
+  } else if (isVideo) {
+    const videoStack = [
+      { text: '[ВИДЕОМАТЕРИАЛ]', bold: true, fontSize: 8, color: '#1d4ed8', margin: [0, 0, 0, 2] }
+    ]
+    if (pub.media?.url || postUrl) {
+      const videoHref = pub.media?.url || postUrl
+      videoStack.push({
+        text: 'Смотреть / скачать видеофайл (онлайн-ссылка)',
+        link: videoHref,
+        color: '#2563eb',
+        decoration: 'underline',
+        fontSize: 7.5,
+        bold: true,
+        margin: [0, 2, 0, 3]
+      })
+    }
+    videoStack.push({
+      text: `Параметры: ${pub.media?.aspect_ratio || (platform === 'LINKEDIN' ? '16:9' : '9:16')} | Формат: ${format}`,
+      fontSize: 7,
+      color: '#475569',
+      margin: [0, 1, 0, 2]
+    })
+    if (mediaPrompt) {
+      videoStack.push({
+        text: [
+          { text: 'Сценарий / Промпт: ', bold: true, fontSize: 6.8, color: '#1e3a8a' },
+          { text: mediaPrompt, fontSize: 6.8, color: '#334155' }
+        ],
+        margin: [0, 2, 0, 2]
+      })
+    }
+    videoStack.push({
+      text: 'Примечание: видеоконтент воспроизводится онлайн по указанной ссылке',
+      italics: true,
+      fontSize: 6.5,
+      color: '#64748b',
+      margin: [0, 2, 0, 0]
+    })
+
+    mediaBlock = {
+      table: {
+        widths: ['*'],
+        body: [[
+          {
+            fillColor: '#eff6ff',
+            border: [true, true, true, true],
+            borderColor: ['#bfdbfe', '#bfdbfe', '#bfdbfe', '#bfdbfe'],
+            padding: [6, 5, 6, 5],
+            stack: videoStack
+          }
+        ]]
+      },
+      layout: 'noBorders',
+      margin: [0, 0, 0, 5]
+    }
+  } else {
+    mediaBlock = {
+      table: {
+        widths: ['*'],
+        body: [[
+          {
+            fillColor: '#f8fafc',
+            border: [true, true, true, true],
+            borderColor: ['#e2e8f0', '#e2e8f0', '#e2e8f0', '#e2e8f0'],
+            padding: [5, 4, 5, 4],
+            text: 'Формат: Текстовый пост (медиа не предусмотрено)',
+            fontSize: 7,
+            color: '#64748b'
+          }
+        ]]
+      },
+      layout: 'noBorders',
+      margin: [0, 0, 0, 5]
+    }
+  }
+
+  const kpiStack = [
+    { text: 'Прогнозные показатели (ML / KPI):', bold: true, fontSize: 7.2, color: '#0f172a' },
+    {
+      text: `Вовлечённость: ${formatPercent(pub.expected_kpi?.engagement_rate)} | Конверсия: ${formatPercent(pub.expected_kpi?.conversion_potential)} | Охват: ${formatPercent(pub.expected_kpi?.reach_potential)}`,
+      fontSize: 7,
+      color: '#334155',
+      margin: [0, 2, 0, 2]
+    },
+    {
+      text: `Прогноз ML: Лайки: ${metrics.likes != null ? Math.round(metrics.likes) : '—'} | Репосты: ${metrics.shares != null ? Math.round(metrics.shares) : '—'} | Просмотры: ${metrics.views != null ? Math.round(metrics.views) : '—'}`,
+      fontSize: 7,
+      bold: true,
+      color: '#1d4ed8'
+    }
+  ]
+  if (pub.actual_kpi) {
+    kpiStack.push({
+      text: `Факт: Лайки: ${pub.actual_kpi.likes ?? '—'} | Репосты: ${pub.actual_kpi.shares ?? '—'} | Просмотры: ${pub.actual_kpi.views ?? '—'} | ER: ${pub.actual_kpi.er_percent ?? '—'}%`,
+      fontSize: 7,
+      bold: true,
+      color: '#15803d',
+      margin: [0, 2, 0, 0]
+    })
+  }
+
+  const kpiBlock = {
+    table: {
+      widths: ['*'],
+      body: [[
+        {
+          fillColor: '#f8fafc',
+          border: [true, true, true, true],
+          borderColor: ['#e2e8f0', '#e2e8f0', '#e2e8f0', '#e2e8f0'],
+          padding: [5, 4, 5, 4],
+          stack: kpiStack
+        }
+      ]]
+    },
+    layout: 'noBorders'
+  }
+
+  const leftStack = [
+    {
+      text: [
+        { text: 'Ключевое сообщение: ', bold: true, fontSize: 7.5, color: '#334155' },
+        { text: keyMessage, fontSize: 7.5, color: '#0f172a' }
+      ],
+      margin: [0, 0, 0, 3]
+    },
+    {
+      text: 'Полный текст публикации:',
+      bold: true,
+      fontSize: 7.8,
+      color: '#1e40af',
+      margin: [0, 2, 0, 2]
+    },
+    {
+      table: {
+        widths: ['*'],
+        body: [[
+          {
+            fillColor: '#fbfcfd',
+            border: [true, true, true, true],
+            borderColor: ['#e2e8f0', '#e2e8f0', '#e2e8f0', '#e2e8f0'],
+            padding: [6, 5, 6, 5],
+            text: fullText,
+            fontSize: 7.5,
+            lineHeight: 1.25,
+            color: '#1e293b'
+          }
+        ]]
+      },
+      layout: 'noBorders',
+      margin: [0, 0, 0, 4]
+    },
+    {
+      text: [
+        { text: 'Призыв к действию (CTA): ', bold: true, fontSize: 7.2, color: '#334155' },
+        { text: cta, fontSize: 7.2, color: '#0f172a' }
+      ],
+      margin: [0, 0, 0, 3]
+    },
+    {
+      columns: [
+        {
+          text: [
+            { text: 'Тон: ', bold: true, fontSize: 7, color: '#475569' },
+            { text: tone, fontSize: 7, color: '#1e293b' }
+          ]
+        },
+        {
+          text: [
+            { text: 'Статус: ', bold: true, fontSize: 7, color: '#475569' },
+            { text: status, fontSize: 7, color: '#1e293b' }
+          ]
+        },
+        ...(postUrl ? [
+          {
+            text: 'Ссылка на публикацию',
+            link: postUrl,
+            fontSize: 7,
+            color: '#2563eb',
+            decoration: 'underline',
+            alignment: 'right'
+          }
+        ] : [])
+      ],
+      margin: [0, 2, 0, 0]
+    }
+  ]
+
+  return {
+    unbreakable: true,
+    margin: [0, 0, 0, 10],
+    table: {
+      widths: ['*'],
+      body: [
+        [
+          {
+            fillColor: '#f1f5f9',
+            border: [true, true, true, false],
+            borderColor: ['#cbd5e1', '#cbd5e1', '#cbd5e1', '#cbd5e1'],
+            padding: [8, 5, 8, 5],
+            columns: [
+              {
+                text: [
+                  { text: `№ ${index + 1}  `, bold: true, color: platformColor, fontSize: 9.5 },
+                  { text: `[${platform}] `, bold: true, color: platformColor, fontSize: 8.5 },
+                  { text: topic, bold: true, fontSize: 9, color: '#0f172a' }
+                ]
+              },
+              {
+                text: `Дата: ${pub.planned_date || '—'} | Формат: ${format} | Цель: ${objective}`,
+                alignment: 'right',
+                fontSize: 7.5,
+                color: '#475569'
+              }
+            ]
+          }
+        ],
+        [
+          {
+            fillColor: '#ffffff',
+            border: [true, false, true, true],
+            borderColor: ['#cbd5e1', '#cbd5e1', '#cbd5e1', '#cbd5e1'],
+            padding: [8, 6, 8, 6],
+            columns: [
+              { width: '60%', stack: leftStack },
+              { width: '40%', stack: [mediaBlock, kpiBlock], margin: [10, 0, 0, 0] }
+            ]
+          }
+        ]
+      ]
+    },
+    layout: 'noBorders'
+  }
+}
+
 /**
  * Скачивает контент-план в PDF (с поддержкой кириллицы через Roboto)
  * @param {Object} contentPlan
- * @param {Object} [options] — { filename?, isOptimized? }
+ * @param {Object} [options] — { filename?, isOptimized?, optimizationMeta? }
  */
 export async function exportToPdf(contentPlan, options = {}) {
   const pdfMake = await loadPdfMake()
   const { filename, isOptimized, optimizationMeta = null } =
     typeof options === 'string' ? { filename: options } : options
   const pubs = Array.isArray(contentPlan?.publications) ? contentPlan.publications : []
+  const imageMap = await preloadPublicationImages(pubs)
+  const resolveStage2 = buildStage2PublicationResolver(optimizationMeta)
   const pdfTitleName =
     typeof contentPlan?.display_name === 'string' && contentPlan.display_name.trim()
       ? contentPlan.display_name.trim()
@@ -596,6 +1071,19 @@ export async function exportToPdf(contentPlan, options = {}) {
           })
         )
       )
+
+      const monthPosts = month.days
+        .flatMap((day) =>
+          (Array.isArray(day?.publications) ? day.publications : []).map((post) => ({
+            post,
+            stage2: resolveStage2(post, post?.__global_index)
+          }))
+        )
+
+      const detailCards = monthPosts.map(({ post, stage2 }, postIdx) =>
+        buildPublicationDetailCard(post, post.__global_index ?? postIdx, imageMap, stage2)
+      )
+
       content.push({
         pageBreak: index > 0 ? 'before' : undefined,
         stack: [
@@ -639,10 +1127,35 @@ export async function exportToPdf(contentPlan, options = {}) {
               paddingBottom: () => 3
             },
             fontSize: 7
-          }
+          },
+          ...(detailCards.length > 0
+            ? [
+                {
+                  text: `Полные карточки публикаций (${toMonthLabel(monthKey)})`,
+                  style: 'sectionTitle',
+                  pageBreak: 'before',
+                  margin: [0, 4, 0, 8]
+                },
+                ...detailCards
+              ]
+            : [])
         ]
       })
     })
+
+    const unassignedPosts = pubs.filter((p) => !p?.planned_date)
+    if (unassignedPosts.length > 0) {
+      const unassignedCards = unassignedPosts.map((post, postIdx) =>
+        buildPublicationDetailCard(post, post.__global_index ?? postIdx, imageMap, resolveStage2(post, postIdx))
+      )
+      content.push({
+        pageBreak: 'before',
+        stack: [
+          { text: 'Дополнительные публикации (без даты)', style: 'sectionTitle', margin: [0, 4, 0, 8] },
+          ...unassignedCards
+        ]
+      })
+    }
   }
 
   const docDefinition = {
@@ -655,6 +1168,7 @@ export async function exportToPdf(contentPlan, options = {}) {
       subtitle: { fontSize: 10, color: '#4b5563', margin: [0, 4, 0, 0] },
       monthTitle: { fontSize: 13, bold: true, color: '#111827', margin: [0, 12, 0, 8] },
       detailsTitle: { fontSize: 10, bold: true, color: '#111827' },
+      sectionTitle: { fontSize: 12, bold: true, color: '#1e40af', margin: [0, 6, 0, 8] },
       detailHeaderCell: { bold: true, color: '#ffffff' }
     },
     defaultStyle: {

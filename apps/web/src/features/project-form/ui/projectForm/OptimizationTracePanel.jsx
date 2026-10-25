@@ -1,13 +1,22 @@
 import React, { useState } from 'react'
+import './OptimizationTracePanel.css'
 
 const formatNumber = (value) => {
   const n = Number(value)
   return Number.isFinite(n) ? n.toLocaleString('ru-RU') : '—'
 }
 
+const formatStopReason = (reason) => {
+  if (!reason) return 'достигнут оптимум'
+  if (reason === 'stagnation') return 'стабилизация (популяция сошлась к оптимуму)'
+  if (reason === 'max_generations') return 'достигнут лимит поколений'
+  return String(reason)
+}
+
 /**
  * Панель детальной трассировки генетической оптимизации контент-плана (Stage 1 и Stage 2),
  * включая сходимость поколений GA, декомпозицию фитнеса и Парето-стратегии.
+ * Доступна исключительно аналитикам и разработчикам.
  */
 export default function OptimizationTracePanel({
   optimizationResult,
@@ -15,9 +24,12 @@ export default function OptimizationTracePanel({
   isAnalyst = false,
   isDeveloper = false
 }) {
-  const isDetailed = Boolean(isAnalyst || isDeveloper)
   const [isExpanded, setIsExpanded] = useState(false)
-  if (!optimizationResult) return null
+
+  // Блок строго скрыт для обычных SMM-пользователей и отображается только аналитикам
+  if (!optimizationResult || (!isAnalyst && !isDeveloper)) {
+    return null
+  }
 
   const stage1 = optimizationResult?.stage1
   const stage2 = optimizationResult?.stage2
@@ -67,32 +79,25 @@ export default function OptimizationTracePanel({
   }
 
   return (
-    <div
-      className="optimization-trace-panel"
-      style={{
-        marginTop: '1rem',
-        padding: '0.85rem 1rem',
-        background: '#f8fafc',
-        borderRadius: '6px',
-        border: '1px solid #cbd5e1'
-      }}
-    >
+    <div className="optimization-trace-panel">
       <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          cursor: 'pointer'
-        }}
+        className="trace-header"
         onClick={() => setIsExpanded(!isExpanded)}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            setIsExpanded(!isExpanded)
+          }
+        }}
       >
-        <span style={{ fontWeight: 600, fontSize: '0.92rem', color: '#0f172a' }}>
-          {isDetailed ? '📊 Трассировка генетической оптимизации и сходимости (GA Trace)' : '📊 Детали работы генетического оптимизатора'}
+        <span className="trace-title">
+          📊 Аналитика генетического алгоритма (GA Trace)
         </span>
         <button
           type="button"
-          className="action-btn"
-          style={{ padding: '3px 10px', fontSize: '0.8rem', background: '#e2e8f0', borderRadius: '4px', border: 'none', cursor: 'pointer' }}
+          className="trace-toggle-btn"
           onClick={(e) => {
             e.stopPropagation()
             setIsExpanded(!isExpanded)
@@ -103,20 +108,26 @@ export default function OptimizationTracePanel({
       </div>
 
       {isExpanded && (
-        <div style={{ marginTop: '0.9rem', fontSize: '0.85rem', color: '#334155', lineHeight: 1.6 }}>
+        <div className="trace-content">
           {/* График сходимости поколений */}
           {history.length > 1 && (
-            <div style={{ marginBottom: '1rem', background: '#ffffff', padding: '10px 12px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                <strong style={{ color: '#0f172a', fontSize: '0.85rem' }}>Кривая сходимости фитнеса по поколениям:</strong>
-                <div style={{ fontSize: '0.75rem', color: '#64748b', display: 'flex', gap: '12px' }}>
-                  <span><span style={{ display: 'inline-block', width: 10, height: 3, background: '#2563eb', marginRight: 4, verticalAlign: 'middle' }}></span>Лучший фитнес</span>
-                  <span><span style={{ display: 'inline-block', width: 10, height: 3, background: '#94a3b8', marginRight: 4, verticalAlign: 'middle' }}></span>Средний по популяции</span>
+            <div className="trace-chart-card">
+              <div className="trace-chart-header">
+                <strong className="trace-chart-title">Кривая сходимости фитнеса по поколениям:</strong>
+                <div className="trace-chart-legend">
+                  <span>
+                    <span style={{ display: 'inline-block', width: 10, height: 3, background: '#2563eb', marginRight: 4, verticalAlign: 'middle' }}></span>
+                    Лучший фитнес
+                  </span>
+                  <span>
+                    <span style={{ display: 'inline-block', width: 10, height: 3, background: '#94a3b8', marginRight: 4, verticalAlign: 'middle' }}></span>
+                    Средний по популяции
+                  </span>
                 </div>
               </div>
-              <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} style={{ width: '100%', height: 'auto', maxHeight: '130px', overflow: 'visible' }}>
-                <line x1={padding.left} y1={padding.top} x2={padding.left + innerWidth} y2={padding.top} stroke="#f1f5f9" strokeDasharray="3 3" />
-                <line x1={padding.left} y1={padding.top + innerHeight / 2} x2={padding.left + innerWidth} y2={padding.top + innerHeight / 2} stroke="#f1f5f9" strokeDasharray="3 3" />
+              <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="trace-chart-svg">
+                <line x1={padding.left} y1={padding.top} x2={padding.left + innerWidth} y2={padding.top} stroke="#cbd5e1" strokeDasharray="3 3" opacity="0.6" />
+                <line x1={padding.left} y1={padding.top + innerHeight / 2} x2={padding.left + innerWidth} y2={padding.top + innerHeight / 2} stroke="#cbd5e1" strokeDasharray="3 3" opacity="0.6" />
                 <line x1={padding.left} y1={padding.top + innerHeight} x2={padding.left + innerWidth} y2={padding.top + innerHeight} stroke="#cbd5e1" strokeWidth="1.5" />
                 
                 <text x={padding.left - 6} y={padding.top + 4} textAnchor="end" fontSize="9" fill="#94a3b8">{maxScore.toFixed(2)}</text>
@@ -131,32 +142,34 @@ export default function OptimizationTracePanel({
           )}
 
           {/* Этап 1: Структурная эволюция */}
-          <div style={{ marginBottom: '0.75rem' }}>
-            <strong style={{ color: '#0f172a' }}>Этап 1: Эволюция структуры плана (Stage 1):</strong>
-            <div>• Поколений выполнено: <strong>{ga1?.generations ?? '—'}</strong> (причина остановки: <em>{ga1?.stop_reason ?? 'достигнут оптимум'}</em>)</div>
-            <div>• Лучший фитнес (LCB): <strong>{ga1?.best_score != null ? Number(ga1.best_score).toFixed(4) : '—'}</strong></div>
+          <div className="trace-section">
+            <span className="trace-section-title">Этап 1: Оптимизация структуры плана (Stage 1)</span>
+            <div>• Поколений выполнено: <strong>{ga1?.generations ?? '—'}</strong> (причина остановки: <em>{formatStopReason(ga1?.stop_reason)}</em>)</div>
+            <div>• Итоговая комплексная оценка плана (LCB): <strong>{ga1?.best_score != null ? Number(ga1.best_score).toFixed(4) : '—'}</strong></div>
+            <div className="trace-hint">• LCB (Lower Confidence Bound) — консервативная оценка с поправкой на неопределённость прогноза.</div>
             {objectiveBreakdown && (
-              <div style={{ marginTop: '4px', background: '#f1f5f9', padding: '6px 10px', borderRadius: '4px' }}>
-                • <strong>Компоненты функции приспособленности:</strong>
-                {' '}KPI (LCB-охват): <strong>{objectiveBreakdown.kpi != null ? Number(objectiveBreakdown.kpi).toFixed(3) : '—'}</strong>,
-                {' '}Разнообразие тем и форматов: <strong>{objectiveBreakdown.diversity != null ? Number(objectiveBreakdown.diversity).toFixed(3) : '—'}</strong>,
-                {' '}Ритмичность таймлайна (Cadence): <strong>{objectiveBreakdown.temporal != null ? Number(objectiveBreakdown.temporal).toFixed(3) : '—'}</strong>,
-                {' '}Конверсия и CTA: <strong>{objectiveBreakdown.conversion != null ? Number(objectiveBreakdown.conversion).toFixed(3) : '—'}</strong>
+              <div className="trace-breakdown-box">
+                <div><strong>Декомпозиция критериев оптимизации плана:</strong></div>
+                <div>• Прогноз вовлеченности (LCB-охват): <strong>{objectiveBreakdown.kpi != null ? Number(objectiveBreakdown.kpi).toFixed(3) : '—'}</strong></div>
+                <div>• Разнообразие тем и форматов: <strong>{objectiveBreakdown.diversity != null ? Number(objectiveBreakdown.diversity).toFixed(3) : '—'}</strong></div>
+                <div>• Ритмичность графика публикаций: <strong>{objectiveBreakdown.temporal != null ? Number(objectiveBreakdown.temporal).toFixed(3) : '—'}</strong></div>
+                <div>• Конверсионный потенциал и CTA: <strong>{objectiveBreakdown.conversion != null ? Number(objectiveBreakdown.conversion).toFixed(3) : '—'}</strong></div>
               </div>
             )}
           </div>
 
           {/* Парето-стратегии */}
           {paretoStrategies && (
-            <div style={{ marginBottom: '0.75rem', background: '#ffffff', padding: '8px 10px', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
-              <strong style={{ color: '#0f172a' }}>🎯 Опорные стратегии Парето-фронта (NSGA-II):</strong>
-              <div style={{ marginTop: '4px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '8px' }}>
+            <div className="trace-pareto-card">
+              <span className="trace-section-title">🎯 Опорные стратегии Парето-фронта (NSGA-II):</span>
+              <div className="trace-hint">Многокритериальная оптимизация выделила варианты с разным балансом охвата и конверсии:</div>
+              <div className="trace-pareto-grid">
                 {Object.entries(paretoStrategies).map(([key, strat]) => (
-                  <div key={key} style={{ padding: '6px 8px', background: '#f8fafc', borderRadius: '4px', border: '1px solid #e2e8f0', fontSize: '0.8rem' }}>
-                    <div style={{ fontWeight: 600, color: '#1e293b' }}>{strat.title}</div>
-                    <div style={{ color: '#64748b', fontSize: '0.75rem' }}>{strat.description}</div>
-                    <div style={{ marginTop: '4px', color: '#0369a1' }}>
-                      Лайки: <strong>{formatNumber(strat.predictedLikes)}</strong> · Просмотры: <strong>{formatNumber(strat.predictedViews)}</strong>
+                  <div key={key} className="trace-pareto-item">
+                    <div className="trace-pareto-item-title">{strat.title}</div>
+                    <div className="trace-pareto-item-desc">{strat.description}</div>
+                    <div className="trace-pareto-item-metrics">
+                      Ожидаемые реакции: <strong>{formatNumber(strat.predictedLikes)}</strong> · Просмотры: <strong>{formatNumber(strat.predictedViews)}</strong>
                     </div>
                   </div>
                 ))}
@@ -165,35 +178,35 @@ export default function OptimizationTracePanel({
           )}
 
           {/* Этап 2: Параметры постов */}
-          <div style={{ marginBottom: '0.75rem' }}>
-            <strong style={{ color: '#0f172a' }}>Этап 2: Эволюция писательских решений постов (Stage 2):</strong>
+          <div className="trace-section">
+            <span className="trace-section-title">Этап 2: Тонкая настройка публикаций (Stage 2)</span>
             <div>• Оптимизировано публикаций: <strong>{stage2?.publications?.length ?? 0}</strong></div>
             <div>
-              • Финальный ML-прогноз: <strong>{formatNumber(stage2?.predicted_total_likes)}</strong> лайков, <strong>{formatNumber(stage2?.predicted_total_views)}</strong> просмотров, <strong>{formatNumber(stage2?.predicted_total_shares)}</strong> репостов
+              • Совокупный ML-прогноз плана: <strong>{formatNumber(stage2?.predicted_total_likes)}</strong> лайков, <strong>{formatNumber(stage2?.predicted_total_views)}</strong> просмотров, <strong>{formatNumber(stage2?.predicted_total_shares)}</strong> репостов
             </div>
             {ctaDist && (
               <div>
-                • Распределение CTA: <strong>{ctaDist.assigned_count ?? 0}/{ctaDist.target_count ?? 0}</strong> (целевая квота плана: {Math.round((ctaDist.target_share || 0) * 100)}%)
+                • Распределение призывов к действию (CTA): <strong>{ctaDist.assigned_count ?? 0} из {ctaDist.target_count ?? 0}</strong> публикаций (целевая квота: {Math.round((ctaDist.target_share || 0) * 100)}%)
               </div>
             )}
             {constraintsCheck && (
               <div>
-                • Проверка ограничений: <strong>{constraintsCheck.valid ? 'все ограничения выполнены' : 'скорректированы'}</strong>
+                • Проверка бизнес-ограничений: <strong>{constraintsCheck.valid ? 'все ограничения соблюдены' : 'скорректированы'}</strong>
                 {constraintsCheck.repairs?.length ? ` (исправлений: ${constraintsCheck.repairs.length})` : ''}
               </div>
             )}
           </div>
 
           {bestPublication && (
-            <div style={{ marginBottom: '0.5rem' }}>
-              <strong style={{ color: '#0f172a' }}>Лидирующая публикация:</strong>
-              <div>• ID: {bestPublication.publication_id || '—'} ({bestPublication.format || 'text'}, {bestPublication.platform || '—'})</div>
+            <div className="trace-section">
+              <span className="trace-section-title">Лидирующая публикация по прогнозу:</span>
+              <div>• Публикация ID: {bestPublication.publication_id || '—'} ({bestPublication.format || 'пост'}, {bestPublication.platform || 'соцсеть'})</div>
             </div>
           )}
 
           {stage3?.phase && (
             <div>
-              <strong style={{ color: '#0f172a' }}>Этап 3:</strong> Семантическая диверсификация ({stage3.phase})
+              <span className="trace-section-title">Этап 3: Семантическая диверсификация ({stage3.phase})</span>
             </div>
           )}
         </div>

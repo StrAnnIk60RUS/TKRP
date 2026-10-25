@@ -23,6 +23,8 @@ Read in order: `rules.md` (universal agent rules) -> `README.md` (product/archit
 - Runtime/temp JSON belongs in `data/runtime`, never near source code. Precedents in `data/precedents`; fixtures in `data/input/examples`.
 - Backend entry: `apps/api/src/app/apiRoutes.js`; frontend entry: `apps/web/src/app`.
 - PostgreSQL/pgvector is a documented target architecture, not the default runtime — primary storage is local JSON.
+- **Dual theme support**: All UI elements in `apps/web` must support both light and dark themes (`body.theme-light` and `body.theme-dark` / `theme-dark.css`).
+- **User-Centric UI/UX**: All elements in `apps/web` must be intuitive and user-friendly for SMM specialists and marketers. No unexplained technical/ML jargon; mandatory hints or tooltips for domain terms; clear empty states and actionable error messages.
 
 ## 5. Environment & Gotchas
 - Secrets only via `.env` / env vars: `OPENROUTER_API_KEY`, `VK_COOKIE`, `LINKEDIN_COOKIE`, `SERVER_API_KEY`, `ADMIN_API_KEY`. Never hardcode.
@@ -34,5 +36,7 @@ Read in order: `rules.md` (universal agent rules) -> `README.md` (product/archit
 - **Zero dead code**: Delete replaced code, clean up unused imports/vars, sweep orphans (`rules.md` §4).
 - **Anti-overengineering**: No speculative architecture, minimal viable diff, rule of three (`rules.md` §5).
 - **Pragmatic testing**: No coverage theater or mock-heavy trivial tests (`rules.md` §6).
+- **Dual theme requirement**: When adding or modifying UI elements, always implement and verify styles for both light and dark themes (`.agents/rules/dual-theme-support.md`).
+- **User-friendly interface requirement**: Design UI from the end-user perspective, not internal developer mechanics. Provide plain-language explanations for metrics/terms and self-explanatory action controls (`.agents/rules/user-centric-ux.md`).
 - Plan before non-trivial edits; minimal sufficient changes; no unrelated refactoring; no commits without explicit request; atomic commits (`feat:`/`fix:`/`refactor:`/`docs:`/`test:`).
 - No stubs/TODOs; verify with `lint`/`test` after changes; no new dependencies unless essential.

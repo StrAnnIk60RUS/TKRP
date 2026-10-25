@@ -11,7 +11,6 @@ import PrecedentSearchPanel from './projectForm/PrecedentSearchPanel'
 import FieldHint from './projectForm/FieldHint'
 import DraftPlanWorkflowPanel from './projectForm/DraftPlanWorkflowPanel'
 import TechnicalDetailsPanel from './projectForm/TechnicalDetailsPanel'
-import OperationStatusPanel from './projectForm/OperationStatusPanel'
 import OnboardingMaster from './projectForm/OnboardingMaster'
 import { initialWizardState, wizardReducer } from './projectForm/wizardState'
 import { useCompetitorsPipeline } from '../model/useCompetitorsPipeline'
@@ -186,8 +185,7 @@ const ProjectForm = () => {
     currentStep,
     selectedPrecedentItem,
     demoHorizonExample,
-    operations,
-    operationTelemetry
+    operations
   } = wizardState
   const currentStepId = wizardStepIds[currentStep - 1] || wizardStepIds[0]
   const isLoadingOntology = operations.loadingOntology?.status === 'running'
@@ -200,8 +198,6 @@ const ProjectForm = () => {
   const isProcessing =
     isSearchingPrecedents || isSeedingPrecedents || isGeneratingDraftPlan || isOptimizingPlan || isExportingOntology
   const toastCounterRef = useRef(0)
-  const operationControllersRef = useRef({})
-  const operationRetryRef = useRef({})
   const restoreDraftCancelledRef = useRef(false)
   const hasRestoredDraftRef = useRef(false)
   const [optimizationLiveProgress, setOptimizationLiveProgress] = useState(null)
@@ -299,8 +295,6 @@ const ProjectForm = () => {
   const runTrackedOperation = useCallback(
     async (operationId, operationFn) => {
       const controller = new AbortController()
-      operationControllersRef.current[operationId] = controller
-      operationRetryRef.current[operationId] = () => runTrackedOperation(operationId, operationFn)
       startOperation(operationId)
       try {
         await operationFn(controller.signal)
@@ -312,31 +306,10 @@ const ProjectForm = () => {
         }
         finishOperationError(operationId, error?.message || 'Ошибка выполнения')
         throw error
-      } finally {
-        delete operationControllersRef.current[operationId]
       }
     },
     []
   )
-
-  const cancelOperation = (operationId) => {
-    const controller = operationControllersRef.current[operationId]
-    if (controller) {
-      controller.abort()
-      addToast(`Операция отменена: ${operationId}`, 'info')
-    }
-  }
-
-  const retryOperation = async (operationId) => {
-    const retryFn = operationRetryRef.current[operationId]
-    if (!retryFn) return
-    try {
-      await retryFn()
-      addToast(`Операция повторена: ${operationId}`, 'success')
-    } catch (error) {
-      addToast(`Повтор не удался: ${error.message}`, 'error')
-    }
-  }
 
   const {
     competitorsData,
@@ -1273,13 +1246,6 @@ const ProjectForm = () => {
   return (
     <>
       <ToastContainer toasts={toasts} removeToast={removeToast} />
-      <OperationStatusPanel
-        operations={operations}
-        telemetry={operationTelemetry}
-        onCancel={cancelOperation}
-        onRetry={retryOperation}
-        isAnalyst={isAnalyst}
-      />
 
       <form className="project-form">
         {/* Прогресс-бар и гид по текущему шагу */}

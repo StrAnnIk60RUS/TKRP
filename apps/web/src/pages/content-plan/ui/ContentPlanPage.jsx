@@ -918,45 +918,23 @@ const ContentPlanPage = () => {
           />
 
           {paretoStrategies && (
-            <div
-              className="pareto-strategies-bar"
-              style={{
-                marginTop: '0.85rem',
-                padding: '0.75rem 1rem',
-                background: '#ffffff',
-                border: '1px solid #cbd5e1',
-                borderRadius: '6px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                flexWrap: 'wrap',
-                gap: '10px'
-              }}
-            >
-              <div>
-                <strong style={{ fontSize: '0.88rem', color: '#0f172a' }}>
-                  🎯 Стратегия Парето-фронта (NSGA-II):
+            <div className="pareto-strategies-bar">
+              <div className="pareto-strategies-info">
+                <strong className="pareto-strategies-title">
+                  {isAnalyst ? '🎯 Опорная стратегия Парето-фронта (NSGA-II):' : '🎯 Фокус контент-плана:'}
                 </strong>
-                <span style={{ fontSize: '0.8rem', color: '#64748b', marginLeft: '6px' }}>
-                  {paretoStrategies[activeStrategyKey]?.description || 'Переключение между опорными решениями'}
+                <span className="pareto-strategies-desc">
+                  {paretoStrategies[activeStrategyKey]?.description || 'Выбор баланса охвата, продаж и разнообразия'}
                 </span>
               </div>
-              <div style={{ display: 'flex', gap: '6px' }}>
+              <div className="pareto-strategies-buttons">
                 {Object.entries(paretoStrategies).map(([key, strat]) => {
                   const isActive = activeStrategyKey === key
                   return (
                     <button
                       key={key}
                       type="button"
-                      className={`secondary-btn ${isActive ? 'active' : ''}`}
-                      style={{
-                        padding: '4px 10px',
-                        fontSize: '0.8rem',
-                        fontWeight: isActive ? 600 : 400,
-                        borderColor: isActive ? '#0284c7' : '#cbd5e1',
-                        background: isActive ? '#f0f9ff' : '#ffffff',
-                        color: isActive ? '#0369a1' : '#334155'
-                      }}
+                      className={`pareto-strategy-btn ${isActive ? 'active' : ''}`}
                       onClick={() => handleSelectStrategy(key)}
                     >
                       {key === 'viral_reach' && '⚡ '}
@@ -970,7 +948,7 @@ const ContentPlanPage = () => {
             </div>
           )}
 
-          {optimizationMeta && (
+          {isAnalyst && optimizationMeta && (
             <OptimizationTracePanel
               optimizationResult={optimizationMeta}
               bestPublication={optimizationMeta?.stage2?.best_post || null}

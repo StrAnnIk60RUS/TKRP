@@ -46,6 +46,8 @@ Stop after 3 failed attempts. Log: 1. Tried steps; 2. Specific blocker; 3. 1-3 h
 - Comments only for non-obvious logic / why, not what.
 - No secrets/PII in code, logs, or docs.
 - Use secure constructs for SQL, Shell, HTML.
+- **Dual Theme Support (Light & Dark)**: Whenever creating or modifying UI elements or styles in `apps/web`, always implement and verify both light and dark themes (base styles + `body.theme-dark` / `theme-dark.css`). Ensure readable contrast, proper borders, and background colors in both modes.
+- **User-Centric UI/UX & Plain Language**: All UI blocks and elements in `apps/web` must be designed with user empathy (for marketers/SMM specialists, not backend developers). Ban unexplained technical jargon (RAG, embeddings, GA chromosomes). If specialized terms or metrics (ER, LCB) are necessary, provide clear inline hints, tooltips, or plain-language explanations. Buttons, empty states, and errors must be clear, transparent, and actionable.
 
 ## 8. Resilience & Verification
 - Handle critical errors; no silent exceptions. Safe logs only.

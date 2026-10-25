@@ -1338,7 +1338,7 @@ function calculateFitness(predictedMetrics, metadata, publications = [], options
   const ctaCount = publications.filter((p) => p?.ontology_features?.has_cta || p?.has_cta || Boolean(p?.cta)).length;
   const ctaShare = publications.length > 0 ? ctaCount / publications.length : 0;
   const leadCount = publications.filter((p) =>
-    ['lead', 'conversion', 'sell', 'offer', 'cta', 'action'].includes(String(p?.objective || '').toLowerCase())
+    ['lead', 'conversion', 'convert', 'sell', 'offer', 'cta', 'action'].includes(String(p?.objective || '').toLowerCase())
   ).length;
   const leadShare = publications.length > 0 ? leadCount / publications.length : 0;
   const conversionScore = clamp01(ctaShare * 0.60 + leadShare * 0.40);

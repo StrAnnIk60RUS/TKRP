@@ -991,9 +991,13 @@ export async function fillPlanWithBestPublication(publications = [], publication
   });
 
   const ctaAssignedCount = drafts.filter((draft) => Number(draft.brief?.has_cta) > 0).length;
+  const targetCtaShare = asNumber(options.targetCtaShare ?? planFeatureMap?.cta_share, 0);
+  const ctaTargetCount = targetCtaShare > 0
+    ? Math.round(publicationsArray.length * targetCtaShare)
+    : ctaAssignedCount;
   return {
     publications: publicationsArray,
-    ctaTargetCount: ctaAssignedCount,
+    ctaTargetCount,
     ctaAssignedCount
   };
 }

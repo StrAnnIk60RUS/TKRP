@@ -19,6 +19,7 @@ const testFiles = [
   'apps/web/tests/keyDatesModel.test.js',
   'apps/web/tests/publicationPresentation.test.js',
   'apps/web/tests/breadcrumbs.test.js',
+  'apps/web/tests/contentPlanExport.test.js',
   'apps/web/tests/functional-requirements-ui.test.js',
   'apps/web/tests/functional-requirements-registry.test.js',
   'apps/api/tests/ontologyAggregation.test.js',

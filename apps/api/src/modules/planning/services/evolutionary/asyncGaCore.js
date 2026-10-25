@@ -142,7 +142,10 @@ function buildGaResult({
         meta: c.meta,
         objectives: c.objectives
       }));
-      paretoArchetypes = extractParetoArchetypes(fronts[0], (c) => c.objectives);
+      const archetypePool = (fronts[0].length >= 3 || fronts.length === 1)
+        ? fronts[0]
+        : [...fronts[0], ...(fronts[1] || [])];
+      paretoArchetypes = extractParetoArchetypes(archetypePool, (c) => c.objectives);
     }
   }
 
