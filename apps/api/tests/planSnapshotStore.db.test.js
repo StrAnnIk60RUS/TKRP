@@ -43,7 +43,11 @@ async function dbTokenCount(token) {
   return Number(res.rows[0].count);
 }
 
-test('DB saveSnapshot stores row in plan_snapshots (positive)', async () => {
+test('DB saveSnapshot stores row in plan_snapshots (positive)', async (t) => {
+  if (!process.env.DATABASE_URL) {
+    t.skip('Пропуск: DATABASE_URL не задан');
+    return;
+  }
   const saved = await saveSnapshot(plan, null, TOKEN, 'db-owner');
   assert.equal(saved.token, TOKEN);
   assert.equal(saved.summary.publications_count, 1);
@@ -52,7 +56,11 @@ test('DB saveSnapshot stores row in plan_snapshots (positive)', async () => {
   assert.equal(row.rows[0].owner, 'db-owner');
 });
 
-test('DB loadSnapshot round-trip', async () => {
+test('DB loadSnapshot round-trip', async (t) => {
+  if (!process.env.DATABASE_URL) {
+    t.skip('Пропуск: DATABASE_URL не задан');
+    return;
+  }
   const loaded = await loadSnapshot(TOKEN);
   assert.equal(typeof loaded, 'object');
   assert.equal(loaded.token, TOKEN);
@@ -60,42 +68,66 @@ test('DB loadSnapshot round-trip', async () => {
   assert.equal(loaded.owner, 'db-owner');
 });
 
-test('DB listSnapshots includes saved token sorted desc', async () => {
+test('DB listSnapshots includes saved token sorted desc', async (t) => {
+  if (!process.env.DATABASE_URL) {
+    t.skip('Пропуск: DATABASE_URL не задан');
+    return;
+  }
   const listed = await listSnapshots(100);
   assert(listed.some((entry) => entry.token === TOKEN));
 });
 
-test('DB re-save same token updates row (upsert, no duplicates)', async () => {
+test('DB re-save same token updates row (upsert, no duplicates)', async (t) => {
+  if (!process.env.DATABASE_URL) {
+    t.skip('Пропуск: DATABASE_URL не задан');
+    return;
+  }
   await saveSnapshot(plan, null, TOKEN, 'db-owner-2');
   assert.equal(await dbTokenCount(TOKEN), 1);
 });
 
-test('DB deleteSnapshot removes row; load returns null after (positive)', async () => {
+test('DB deleteSnapshot removes row; load returns null after (positive)', async (t) => {
+  if (!process.env.DATABASE_URL) {
+    t.skip('Пропуск: DATABASE_URL не задан');
+    return;
+  }
   const del = await deleteSnapshot(TOKEN);
   assert.equal(del.ok, true);
   assert.equal(await dbTokenCount(TOKEN), 0);
   assert.equal(await loadSnapshot(TOKEN), null);
 });
 
-test('invalid token rejected on load and delete (negative)', async () => {
+test('invalid token rejected on load and delete (negative)', async (t) => {
+  if (!process.env.DATABASE_URL) {
+    t.skip('Пропуск: DATABASE_URL не задан');
+    return;
+  }
   assert.equal(await loadSnapshot('short'), null);
   const del = await deleteSnapshot('short');
   assert.deepEqual(del, { ok: false, reason: 'invalid_token' });
   assert.equal(await dbTokenCount('short'), 0);
 });
 
-test('expired snapshot swept and load returns null (negative TTL)', async () => {
-  process.env.PLAN_SNAPSHOT_TTL_MS = '1';
+test('expired snapshot swept and load returns null (negative TTL)', async (t) => {
+  if (!process.env.DATABASE_URL) {
+    t.skip('Пропуск: DATABASE_URL не задан');
+    return;
+  }
+  process.env.PLAN_SNAPSHOT_TTL_MS = '50';
   const expiredToken = 'test_snap_db_expired';
   await saveSnapshot(plan, null, expiredToken);
   assert.equal(await dbTokenCount(expiredToken), 1);
-  await new Promise((resolve) => setTimeout(resolve, 10));
+  await new Promise((resolve) => setTimeout(resolve, 70));
   assert.equal(await loadSnapshot(expiredToken), null);
   assert.equal(await dbTokenCount(expiredToken), 0);
   delete process.env.PLAN_SNAPSHOT_TTL_MS;
 });
 
-test('payload cap enforced before DB write (negative)', async () => {
+test('payload cap enforced before DB write (negative)', async (t) => {
+  if (!process.env.DATABASE_URL) {
+    t.skip('Пропуск: DATABASE_URL не задан');
+    return;
+  }
   process.env.PLAN_SNAPSHOT_MAX_PAYLOAD_BYTES = '100';
   try {
     await saveSnapshot(plan, null, 'test_snap_db_too_large');
@@ -108,7 +140,11 @@ test('payload cap enforced before DB write (negative)', async () => {
   assert.equal(await dbTokenCount('test_snap_db_too_large'), 0);
 });
 
-test('cleanup leaves no DB artifacts', async () => {
+test('cleanup leaves no DB artifacts', async (t) => {
+  if (!process.env.DATABASE_URL) {
+    t.skip('Пропуск: DATABASE_URL не задан');
+    return;
+  }
   const rows = await query(
     'SELECT COUNT(1) FROM plan_snapshots WHERE token IN ($1, $2, $3)',
     [TOKEN, 'test_snap_db_expired', 'test_snap_db_too_large']

@@ -101,7 +101,7 @@ function getSourceText(source = {}) {
   return (
     source.raw_content ||
     source.content ||
-    [source.title, source.summary, source.key_message, source.cta].filter(Boolean).join('\n\n')
+    [source.title || source.topic, source.summary, source.key_message, source.cta].filter(Boolean).join('\n\n')
   );
 }
 
@@ -158,7 +158,16 @@ function calculateNormalizedEntropy(values = []) {
 }
 
 function parsePlanDate(source = {}) {
-  const candidate = source.planned_date || source.planned_at || source.publication_model?.planned_at || null;
+  const candidate =
+    source.planned_date ||
+    source.planned_at ||
+    source.published_at ||
+    source.datetime ||
+    source.date ||
+    source.created_at ||
+    source.publication_model?.planned_at ||
+    source.publication_model?.published_at ||
+    null;
   if (!candidate || typeof candidate !== 'string') return null;
   const parsed = new Date(candidate);
   return Number.isFinite(parsed.getTime()) ? parsed : null;
@@ -284,16 +293,6 @@ export function buildPlanFeatureMap(publications = [], options = {}) {
   const expectedAudience = uniqueValues(
     (Array.isArray(options.targetAudience) ? options.targetAudience : []).map((value) => normalizeKey(value))
   );
-  const derivedDuration =
-    startDate instanceof Date &&
-    Number.isFinite(startDate.getTime()) &&
-    endDate instanceof Date &&
-    Number.isFinite(endDate.getTime())
-      ? Math.max(1, Math.round((endDate.getTime() - startDate.getTime()) / 86400000) + 1)
-      : null;
-  const durationDays = clampPositive(explicitDuration || derivedDuration || posts.length || 1, 1);
-  const topicCounts = Array.from(buildFrequencyMap(posts.map((item) => item.topic || item.publication_model?.topic)).values());
-  const repeatedTopics = topicCounts.reduce((sum, count) => sum + Math.max(0, count - 1), 0);
   const datedPosts = uniqueValues(
     posts
       .map((item) => {
@@ -302,6 +301,22 @@ export function buildPlanFeatureMap(publications = [], options = {}) {
       })
       .filter(Boolean)
   );
+  const sortedDates = datedPosts
+    .map((d) => new Date(d))
+    .filter((d) => Number.isFinite(d.getTime()))
+    .sort((a, b) => a.getTime() - b.getTime());
+  const autoSpanDuration =
+    sortedDates.length >= 2
+      ? Math.max(1, Math.round((sortedDates[sortedDates.length - 1].getTime() - sortedDates[0].getTime()) / 86400000) + 1)
+      : null;
+  const derivedDuration =
+    startDate instanceof Date &&
+    Number.isFinite(startDate.getTime()) &&
+    endDate instanceof Date &&
+    Number.isFinite(endDate.getTime())
+      ? Math.max(1, Math.round((endDate.getTime() - startDate.getTime()) / 86400000) + 1)
+      : autoSpanDuration;
+  const durationDays = clampPositive(explicitDuration || derivedDuration || posts.length || 1, 1);
   const audienceCoverage =
     expectedAudience.length > 0
       ? clamp01(
@@ -316,6 +331,8 @@ export function buildPlanFeatureMap(publications = [], options = {}) {
             expectedPlatforms.length
         )
       : clamp01(platforms.length / Math.max(1, Math.min(3, posts.length || 1)));
+  const topicCounts = Array.from(buildFrequencyMap(posts.map((item) => item.topic || item.publication_model?.topic)).values());
+  const repeatedTopics = topicCounts.reduce((sum, count) => sum + Math.max(0, count - 1), 0);
 
   return {
     unique_topics: topics.length,
@@ -377,29 +394,42 @@ function groupSnapshotByContext(snapshot = {}) {
 }
 
 function extractOptimizationBestMeta(optimization = {}) {
-  const candidates = [];
   const stage1Meta = optimization?.stage1?.ga?.best_meta;
-  if (stage1Meta && Number.isFinite(Number(stage1Meta.fitness))) {
-    candidates.push(stage1Meta);
-  }
-  (Array.isArray(optimization?.stage2?.items) ? optimization.stage2.items : []).forEach((item) => {
-    const meta = item?.ga?.best_meta;
-    if (meta && Number.isFinite(Number(meta.fitness))) {
-      candidates.push(meta);
-    }
-  });
+  const stage2Metas = (
+    Array.isArray(optimization?.stage2?.items)
+      ? optimization.stage2.items
+      : Array.isArray(optimization?.stage2?.publications)
+        ? optimization.stage2.publications
+        : []
+  )
+    .map((item) => item?.ga?.best_meta)
+    .filter(Boolean);
+
+  const candidates = [stage1Meta, ...stage2Metas].filter(
+    (item) => item && Number.isFinite(Number(item.fitness))
+  );
   if (!candidates.length) return null;
   return candidates.reduce((best, candidate) => (Number(candidate.fitness) > Number(best.fitness) ? candidate : best));
 }
 
-export function buildMlTrainingDatasets(snapshot = {}, optimizedPlans = []) {
+function calculateMedian(numbers = [], fallback = 0) {
+  const valid = numbers.map(Number).filter(Number.isFinite).sort((a, b) => a - b);
+  if (!valid.length) return fallback;
+  const mid = Math.floor(valid.length / 2);
+  return valid.length % 2 !== 0 ? valid[mid] : (valid[mid - 1] + valid[mid]) / 2;
+}
+
+export function buildMlTrainingDatasets(snapshot = {}, optimizedPlans = [], options = {}) {
   const postFeatures = [];
   const postTargets = [];      // Будет массивом [likes, shares, views]
+  const postBaselines = [];    // Базовый уровень конкурента [median_likes, median_shares, median_views]
   const planFeatures = [];
   const planTargets = [];      // Будет массивом [total_likes, total_shares, total_views]
+  const planBaselines = [];    // Базовый уровень планов
   const planSampleMeta = [];   // Parallel to planFeatures: source of each plan sample
 
   const groups = groupSnapshotByContext(snapshot);
+  const platformPostGroups = {};
 
   groups.forEach(({ publications }) => {
     if (!publications.length) return;
@@ -407,6 +437,16 @@ export function buildMlTrainingDatasets(snapshot = {}, optimizedPlans = []) {
     const planFeatureMap = buildPlanFeatureMap(publications, {
       durationDays: null
     });
+
+    // Медианы данного конкурента/источника для относительной нормализации (Engagement Rate Above Baseline)
+    const compLikes = publications.map((p) => clampPositive(p?.raw_metrics?.likes ?? 0));
+    const compShares = publications.map((p) => clampPositive(p?.raw_metrics?.shares ?? 0));
+    const compViews = publications.map((p) => clampPositive(p?.raw_metrics?.views ?? 0));
+    const competitorMedian = [
+      Math.max(1, calculateMedian(compLikes, 10)),
+      Math.max(1, calculateMedian(compShares, 1)),
+      Math.max(10, calculateMedian(compViews, 100))
+    ];
 
     // ========== СБОР ДЛЯ МОДЕЛИ ПОСТОВ ==========
     publications.forEach((publication) => {
@@ -427,6 +467,15 @@ export function buildMlTrainingDatasets(snapshot = {}, optimizedPlans = []) {
       postFeatures.push(featureVector);
       // Таргет — массив из 3 значений
       postTargets.push([likes, shares, views]);
+      postBaselines.push(competitorMedian);
+
+      const platformKey = String(publication.platform || publication.publication_model?.platform || 'telegram').toLowerCase();
+      if (!platformPostGroups[platformKey]) {
+        platformPostGroups[platformKey] = { likes: [], shares: [], views: [] };
+      }
+      platformPostGroups[platformKey].likes.push(likes);
+      platformPostGroups[platformKey].shares.push(shares);
+      platformPostGroups[platformKey].views.push(views);
     });
 
     // ========== СБОР ДЛЯ МОДЕЛИ ПЛАНОВ ==========
@@ -439,37 +488,70 @@ export function buildMlTrainingDatasets(snapshot = {}, optimizedPlans = []) {
       const planFeatureVector = buildPlanFeatureVector(publications, {});
       planFeatures.push(planFeatureVector);
       planTargets.push([totalLikes, totalShares, totalViews]);
+      planBaselines.push([
+        Math.max(10, competitorMedian[0] * publications.length),
+        Math.max(2, competitorMedian[1] * publications.length),
+        Math.max(100, competitorMedian[2] * publications.length)
+      ]);
       planSampleMeta.push({ source: 'precedent' });
     }
   });
 
-  // GA-optimized plan snapshots: predicted targets from best_meta of optimization run.
+  // GA-optimized plan snapshots: prioritize actual confirmed KPI over synthetic predictions
   (Array.isArray(optimizedPlans) ? optimizedPlans : []).forEach((entry) => {
     const plan = entry?.plan || {};
     const publications = Array.isArray(plan.publications) ? plan.publications : [];
     if (!publications.length) return;
-    const bestMeta = extractOptimizationBestMeta(entry?.optimization || {});
-    if (!bestMeta) return;
-    const targets = [
-      clampPositive(bestMeta.predicted_likes ?? 0),
-      clampPositive(bestMeta.predicted_shares ?? 0),
-      clampPositive(bestMeta.predicted_views ?? 0)
-    ];
-    if (targets.every((value) => value === 0)) return;
-    const planFeatureVector = buildPlanFeatureVector(publications, {
-      durationDays: plan?.planning_horizon?.duration_days,
-      expectedPlatforms: plan?.platforms,
-      targetAudience: plan?.target_audience
-    });
-    planFeatures.push(planFeatureVector);
-    planTargets.push(targets);
-    planSampleMeta.push({
-      source: 'ga_optimized',
-      optimized: true,
-      optimization_source: entry?.optimization ? 'plan_snapshot' : null,
-      final_fitness: Number(bestMeta.fitness),
-      saved_at: entry?.saved_at || null
-    });
+
+    const actualKpi = entry?.actual_kpi || plan?.actual_kpi;
+    if (actualKpi) {
+      const targets = [
+        clampPositive(actualKpi.likes ?? actualKpi.total_likes ?? 0),
+        clampPositive(actualKpi.shares ?? actualKpi.total_shares ?? 0),
+        clampPositive(actualKpi.views ?? actualKpi.total_views ?? 0)
+      ];
+      if (targets.every((value) => value === 0)) return;
+      const planFeatureVector = buildPlanFeatureVector(publications, {
+        durationDays: plan?.planning_horizon?.duration_days,
+        expectedPlatforms: plan?.platforms,
+        targetAudience: plan?.target_audience
+      });
+      planFeatures.push(planFeatureVector);
+      planTargets.push(targets);
+      planBaselines.push([350, 50, 30000]);
+      planSampleMeta.push({
+        source: 'actual_kpi',
+        optimized: true,
+        saved_at: entry?.saved_at || null
+      });
+      return;
+    }
+
+    if (options.includeGaOptimized !== false) {
+      const bestMeta = extractOptimizationBestMeta(entry?.optimization || {});
+      if (!bestMeta) return;
+      const targets = [
+        clampPositive(bestMeta.predicted_likes ?? 0),
+        clampPositive(bestMeta.predicted_shares ?? 0),
+        clampPositive(bestMeta.predicted_views ?? 0)
+      ];
+      if (targets.every((value) => value === 0)) return;
+      const planFeatureVector = buildPlanFeatureVector(publications, {
+        durationDays: plan?.planning_horizon?.duration_days,
+        expectedPlatforms: plan?.platforms,
+        targetAudience: plan?.target_audience
+      });
+      planFeatures.push(planFeatureVector);
+      planTargets.push(targets);
+      planBaselines.push([350, 50, 30000]);
+      planSampleMeta.push({
+        source: 'ga_optimized',
+        optimized: true,
+        optimization_source: entry?.optimization ? 'plan_snapshot' : null,
+        final_fitness: Number(bestMeta.fitness),
+        saved_at: entry?.saved_at || null
+      });
+    }
   });
 
   // Если нет планов, создаём fallback
@@ -482,9 +564,38 @@ export function buildMlTrainingDatasets(snapshot = {}, optimizedPlans = []) {
       const fallbackPlanFeatureMap = buildPlanFeatureMap(publications, {});
       planFeatures.push(PLAN_FEATURE_NAMES.map((name) => fallbackPlanFeatureMap[name] ?? 0));
       planTargets.push([totalLikes, totalShares, totalViews]);
+      planBaselines.push([350, 50, 30000]);
       planSampleMeta.push({ source: 'precedent_fallback' });
     });
   }
+
+  // Расчёт платформенных и референсных базовых уровней
+  const platformBaselines = {};
+  for (const [platform, metrics] of Object.entries(platformPostGroups)) {
+    platformBaselines[platform] = [
+      Math.max(1, calculateMedian(metrics.likes, 10)),
+      Math.max(1, calculateMedian(metrics.shares, 1)),
+      Math.max(10, calculateMedian(metrics.views, 100))
+    ];
+  }
+
+  const allLikes = postTargets.map((t) => t[0]);
+  const allShares = postTargets.map((t) => t[1]);
+  const allViews = postTargets.map((t) => t[2]);
+  const referenceBaseline = [
+    Math.max(1, calculateMedian(allLikes, 12)),
+    Math.max(1, calculateMedian(allShares, 2)),
+    Math.max(10, calculateMedian(allViews, 1000))
+  ];
+
+  const allPlanLikes = planTargets.map((t) => t[0]);
+  const allPlanShares = planTargets.map((t) => t[1]);
+  const allPlanViews = planTargets.map((t) => t[2]);
+  const planReferenceBaseline = [
+    Math.max(10, calculateMedian(allPlanLikes, 350)),
+    Math.max(2, calculateMedian(allPlanShares, 50)),
+    Math.max(100, calculateMedian(allPlanViews, 30000))
+  ];
 
   return {
     featureSetVersion: FEATURE_SET_VERSION,
@@ -493,12 +604,18 @@ export function buildMlTrainingDatasets(snapshot = {}, optimizedPlans = []) {
       featureNames: POST_FEATURE_NAMES,
       features: postFeatures,
       targets: postTargets,        // массив массивов [likes, shares, views]
+      baselines: postBaselines,    // медианы источников
+      platformBaselines,
+      referenceBaseline,
       targetNames: ['likes', 'shares', 'views']
     },
     contentPlanDataset: {
       featureNames: PLAN_FEATURE_NAMES,
       features: planFeatures,
       targets: planTargets,        // массив массивов [total_likes, total_shares, total_views]
+      baselines: planBaselines,
+      platformBaselines: {},
+      referenceBaseline: planReferenceBaseline,
       targetNames: ['total_likes', 'total_shares', 'total_views'],
       sampleMeta: planSampleMeta
     }

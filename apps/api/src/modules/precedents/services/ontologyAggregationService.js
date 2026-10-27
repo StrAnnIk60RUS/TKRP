@@ -247,6 +247,9 @@ function buildOntologyEnvelope(snapshot = {}, contexts = [], extra = {}) {
   const globalHierarchy = aggregateGlobalHierarchy(contexts);
   const globalSynonyms = aggregateGlobalSynonyms(contexts);
   const metaEntities = aggregateMetaEntities(globalEntities);
+  const globalPainPoints = contexts.flatMap((c) => c?.pain_points || []);
+  const globalTrustTriggers = contexts.flatMap((c) => c?.trust_triggers || []);
+  const globalTonePatterns = contexts.flatMap((c) => c?.tone_patterns || []);
 
   return {
     schema_version: ONTOLOGY_SCHEMA_VERSION,
@@ -269,7 +272,10 @@ function buildOntologyEnvelope(snapshot = {}, contexts = [], extra = {}) {
       triples: globalTriples,
       hierarchy: globalHierarchy,
       synonyms: globalSynonyms,
-      meta_entities: metaEntities
+      meta_entities: metaEntities,
+      pain_points: globalPainPoints,
+      trust_triggers: globalTrustTriggers,
+      tone_patterns: globalTonePatterns
     },
     trusted_llm_additions: extra.trusted_llm_additions || {
       enabled: false,
@@ -300,10 +306,16 @@ function mergeContextTrustedAdditions(context = {}, additions = {}, threshold = 
   const next = {
     ...context,
     synonyms: Array.isArray(context?.synonyms) ? [...context.synonyms] : [],
-    relation_templates: Array.isArray(context?.relation_templates) ? [...context.relation_templates] : []
+    relation_templates: Array.isArray(context?.relation_templates) ? [...context.relation_templates] : [],
+    pain_points: Array.isArray(context?.pain_points) ? [...context.pain_points] : [],
+    trust_triggers: Array.isArray(context?.trust_triggers) ? [...context.trust_triggers] : [],
+    tone_patterns: Array.isArray(context?.tone_patterns) ? [...context.tone_patterns] : []
   };
   const synonyms = Array.isArray(additions?.synonyms) ? additions.synonyms : [];
   const relationTemplates = Array.isArray(additions?.relation_templates) ? additions.relation_templates : [];
+  const painPoints = Array.isArray(additions?.pain_points) ? additions.pain_points : [];
+  const trustTriggers = Array.isArray(additions?.trust_triggers) ? additions.trust_triggers : [];
+  const tonePatterns = Array.isArray(additions?.tone_patterns) ? additions.tone_patterns : [];
 
   synonyms
     .filter((item) => Number(item?.confidence) >= threshold)
@@ -332,6 +344,50 @@ function mergeContextTrustedAdditions(context = {}, additions = {}, threshold = 
         source_label: item.source_label || 'llm'
       });
     });
+
+  painPoints
+    .filter((item) => Number(item?.confidence) >= threshold)
+    .forEach((item) => {
+      const id = `llm_pp_${slugify(item.audience_segment)}_${slugify(item.pain_point)}`;
+      if (next.pain_points.some((existing) => existing.id === id)) return;
+      next.pain_points.push({
+        id,
+        audience_segment: item.audience_segment,
+        pain_point: item.pain_point,
+        severity: item.severity || 'medium',
+        confidence: item.confidence,
+        source: 'llm'
+      });
+    });
+
+  trustTriggers
+    .filter((item) => Number(item?.confidence) >= threshold)
+    .forEach((item) => {
+      const id = `llm_tt_${slugify(item.trigger_type)}_${slugify(item.evidence_phrase)}`;
+      if (next.trust_triggers.some((existing) => existing.id === id)) return;
+      next.trust_triggers.push({
+        id,
+        trigger_type: item.trigger_type,
+        evidence_phrase: item.evidence_phrase,
+        confidence: item.confidence,
+        source: 'llm'
+      });
+    });
+
+  tonePatterns
+    .filter((item) => Number(item?.confidence) >= threshold)
+    .forEach((item) => {
+      const id = `llm_tp_${slugify(item.tone)}_${slugify(item.pattern)}`;
+      if (next.tone_patterns.some((existing) => existing.id === id)) return;
+      next.tone_patterns.push({
+        id,
+        tone: item.tone,
+        pattern: item.pattern,
+        confidence: item.confidence,
+        source: 'llm'
+      });
+    });
+
   return next;
 }
 
@@ -350,25 +406,45 @@ export function mergeOntologyWithTrustedLlmAdditions(
     (acc, [contextId, value]) => {
       const synonyms = (value?.synonyms || []).filter((item) => Number(item?.confidence) >= threshold);
       const templates = (value?.relation_templates || []).filter((item) => Number(item?.confidence) >= threshold);
-      if (synonyms.length || templates.length) {
+      const painPoints = (value?.pain_points || []).filter((item) => Number(item?.confidence) >= threshold);
+      const trustTriggers = (value?.trust_triggers || []).filter((item) => Number(item?.confidence) >= threshold);
+      const tonePatterns = (value?.tone_patterns || []).filter((item) => Number(item?.confidence) >= threshold);
+
+      if (synonyms.length || templates.length || painPoints.length || trustTriggers.length || tonePatterns.length) {
         acc.contexts[contextId] = {
           synonyms_count: synonyms.length,
-          relation_templates_count: templates.length
+          relation_templates_count: templates.length,
+          pain_points_count: painPoints.length,
+          trust_triggers_count: trustTriggers.length,
+          tone_patterns_count: tonePatterns.length
         };
       }
       acc.synonyms_count += synonyms.length;
       acc.relation_templates_count += templates.length;
+      acc.pain_points_count += painPoints.length;
+      acc.trust_triggers_count += trustTriggers.length;
+      acc.tone_patterns_count += tonePatterns.length;
       return acc;
     },
     {
       contexts: {},
       synonyms_count: 0,
-      relation_templates_count: 0
+      relation_templates_count: 0,
+      pain_points_count: 0,
+      trust_triggers_count: 0,
+      tone_patterns_count: 0
     }
   );
+  const totalTrusted =
+    trustedCounts.synonyms_count +
+    trustedCounts.relation_templates_count +
+    trustedCounts.pain_points_count +
+    trustedCounts.trust_triggers_count +
+    trustedCounts.tone_patterns_count;
+
   return buildOntologyEnvelope(snapshot, enrichedContexts, {
     trusted_llm_additions: {
-      enabled: trustedCounts.synonyms_count + trustedCounts.relation_templates_count > 0,
+      enabled: totalTrusted > 0,
       high_confidence_threshold: threshold,
       ...trustedCounts
     },
@@ -379,6 +455,12 @@ export function mergeOntologyWithTrustedLlmAdditions(
       errors: Array.isArray(llmEnrichment?.errors) ? llmEnrichment.errors : []
     }
   });
+}
+
+function sanitizeSpreadsheetCell(value) {
+  if (typeof value !== 'string') return value;
+  if (/^[=+\-@\t\r]/.test(value)) return '' + value;
+  return value;
 }
 
 export function buildOntologyExportSheets(ontology = {}) {
@@ -444,15 +526,16 @@ export function buildOntologyExportSheets(ontology = {}) {
     ]);
   });
 
+  const sanitizeRow = (row) => row.map(sanitizeSpreadsheetCell);
   return {
-    classesRows,
-    entitiesRows,
-    relationsRows,
-    entityClassRows,
-    templatesRows,
-    hierarchyRows,
-    synonymsRows,
-    metaEntitiesRows
+    classesRows: classesRows.map(sanitizeRow),
+    entitiesRows: entitiesRows.map(sanitizeRow),
+    relationsRows: relationsRows.map(sanitizeRow),
+    entityClassRows: entityClassRows.map(sanitizeRow),
+    templatesRows: templatesRows.map(sanitizeRow),
+    hierarchyRows: hierarchyRows.map(sanitizeRow),
+    synonymsRows: synonymsRows.map(sanitizeRow),
+    metaEntitiesRows: metaEntitiesRows.map(sanitizeRow)
   };
 }
 
@@ -460,6 +543,7 @@ function escapeTurtleLiteral(value) {
   return String(value ?? '')
     .replace(/\\/g, '\\\\')
     .replace(/"/g, '\\"')
+    .replace(/\r/g, '\\r')
     .replace(/\n/g, '\\n');
 }
 

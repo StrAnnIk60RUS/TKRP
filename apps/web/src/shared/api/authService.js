@@ -124,6 +124,7 @@ export async function loginUser(username, password) {
  */
 export async function logoutUser() {
   const token = getSessionToken();
+  const userId = getCurrentUserId();
   if (token) {
     try {
       await postAuthJson(`${API_URL}/api/auth/logout`, { token });
@@ -133,6 +134,16 @@ export async function logoutUser() {
   }
   setSessionToken(null);
   setCurrentUserId(null);
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem('projectFormDraft');
+      if (userId) {
+        localStorage.removeItem(`projectFormDraft:${userId}`);
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
 }
 
 /**

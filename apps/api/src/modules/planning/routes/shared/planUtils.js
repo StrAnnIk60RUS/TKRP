@@ -322,6 +322,7 @@ function pinnedRecordFromInput(item) {
   return {
     type: 'publication',
     score: 1,
+    reliability: item.reliability ?? item.data?.reliability ?? 1,
     pinned: true,
     matched_tokens: [],
     data: {

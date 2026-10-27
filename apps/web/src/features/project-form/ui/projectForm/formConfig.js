@@ -45,14 +45,59 @@ export const initialFormData = {
 
 const STEP_LABELS = {
   competitors: 'Конкуренты',
-  project: 'Проект',
+  project: 'О проекте',
   audience: 'Аудитория и план',
   precedents: 'Прецеденты',
-  draft: 'Черновик',
-  optimize: 'Оптимизация'
+  draft: 'Черновик плана',
+  optimize: 'Улучшение плана'
 }
 
-/** Аналитик и разработчик: поиск прецедентов отдельно, параметры оптимизации на последнем шаге. */
+export const STEP_META = {
+  competitors: {
+    id: 'competitors',
+    title: 'Источники примеров и конкуренты',
+    shortLabel: 'Конкуренты',
+    goal: 'Система строит контент-план на основе реальных публикаций с подтверждённой вовлечённостью. Вы можете сразу использовать уже накопленную базу примеров либо добавить ссылки на сообщества конкурентов.',
+    nextHint: 'Если база примеров уже заполнена, парсить новые ссылки не обязательно — сразу переходите к описанию вашего проекта.'
+  },
+  project: {
+    id: 'project',
+    title: 'Сведения о производителе и IT-проекте',
+    shortLabel: 'О проекте',
+    goal: 'Укажите компанию-разработчика и опишите ваш продукт: какую задачу он решает, чем отличается от аналогов и какую пользу приносит клиентам.',
+    nextHint: 'На следующем шаге вы выберете целевую аудиторию, площадки и график выхода публикаций.'
+  },
+  audience: {
+    id: 'audience',
+    title: 'Целевая аудитория, площадки и график публикаций',
+    shortLabel: 'Аудитория и план',
+    goal: 'Определите сегмент аудитории (B2B, B2C или B2G), задайте период контент-плана, желаемую частоту выхода постов, форматы и социальные сети.',
+    nextHint: 'После заполнения этих параметров система сможет подобрать релевантные примеры и сформировать план.'
+  },
+  precedents: {
+    id: 'precedents',
+    title: 'Подбор подходящих примеров (прецедентов)',
+    shortLabel: 'Прецеденты',
+    goal: 'Запустите поиск по базе знаний, чтобы система отобрала публикации и структуры планов, наиболее близкие к тематике вашего проекта и выбранным площадкам.',
+    nextHint: 'Найденные примеры станут опорой для генерации чернового контент-плана на следующем шаге.'
+  },
+  draft: {
+    id: 'draft',
+    title: 'Сборка чернового контент-плана',
+    shortLabel: 'Черновик плана',
+    goal: 'Сформируйте первичный вариант расписания и тем публикаций с помощью искусственного интеллекта или сразу запустите полный цикл создания и алгоритмического улучшения плана.',
+    nextHint: 'После генерации вы сможете открыть черновик в календаре или перейти к этапу повышения прогнозируемого отклика.'
+  },
+  optimize: {
+    id: 'optimize',
+    title: 'Улучшение контент-плана (прогноз отклика и эволюционный подбор)',
+    shortLabel: 'Улучшение плана',
+    goal: 'Запустите двухэтапную оптимизацию: прогнозная модель машинного обучения оценит ожидаемые лайки и охват, а генетический алгоритм подберёт лучшее сочетание тем, форматов, тональности и призывов к действию.',
+    nextHint: 'По завершении откройте итоговый план, чтобы просмотреть календарь, отредактировать посты или выгрузить документ.'
+  }
+}
+
+/** Маркетолог-аналитик: все 6 шагов, включая отдельный шаг поиска прецедентов. */
 export const wizardStepIdsExtended = [
   'competitors',
   'project',
@@ -62,8 +107,8 @@ export const wizardStepIdsExtended = [
   'optimize'
 ]
 
-/** SMM: подбор прецедентов встроен в сборку черновика. */
-export const wizardStepIdsSmm = ['competitors', 'project', 'audience', 'draft', 'optimize']
+/** SMM: 3 шага — конкуренты, проект, аудитория; контент-план генерируется и оптимизируется в 1 клик. */
+export const wizardStepIdsSmm = ['competitors', 'project', 'audience']
 
 export const wizardSteps = wizardStepIdsExtended.map((id) => STEP_LABELS[id])
 export const wizardStepsSmm = wizardStepIdsSmm.map((id) => STEP_LABELS[id])
@@ -71,15 +116,18 @@ export const wizardStepsSmm = wizardStepIdsSmm.map((id) => STEP_LABELS[id])
 /** Быстрый vs расширенный режим онбординга. */
 export const ONBOARDING_MODES = {
   quick: { label: 'Быстрый режим', hint: 'Минимум полей, для SMM', roleHint: 'smm' },
-  extended: { label: 'Расширенный режим', hint: 'Полная форма, параметры GA/ML', roleHint: 'dev' }
+  extended: { label: 'Расширенный режим', hint: 'Полная форма, параметры оптимизации', roleHint: 'analyst' }
 }
 
-export function getWizardStepIds(isDeveloper, isAnalyst = false) {
-  return isDeveloper || isAnalyst ? wizardStepIdsExtended : wizardStepIdsSmm
+export function getWizardStepIds(isAnalyst = false, legacyDeveloper = false) {
+  const isExtended = typeof isAnalyst === 'object' && isAnalyst !== null
+    ? Boolean(isAnalyst.isAnalyst || isAnalyst.isExtendedMode || isAnalyst.isDeveloper)
+    : Boolean(isAnalyst || legacyDeveloper);
+  return isExtended ? wizardStepIdsExtended : wizardStepIdsSmm;
 }
 
-export function getWizardSteps(isDeveloper, isAnalyst = false) {
-  return getWizardStepIds(isDeveloper, isAnalyst).map((id) => STEP_LABELS[id])
+export function getWizardSteps(isAnalyst = false, legacyDeveloper = false) {
+  return getWizardStepIds(isAnalyst, legacyDeveloper).map((id) => STEP_LABELS[id]);
 }
 
 export const requiredFields = [
@@ -145,6 +193,19 @@ export const demoHorizonExampleOptions = {
   example_dev_project_outsourcing_unfamiliar_1m_daily: 'DEV: Аутсорс/delivery (1 месяц) — обход чеклиста'
 }
 
+function buildDefaultDemoDates(months = 3) {
+  const start = new Date()
+  start.setDate(start.getDate() + 1)
+  const end = new Date(start)
+  end.setMonth(end.getMonth() + months)
+  return {
+    startDate: start.toISOString().slice(0, 10),
+    endDate: end.toISOString().slice(0, 10)
+  }
+}
+
+const defaultDemoRange = buildDefaultDemoDates(3)
+
 export const demoExampleFormData = {
   producerName: 'CloudTech Solutions',
   producerActivitySpecification:
@@ -155,7 +216,7 @@ export const demoExampleFormData = {
   projectGoals:
     'За 3 месяца привлечь 50 новых B2B-клиентов, увеличить узнаваемость бренда в IT-сообществе, позиционировать продукт как лидера в сегменте облачной аналитики для среднего бизнеса.',
   projectFeatures:
-    'Автоматическая аналитика в реальном времени, интерактивные дашборды, прогнозирование трендов с помощью ML, интеграция с популярными CRM и ERP системами, API для разработчиков, мобильное приложение для iOS и Android.',
+    'Автоматическая аналитика в реальном времени, интерактивные дашборды, прогнозирование трендов с помощью искусственного интеллекта, интеграция с популярными CRM и ERP системами, API для разработчиков, мобильное приложение для iOS и Android.',
   projectBenefits:
     'Сокращение времени на подготовку отчетов с 8 часов до 1 часа, увеличение точности прогнозов на 40%, ROI до 250% за первый год использования, масштабируемость от 10 до 10000+ пользователей.',
   consumerCategory: 'B2B',
@@ -165,12 +226,11 @@ export const demoExampleFormData = {
     'Автоматизация процессов аналитики, повышение скорости принятия решений, снижение операционных затрат на подготовку отчетов, улучшение качества прогнозирования.',
   consumerLifestyle:
     'Профессионалы, ценящие эффективность и технологичность. Активно используют LinkedIn для профессионального развития, посещают отраслевые конференции, читают специализированные издания по бизнес-аналитике и IT.',
-  contentPlanStartDate: '2026-03-01',
-  contentPlanEndDate: '2026-05-31',
+  contentPlanStartDate: defaultDemoRange.startDate,
+  contentPlanEndDate: defaultDemoRange.endDate,
   publicationFrequency: '3-4_per_week',
   publicationDayMode: 'spread',
-  keyDates:
-    '15 марта - запуск бета-версии, 1 апреля - вебинар по внедрению, 15 апреля - кейс-стади с первым клиентом, 1 мая - обновление функционала, 20 мая - итоговая презентация результатов.',
+  keyDates: '',
   contentFormats: ['text', 'image', 'video'],
   platforms: ['linkedin', 'vk'],
   evoPopulationSize: '32',
@@ -181,6 +241,9 @@ export const demoExampleFormData = {
   evoCrossoverProbability: '0.75',
   evoMutationProbability: '0.2',
   evoRandomSeed: '',
+  evoSelectionMethod: 'tournament',
+  evoCrossoverMethod: 'one_point',
+  evoMutationMethod: 'random_replace',
   evoPostPopulationSize: '48',
   evoPostGenerations: '50',
   evoPostStagnationGenerations: '12',
@@ -192,3 +255,4 @@ export const demoExampleFormData = {
   evoPostCrossoverMethod: 'one_point',
   evoPostMutationMethod: 'random_replace'
 }
+

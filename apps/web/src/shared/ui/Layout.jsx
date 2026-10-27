@@ -61,9 +61,8 @@ const Layout = ({ children }) => {
                       title="Роль: разный уровень детализации и число шагов"
                       aria-describedby="role-mode-hint"
                     >
-                      <option value={ROLES.SMM}>Маркетолог (SMM) — быстрый, 5 шагов</option>
-                      <option value={ROLES.ANALYST}>Аналитик — расширенный, 6 шагов</option>
-                      <option value={ROLES.DEVELOPER}>Разработчик — полный, обход чеклиста</option>
+                      <option value={ROLES.SMM}>Маркетолог (SMM) — быстрый, 3 шага</option>
+                      <option value={ROLES.ANALYST}>Маркетолог-аналитик — аналитический, 6 шагов</option>
                     </select>
                     <div id="role-mode-hint" className="role-mode-hint">
                       {ROLE_MODE_LABELS[role]?.short}: {ROLE_MODE_LABELS[role]?.detail}

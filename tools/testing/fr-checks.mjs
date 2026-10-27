@@ -38,6 +38,23 @@ import {
   extractJsonObjectFromContent
 } from '../../apps/api/src/modules/enrichment/services/semanticEnrichmentPipeline.js'
 import { parseJsonObjectFromLlmContent } from '../../apps/api/src/shared/utils/llmJsonParsing.js'
+import {
+  enrichWithEngagementRate,
+  computePostEngagementMetrics
+} from '../../apps/api/openrouter.js'
+import {
+  normalizeDraftPlanResponse,
+  mergePinnedPublications
+} from '../../apps/api/src/modules/planning/routes/shared/planUtils.js'
+import {
+  DRAFT_PLAN_PIPELINE_TEST_UTILS,
+  PLAN_SKELETON_JSON_SCHEMA,
+  PLAN_MONTH_BATCH_JSON_SCHEMA,
+  buildCompactRagContext
+} from '../../apps/api/src/modules/planning/services/draftPlanGenerationPipeline.js'
+import { sendRouteError } from '../../apps/api/src/shared/http/routeUtils.js'
+import { buildSnapshotSummary } from '../../apps/api/src/modules/planning/services/planSnapshotStore.js'
+import { buildPublicationRows } from '../../apps/web/src/shared/lib/contentPlanExport.js'
 
 const SAMPLE_JSON = JSON.stringify({
   competitors: [
@@ -103,28 +120,6 @@ const FIXTURE_SEARCH_RESULTS = {
   }
 }
 
-const FIXTURE_PLAN_RESPONSE = {
-  success: true,
-  draft: {
-    draft_content_plan: {
-      plan_id: 'fr_plan_1',
-      publications: [
-        { publication_id: 'pub_1', title: 'Публикация 1', format: 'text', objective: 'inform' }
-      ],
-      planning_horizon: { start_date: '2026-06-01', end_date: '2026-08-31' },
-      notes: 'комментарий FR-5.1-09'
-    }
-  },
-  rag: FIXTURE_SEARCH_RESULTS,
-  usage: { total_tokens: 4096 },
-  generation_metadata: {
-    route: 'generate',
-    rag_context_compact: true,
-    skeleton_generated: true,
-    months_filled: ['2026-06']
-  },
-  request_id: 'fr-req-plan-001'
-}
 
 const FIXTURE_ERROR_400 = { success: false, error: 'Отсутствует поле query', request_id: 'fr-err-400' }
 const FIXTURE_ERROR_413 = {
@@ -160,15 +155,22 @@ export function checkFr_2_1_02() {
 }
 
 export function checkFr_2_1_03() {
-  const g = FIXTURE_ENRICH_RESPONSE.request_guardrails
-  assertCheck(g.batches_count >= 1 && g.limits?.max_request_bytes > 0, 'guardrails')
-  assertCheck(FIXTURE_ERROR_413.request_guardrails, '413 guardrails')
+  const data = parseCompetitorsJsonFileContent(SAMPLE_JSON)
+  const config = getEnrichmentConfig()
+  const guardrails = summarizeEnrichmentLimits(data, config)
+  assertCheck(guardrails.batches_count >= 1, 'guardrails batches_count')
+  assertCheck(guardrails.limits?.max_request_bytes > 0, 'guardrails max_request_bytes')
+  assertCheck(guardrails.max_batch_payload_bytes > 0, 'guardrails max_batch_payload_bytes')
 }
 
 export function checkFr_2_1_04() {
-  const post = FIXTURE_ENRICH_RESPONSE.enriched_data.competitors[0].posts[0]
-  assertCheck(typeof post.engagement_rate === 'number', 'engagement_rate')
-  assertCheck(FIXTURE_ENRICH_RESPONSE.metadata.engagement_rate_calculated_locally === true, 'local flag')
+  const data = parseCompetitorsJsonFileContent(SAMPLE_JSON)
+  const enriched = enrichWithEngagementRate(data)
+  const post = enriched.competitors[0].posts[0]
+  assertCheck(typeof post.engagement_rate === 'number' && post.engagement_rate > 0, 'engagement_rate computed')
+  assertCheck(post.metrics_quality === 'views_based', 'metrics_quality views_based')
+  const proxyMetrics = computePostEngagementMetrics({ likes: 10, views: 0, comments: 2, shares: 1 })
+  assertCheck(proxyMetrics.metrics_quality === 'interaction_proxy', 'metrics_quality interaction_proxy')
 }
 
 export function checkFr_2_1_05() {
@@ -192,14 +194,10 @@ export function checkFr_2_1_06() {
 export function checkFr_2_1_07() {
   const base = parseCompetitorsJsonFileContent(SAMPLE_JSON)
   const semanticMap = new Map()
-  semanticMap.set('fr_c1__0', { topic: 'x', tone: 'neutral', objective: 'inform' })
+  semanticMap.set('fr_c1_post_1', { topic: 'AI Инновации', tone: 'expert', objective: 'inform' })
   const merged = mergeSemanticBatchResults(base, [semanticMap])
   assertCheck(Array.isArray(merged.competitors) && merged.competitors[0].posts.length >= 1, 'merge')
-  assertCheck(
-    FIXTURE_ENRICH_RESPONSE.metadata.partial_enrichment === false ||
-      typeof FIXTURE_ENRICH_RESPONSE.metadata.partial_enrichment === 'boolean',
-    'partial flag'
-  )
+  assertCheck(merged.competitors[0].posts[0].topic === 'AI Инновации', 'merged semantic topic updated')
 }
 
 export function checkFr_2_1_08() {
@@ -228,9 +226,21 @@ export function checkFr_2_1_10() {
 }
 
 export function checkFr_2_1_11() {
-  assertCheck(FIXTURE_PLAN_RESPONSE.draft?.draft_content_plan, 'draft')
-  const batched = { ...FIXTURE_PLAN_RESPONSE, generation_metadata: { route: 'generate-batched' } }
-  assertCheck(batched.generation_metadata.route === 'generate-batched', 'batched route')
+  const sampleDraft = {
+    draft_content_plan: {
+      plan_id: 'fr_plan_1',
+      publications: [
+        { publication_id: 'pub_1', platform: 'vk', topic: 'Обзор платформы', format: 'text', objective: 'inform' }
+      ]
+    }
+  }
+  const normalized = normalizeDraftPlanResponse(sampleDraft, {
+    contentPlanStartDate: '2026-06-01',
+    contentPlanEndDate: '2026-08-31',
+    platforms: ['vk']
+  })
+  assertCheck(normalized.draft_content_plan?.publications?.length === 1, 'draft normalized publications')
+  assertCheck(normalized.draft_content_plan.publications[0].format === 'text', 'format normalized')
 }
 
 export function checkFr_2_1_12() {
@@ -244,30 +254,98 @@ export function checkFr_2_1_12() {
 }
 
 export function checkFr_2_1_13() {
-  const meta = FIXTURE_PLAN_RESPONSE.generation_metadata
-  const rag = FIXTURE_PLAN_RESPONSE.rag
-  assertCheck(rag.publications.length >= 0, 'rag publications')
-  assertCheck(meta.route, 'generation route')
+  const searchResults = {
+    publications: [
+      { score: 0.9, data: { publication_id: 'p1', platform: 'vk' } },
+      { score: 0.8, data: { publication_id: 'p2', platform: 'linkedin' } },
+      { score: 0.7, data: { publication_id: 'p3', platform: 'vk' } }
+    ]
+  }
+  const pinned = [{ publication_id: 'pinned_1', platform: 'vk', topic: 'Закреплённый пост' }]
+  const merged = mergePinnedPublications(searchResults, pinned, 2)
+  assertCheck(merged.publications.length <= 6, 'retrieval context limited by rag_limit')
+  assertCheck(merged.publications.some((p) => p.pinned === true), 'pinned publication preserved in context')
 }
 
 export function checkFr_2_1_14() {
-  assertCheck(FIXTURE_PLAN_RESPONSE.generation_metadata.rag_context_compact === true, 'compact context')
+  const compact = buildCompactRagContext(FIXTURE_SEARCH_RESULTS)
+  assertCheck(compact.summary?.publications_count >= 1, 'compact publications extracted')
+  assertCheck(Array.isArray(compact.summary?.precedent_ids), 'precedent_ids collected')
+  assertCheck(compact.publications[0].retrieval_score !== undefined, 'compact publication score preserved')
 }
 
 export function checkFr_2_1_15() {
-  assertCheck(FIXTURE_PLAN_RESPONSE.generation_metadata.skeleton_generated === true, 'skeleton')
-  assertCheck(FIXTURE_PLAN_RESPONSE.draft.draft_content_plan.planning_horizon, 'horizon in plan')
+  const rawSkeleton = {
+    calendar_plan: [
+      {
+        month: 1,
+        theme: 'Старт',
+        slots: [
+          { slot_id: 's1', planned_date: '2026-06-05', platform: 'vk', format: 'text', objective: 'inform', tone: 'expert' }
+        ]
+      }
+    ]
+  }
+  const formInput = {
+    contentPlanStartDate: '2026-06-01',
+    contentPlanEndDate: '2026-06-30',
+    platforms: ['vk']
+  }
+  const repaired = DRAFT_PLAN_PIPELINE_TEST_UTILS.repairSkeleton(rawSkeleton, formInput, 1)
+  assertCheck(repaired.publication_slots?.length === 1, 'repaired slots length')
+  assertCheck(repaired.publication_slots[0].platform === 'vk', 'repaired slot platform')
+  assertCheck(Boolean(PLAN_SKELETON_JSON_SCHEMA.properties?.calendar_plan), 'skeleton schema includes calendar_plan')
 }
 
 export function checkFr_2_1_16() {
-  assertCheck(Array.isArray(FIXTURE_PLAN_RESPONSE.generation_metadata.months_filled), 'months')
-  assertCheck(FIXTURE_PLAN_RESPONSE.draft.draft_content_plan.publications.length >= 1, 'publications')
+  assertCheck(PLAN_MONTH_BATCH_JSON_SCHEMA.properties?.publications !== undefined, 'batch schema publications property')
+  const fallback = {
+    key_message: 'Резервный посыл',
+    summary: 'Резервный текст описания для тестовой публикации контент-плана.'
+  }
+  const result = DRAFT_PLAN_PIPELINE_TEST_UTILS.repairPublicationSemanticCoherence(
+    {
+      publication_id: 'pub_test',
+      platform: 'vk',
+      topic: 'IT разработка',
+      format: 'text',
+      objective: 'inform',
+      tone: 'expert',
+      key_message: 'IT разработка новых инструментов',
+      cta: '',
+      summary: 'Полный текст публикации про разработку новых инструментов для IT-команд.'
+    },
+    fallback,
+    { projectName: 'DevOps Tool' }
+  )
+  assertCheck(result?.publication?.key_message?.length > 0, 'key message present')
+  assertCheck(result?.publication?.summary?.length > 0, 'summary present')
 }
 
 export function checkFr_2_1_17() {
-  const p = FIXTURE_PLAN_RESPONSE
-  assertCheck(p.success && p.draft && p.rag && p.generation_metadata && p.request_id, 'contract')
-  assertCheck(p.usage.total_tokens > 0, 'usage')
+  const sampleDraft = {
+    draft_content_plan: {
+      plan_id: 'fr_plan_17',
+      publications: [
+        { publication_id: 'pub_17', platform: 'vk', topic: 'Архитектура', format: 'text', objective: 'inform' }
+      ]
+    }
+  }
+  const normalized = normalizeDraftPlanResponse(sampleDraft, {
+    contentPlanStartDate: '2026-06-01',
+    contentPlanEndDate: '2026-06-30'
+  })
+  const responsePayload = {
+    success: true,
+    draft: normalized,
+    rag: FIXTURE_SEARCH_RESULTS,
+    usage: { total_tokens: 1200 },
+    generation_metadata: { route: 'generate' },
+    request_id: 'req-fr-17'
+  }
+  assertCheck(responsePayload.success === true, 'contract success')
+  assertCheck(responsePayload.draft.draft_content_plan.plan_id === 'fr_plan_17', 'contract draft')
+  assertCheck(responsePayload.request_id === 'req-fr-17', 'contract request_id')
 }
 
 export function checkFr_2_1_18() {
@@ -276,8 +354,24 @@ export function checkFr_2_1_18() {
 }
 
 export function checkFr_2_1_19() {
-  assertCheck(FIXTURE_ERROR_400.request_id && FIXTURE_ERROR_400.success === false, '400')
-  assertCheck(FIXTURE_ERROR_413.request_id && FIXTURE_ERROR_413.success === false, '413')
+  let captured = null
+  const mockRes = {
+    statusCode: 200,
+    status(code) {
+      this.statusCode = code
+      return this
+    },
+    json(body) {
+      captured = { statusCode: this.statusCode, body }
+      return this
+    }
+  }
+  const mockReq = { requestId: 'req-fr-err-400' }
+  sendRouteError(mockRes, mockReq, 400, 'Некорректный запрос', new Error('Отсутствует query'))
+  assertCheck(captured.statusCode === 400, 'status is 400')
+  assertCheck(captured.body.request_id === 'req-fr-err-400', 'request_id is preserved')
+  assertCheck(captured.body.success === false, 'success is false')
+  assertCheck(captured.body.error === 'Отсутствует query', 'error message preserved')
 }
 
 export function checkFr_5_1_01() {
@@ -300,8 +394,21 @@ export function checkFr_5_1_01() {
 }
 
 export function checkFr_5_1_02() {
-  assertCheck(FIXTURE_PLAN_RESPONSE.draft.draft_content_plan.publications.length >= 1, 'draft pubs')
-  assertCheck(FIXTURE_PLAN_RESPONSE.rag.publications.length <= 20, 'rag limit bound')
+  const merged = mergePinnedPublications(
+    { publications: Array.from({ length: 30 }, (_, i) => ({ data: { publication_id: `p_${i}` } })) },
+    [],
+    10
+  )
+  assertCheck(merged.publications.length <= 14, 'rag_limit bounded in context')
+  const validDraft = normalizeDraftPlanResponse(
+    {
+      draft_content_plan: {
+        publications: [{ platform: 'vk', topic: 'T1' }]
+      }
+    },
+    {}
+  )
+  assertCheck(validDraft.draft_content_plan.publications.length === 1, 'draft normalized')
 }
 
 export function checkFr_5_1_03() {
@@ -320,14 +427,36 @@ export function checkFr_5_1_04() {
 }
 
 export function checkFr_5_1_05() {
-  assertCheck(FIXTURE_ENRICH_RESPONSE.persistence, 'persist')
-  const snap = { success: true, snapshot: { token: 'a'.repeat(32), plan: FIXTURE_PLAN_RESPONSE.draft.draft_content_plan } }
-  assertCheck(snap.snapshot.token.length >= 10, 'snapshot token')
+  const summary = buildSnapshotSummary({
+    plan_id: 'plan_snap_test',
+    display_name: 'Тестовый контент-план',
+    publications: [
+      { format: 'text', platform: 'vk' },
+      { format: 'image', platform: 'telegram' }
+    ],
+    platforms: ['vk', 'telegram'],
+    planning_horizon: { start_date: '2026-06-01', end_date: '2026-06-30' },
+    kpi_targets: { avg_engagement_rate: 0.05 }
+  })
+  assertCheck(summary.plan_id === 'plan_snap_test', 'plan_id in summary')
+  assertCheck(summary.publications_count === 2, 'publications_count in summary')
+  assertCheck(summary.formats.includes('text') && summary.formats.includes('image'), 'formats collected')
 }
 
 export function checkFr_5_1_06() {
-  const m = FIXTURE_ENRICH_RESPONSE.metadata.batching
-  assertCheck(m.total_batches >= 1 && FIXTURE_ENRICH_RESPONSE.usage.total_tokens > 0, 'logging fields')
+  const data = parseCompetitorsJsonFileContent(SAMPLE_JSON)
+  const limits = summarizeEnrichmentLimits(data, getEnrichmentConfig())
+  assertCheck(limits.batches_count >= 1, 'batching total_batches')
+  assertCheck(limits.limits.auto_batch === true, 'auto_batch flag')
+  const { dataToDownload } = buildEnrichmentDownloadPayload({
+    resultData: {
+      enriched_data: { competitors: [] },
+      metadata: { enriched_at: new Date().toISOString() },
+      usage: { total_tokens: 340 }
+    },
+    competitorsFileName: 'data.json'
+  })
+  assertCheck(dataToDownload._metadata?.usage?.total_tokens === 340, 'usage tokens tracked in metadata')
 }
 
 export function checkFr_5_1_07() {
@@ -337,15 +466,32 @@ export function checkFr_5_1_07() {
 }
 
 export function checkFr_5_1_08() {
-  assertCheck(FIXTURE_ERROR_400.error.includes('query'), 'empty query error')
-  assertCheck(FIXTURE_SEARCH_RESULTS.publications.length <= 20, 'search limit')
+  const emptyQuery = '   '
+  const isQueryInvalid = !emptyQuery || typeof emptyQuery !== 'string' || !emptyQuery.trim()
+  assertCheck(isQueryInvalid === true, 'empty query rejected')
+  const query = buildSuggestedPrecedentQuery({
+    ...initialFormData,
+    projectName: 'B2B SaaS',
+    platforms: ['vk', 'linkedin']
+  })
+  assertCheck(query.includes('B2B SaaS'), 'query generated from form input')
 }
 
 export function checkFr_5_1_09() {
-  const notes = FIXTURE_PLAN_RESPONSE.draft.draft_content_plan.notes
-  assertCheck(typeof notes === 'string' && notes.length > 0, 'plan notes')
+  const summary = buildSnapshotSummary({
+    plan_id: 'fr_snap_notes',
+    notes: 'Заметки маркетолога о стратегии',
+    publications: [{ format: 'text', platform: 'vk' }]
+  })
+  assertCheck(summary.has_notes === true, 'notes preserved in snapshot summary')
+  const repaired = DRAFT_PLAN_PIPELINE_TEST_UTILS.repairSkeleton(
+    { notes: 'Стратегический фокус', calendar_plan: [] },
+    { platforms: ['vk'] },
+    1
+  )
+  assertCheck(repaired.notes === 'Стратегический фокус', 'notes preserved in repaired skeleton')
   const { dataToDownload } = buildEnrichmentDownloadPayload({
-    resultData: FIXTURE_ENRICH_RESPONSE,
+    resultData: { enriched_data: { competitors: [] }, metadata: { success: true } },
     competitorsFileName: 'x.json'
   })
   assertCheck(dataToDownload._metadata?.success === true, 'persist metadata in download')
@@ -403,30 +549,34 @@ export function checkFr_ui_sc_04() {
 }
 
 export function checkFr_ui_sc_05() {
-  const historyKey = 'contentPlanHistory'
-  const entry = {
-    id: 'fr_plan',
-    type: 'draft',
-    saved_at: new Date().toISOString(),
-    snapshot_token: 'b'.repeat(32),
-    summary: { plan_id: 'fr_plan', publications_count: 1 }
-  }
-  const serialized = JSON.stringify([entry])
-  const parsed = JSON.parse(serialized)
-  assertCheck(parsed[0].snapshot_token.length >= 10, 'history entry')
-  assertCheck(historyKey.length > 0, 'storage key defined')
+  const summary = buildSnapshotSummary({
+    plan_id: 'ui_snap_1',
+    publications: [{ format: 'text', platform: 'vk' }]
+  })
+  assertCheck(summary.plan_id === 'ui_snap_1', 'summary built')
+  assertCheck(summary.publications_count === 1, 'publications count in summary')
 }
 
 export function checkFr_ui_sc_06() {
-  const plan = FIXTURE_PLAN_RESPONSE.draft.draft_content_plan
-  const exportPayload = {
-    plan_id: plan.plan_id,
-    publications: plan.publications,
-    exported_at: new Date().toISOString(),
-    format: 'xlsx/pdf'
-  }
-  const json = JSON.stringify(exportPayload)
-  assertCheck(json.includes('publications') && json.includes('plan_id'), 'export structure')
+  const publications = [
+    {
+      planned_date: '2026-06-01',
+      platform: 'vk',
+      topic: 'Тестовая публикация',
+      format: 'text',
+      objective: 'inform',
+      key_message: 'Главный посыл',
+      cta: 'Подпишитесь',
+      tone: 'expert',
+      expected_kpi: { engagement_rate: 0.045, predicted_likes: 25 }
+    }
+  ]
+  const rows = buildPublicationRows(publications)
+  assertCheck(rows.length === 1, 'publication rows built')
+  assertCheck(rows[0]['Тема'] === 'Тестовая публикация', 'topic mapped to column')
+  assertCheck(rows[0]['Формат'] === 'text', 'format mapped to column')
+  assertCheck(rows[0]['Платформа'] === 'VK', 'platform uppercase')
+  assertCheck(rows[0]['Прогноз лайков'] === '25', 'predicted likes mapped')
 }
 
 /** Все проверки по имени из реестра */

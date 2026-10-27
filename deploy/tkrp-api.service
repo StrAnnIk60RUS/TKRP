@@ -1,0 +1,15 @@
+[Unit]
+Description=TKRP API
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/var/www/tkrp/apps/api
+EnvironmentFile=/var/www/tkrp/.env
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

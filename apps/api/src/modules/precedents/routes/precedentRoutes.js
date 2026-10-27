@@ -16,11 +16,14 @@ import {
 import { requireLocalOrAdminApiKey } from '../../../shared/http/security.js';
 import { requireSessionOrAdminApiKey } from '../../auth/services/sessionGate.js';
 import { sendRouteError } from '../../../shared/http/routeUtils.js';
+import { rejectInstagramIfForbidden } from '../../auth/services/instagramAccess.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEMO_FIXTURE_PATH = path.join(__dirname, '..', 'fixtures', 'demoPrecedents.json');
 
 const router = Router();
+
+router.use(rejectInstagramIfForbidden);
 
 router.get('/summary', requireSessionOrAdminApiKey, async (req, res) => {
   try {
@@ -85,7 +88,7 @@ router.post('/seed', requireLocalOrAdminApiKey, (req, res) => {
 
 router.post('/search', requireSessionOrAdminApiKey, async (req, res) => {
   try {
-    const { query, limit, platform, audience_segments } = req.body || {};
+    const { query, limit, platform, platforms, audience_segments } = req.body || {};
     if (!query || typeof query !== 'string' || !query.trim()) {
       return res.status(400).json({
         success: false,
@@ -97,6 +100,7 @@ router.post('/search', requireSessionOrAdminApiKey, async (req, res) => {
     const results = await searchPrecedents(query, {
       limit,
       platform,
+      platforms,
       audience_segments
     });
 

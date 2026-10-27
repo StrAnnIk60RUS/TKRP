@@ -10,7 +10,7 @@ import { deleteSnapshot, listSnapshots, loadSnapshot, saveSnapshot } from '../se
 import { resolveSession } from '../../auth/services/authStore.js';
 import { requireSessionOrAdminApiKey } from '../../auth/services/sessionGate.js';
 import { rejectInstagramIfForbidden } from '../../auth/services/instagramAccess.js';
-import { enqueueJob, getJobStatus, listJobs, getJobQueueStats } from '../../../shared/runtime/jobQueue.js';
+import { enqueueJob, getJobStatus, listJobs, getJobQueueStats, jobEvents } from '../../../shared/runtime/jobQueue.js';
 import {
   generatePublicationMedia,
   mediaKindForFormat,
@@ -146,12 +146,19 @@ router.post('/optimize', requireSessionOrAdminApiKey, async (req, res) => {
 router.post('/optimize:async', requireSessionOrAdminApiKey, async (req, res) => {
   try {
     const payload = req.body || {};
-    const jobId = enqueueJob('plan_optimize', (body) => runHierarchicalOptimization(body), payload);
+    const userId = await resolveUserId(req);
+    const jobId = enqueueJob(
+      'plan_optimize',
+      (body, onProgress) => runHierarchicalOptimization({ ...body, onProgress }),
+      payload,
+      { userId }
+    );
     return res.status(202).json({
       success: true,
       job_id: jobId,
       status: 'queued',
       status_url: `/api/plan/jobs/${jobId}`,
+      stream_url: `/api/plan/jobs/${jobId}/events`,
       request_id: req.requestId
     });
   } catch (error) {
@@ -185,10 +192,12 @@ router.post('/media', requireSessionOrAdminApiKey, async (req, res) => {
     });
   }
   try {
+    const userId = await resolveUserId(req);
     const jobId = enqueueJob(
       'media_generate',
       (body) => generatePublicationMedia(body),
-      { prompt, format, platform }
+      { prompt, format, platform },
+      { userId }
     );
     return res.status(202).json({
       success: true,
@@ -216,7 +225,8 @@ router.get('/media/files/:fileName', requireSessionOrAdminApiKey, (req, res) => 
 
 router.get('/jobs/:jobId', requireSessionOrAdminApiKey, async (req, res) => {
   const job = getJobStatus(req.params?.jobId);
-  if (!job) {
+  const userId = await resolveUserId(req);
+  if (!job || (job.userId && userId && job.userId !== userId)) {
     return res.status(404).json({
       success: false,
       error: 'Job не найден или уже expiring (TTL cleanup)',
@@ -230,11 +240,101 @@ router.get('/jobs/:jobId', requireSessionOrAdminApiKey, async (req, res) => {
   });
 });
 
+router.get(['/jobs/:jobId/events', '/jobs/:jobId/stream'], requireSessionOrAdminApiKey, async (req, res) => {
+  const jobId = req.params?.jobId;
+  const job = getJobStatus(jobId);
+  const userId = await resolveUserId(req);
+
+  if (!job || (job.userId && userId && job.userId !== userId)) {
+    return res.status(404).json({
+      success: false,
+      error: 'Job не найден или уже expiring',
+      request_id: req.requestId
+    });
+  }
+
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache, no-transform',
+    'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no'
+  });
+  res.write(': connected\n\n');
+
+  if (job.status === 'completed') {
+    res.write(`event: completed\ndata: ${JSON.stringify({ status: 'completed', result: job.result })}\n\n`);
+    res.end();
+    return;
+  }
+  if (job.status === 'failed') {
+    res.write(`event: failed\ndata: ${JSON.stringify({ status: 'failed', error: job.error })}\n\n`);
+    res.end();
+    return;
+  }
+
+  res.write(`event: status\ndata: ${JSON.stringify({ status: job.status, progress: job.progress || null })}\n\n`);
+
+  const onProgress = (progress) => {
+    try {
+      if (!res.writableEnded) {
+        res.write(`event: progress\ndata: ${JSON.stringify({ status: 'running', progress })}\n\n`);
+      }
+    } catch (_err) {
+      cleanup();
+    }
+  };
+
+  const onCompleted = (data) => {
+    try {
+      if (!res.writableEnded) {
+        res.write(`event: completed\ndata: ${JSON.stringify({ status: 'completed', result: data?.result })}\n\n`);
+      }
+    } catch (_err) {
+      // ignore
+    } finally {
+      cleanup();
+      if (!res.writableEnded) {
+        res.end();
+      }
+    }
+  };
+
+  const onFailed = (data) => {
+    try {
+      if (!res.writableEnded) {
+        res.write(`event: failed\ndata: ${JSON.stringify({ status: 'failed', error: data?.error })}\n\n`);
+      }
+    } catch (_err) {
+      // ignore
+    } finally {
+      cleanup();
+      if (!res.writableEnded) {
+        res.end();
+      }
+    }
+  };
+
+  const cleanup = () => {
+    jobEvents.off(`progress:${jobId}`, onProgress);
+    jobEvents.off(`completed:${jobId}`, onCompleted);
+    jobEvents.off(`failed:${jobId}`, onFailed);
+  };
+
+  jobEvents.on(`progress:${jobId}`, onProgress);
+  jobEvents.on(`completed:${jobId}`, onCompleted);
+  jobEvents.on(`failed:${jobId}`, onFailed);
+
+  req.on('close', cleanup);
+  req.on('error', cleanup);
+  res.on('close', cleanup);
+  res.on('error', cleanup);
+});
+
 router.get('/jobs', requireSessionOrAdminApiKey, async (req, res) => {
   const limit = Number(req.query?.limit);
   return res.json({
     success: true,
-    jobs: listJobs(Number.isFinite(limit) && limit > 0 ? limit : 50),
+    jobs: listJobs(Number.isFinite(limit) && limit > 0 ? limit : 50, await resolveUserId(req)),
     stats: getJobQueueStats(),
     request_id: req.requestId
   });

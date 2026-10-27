@@ -14,11 +14,11 @@ export function canUseInstagram(user) {
 
 export function isInstagramUrl(value) {
   const raw = typeof value === 'string' ? value.trim() : '';
-  if (!raw) return false;
+  if (!raw || /[\r\n]/.test(raw)) return false;
   try {
     const withProtocol = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
     const host = new URL(withProtocol).hostname.toLowerCase().replace(/^www\./, '');
-    return INSTAGRAM_HOSTS.has(host);
+    return INSTAGRAM_HOSTS.has(host) || host.endsWith('.instagram.com') || host.endsWith('.instagr.am');
   } catch {
     return false;
   }
@@ -33,26 +33,15 @@ function listHasInstagramPlatform(list) {
 }
 
 function nodeUsesInstagram(node, depth) {
-  if (depth > 8 || node == null) return false;
+  if (depth > 8) return true;
+  if (node == null) return false;
   if (typeof node === 'string') return hasInstagramPlatformValue(node) || isInstagramUrl(node);
   if (Array.isArray(node)) return node.some((item) => nodeUsesInstagram(item, depth + 1));
   if (typeof node !== 'object') return false;
   if (hasInstagramPlatformValue(node.platform) || listHasInstagramPlatform(node.platforms)) return true;
   if (isInstagramUrl(node.url) || isInstagramUrl(node.source_url)) return true;
-  for (const key of [
-    'form_input',
-    'formData',
-    'competitors_data',
-    'competitors',
-    'publications',
-    'draft',
-    'draft_content_plan',
-    'optimizedPlan',
-    'content_plan',
-    'competitor_urls',
-    'competitorUrls'
-  ]) {
-    if (node[key] != null && nodeUsesInstagram(node[key], depth + 1)) return true;
+  for (const val of Object.values(node)) {
+    if (val != null && nodeUsesInstagram(val, depth + 1)) return true;
   }
   return false;
 }

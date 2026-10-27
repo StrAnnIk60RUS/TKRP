@@ -1,11 +1,13 @@
 import {
   cosineSimilarity,
   embedTexts,
+  getEmbeddingConfig,
   normalizeCosineToUnitInterval,
   buildVectorLiteral
 } from '../services/embeddingService.js';
 import {
   buildRagCacheKey,
+  clearRagQueryCache,
   getCachedRagSearch,
   setCachedRagSearch,
   isRagCacheEnabled
@@ -40,7 +42,8 @@ import {
   tokenize,
   collectPublicationSearchText,
   collectContentPlanSearchText,
-  calculateTokenScore,
+  calculateBm25Corpus,
+  reciprocalRankFusion,
   getEmbeddingForItem,
   filterSemanticDuplicates,
   buildEmbeddingTextForPublication,
@@ -375,9 +378,12 @@ function scheduleBackgroundReembed(reason) {
 async function countStaleEmbeddings(modelVersion) {
   const sql =
     'SELECT (SELECT COUNT(1) FROM publications WHERE embedding IS NOT NULL AND COALESCE(embedding_model_version, embedding_model, \'\') <> $1) + ' +
-    '(SELECT COUNT(1) FROM content_plans WHERE embedding IS NOT NULL AND COALESCE(embedding_model_version, embedding_model, \'\') <> $1)';
+    '(SELECT COUNT(1) FROM content_plans WHERE embedding IS NOT NULL AND COALESCE(embedding_model_version, embedding_model, \'\') <> $1) AS stale_count';
   const result = await query(sql, [modelVersion]);
-  return Number(result.rows[0][0]) || 0;
+  const row = result?.rows?.[0];
+  if (!row) return 0;
+  const rawCount = Array.isArray(row) ? row[0] : (row.stale_count ?? Object.values(row)[0]);
+  return Number(rawCount) || 0;
 }
 
 /**
@@ -445,6 +451,7 @@ export async function reembedPrecedentsWithWrongDimension() {
     };
   });
 
+  clearRagQueryCache();
   return result;
 }
 
@@ -581,6 +588,10 @@ export async function persistPrecedents(enrichedData, options = {}) {
       persistence.updated_content_plans >
     0;
 
+  if (hasChanges) {
+    clearRagQueryCache();
+  }
+
   if (autoTrainEnabled && hasChanges) {
     try {
       await trainRelevanceModel();
@@ -593,18 +604,31 @@ export async function persistPrecedents(enrichedData, options = {}) {
 }
 
 export async function getPrecedentsSummary() {
-  const storage = await readStorage();
-  const lastRun = storage.ingestion_runs.length
-    ? storage.ingestion_runs[storage.ingestion_runs.length - 1]
-    : null;
+  const [countsResult, metaResult, lastRunResult] = await Promise.all([
+    query(`
+      SELECT
+        (SELECT COUNT(1) FROM publications) AS pub_count,
+        (SELECT COUNT(1) FROM content_plans) AS plan_count,
+        (SELECT COUNT(1) FROM ingestion_runs) AS run_count
+    `),
+    query('SELECT key, value FROM precedents_metadata'),
+    query('SELECT * FROM ingestion_runs ORDER BY created_at DESC, id DESC LIMIT 1')
+  ]);
+
+  const counts = countsResult?.rows?.[0] || {};
+  const metadataFromDb = {};
+  (metaResult?.rows || []).forEach((row) => {
+    metadataFromDb[row.key] = row.value;
+  });
+  const lastRun = lastRunResult?.rows?.[0] ? ingestionRunRowToRecord(lastRunResult.rows[0]) : null;
 
   return {
     storage_path: 'database',
-    schema_version: storage.metadata?.schema_version || 1,
-    updated_at: storage.metadata?.updated_at || null,
-    ingestion_runs_count: storage.ingestion_runs.length,
-    publications_count: storage.publications.length,
-    content_plans_count: storage.content_plans.length,
+    schema_version: metadataFromDb.schema_version || 1,
+    updated_at: metadataFromDb.updated_at || null,
+    ingestion_runs_count: Number(counts.run_count) || 0,
+    publications_count: Number(counts.pub_count) || 0,
+    content_plans_count: Number(counts.plan_count) || 0,
     last_run: lastRun
   };
 }
@@ -628,12 +652,20 @@ export async function searchPrecedents(searchQuery, options = {}) {
   const limit = Math.max(1, Math.min(Number(options.limit) || 5, 20));
 
   try {
+    const embeddingConfig = getEmbeddingConfig();
+    const configuredModelVersion = embeddingConfig.modelVersion || embeddingConfig.model;
+    const preCacheKey = buildRagCacheKey(normalizedQuery, options, configuredModelVersion, 'pg');
+    if (isRagCacheEnabled()) {
+      const cached = getCachedRagSearch(preCacheKey);
+      if (cached) return cached;
+    }
+
     const queryEmbeddingResult = await embedTexts([normalizedQuery]);
     const queryEmbedding = queryEmbeddingResult.embeddings[0];
     const modelVersion = queryEmbeddingResult.modelVersion || queryEmbeddingResult.model;
 
     const cacheKey = buildRagCacheKey(normalizedQuery, options, modelVersion, 'pg');
-    if (isRagCacheEnabled()) {
+    if (cacheKey !== preCacheKey && isRagCacheEnabled()) {
       const cached = getCachedRagSearch(cacheKey);
       if (cached) return cached;
     }
@@ -694,26 +726,63 @@ export async function searchPrecedents(searchQuery, options = {}) {
     const filteredContentPlans = scoped.content_plans;
     const queryTokens = uniqueTokens(tokenize(normalizedQuery));
 
+    // Hybrid Search: Vector Cosine + Lexical BM25 + Reciprocal Rank Fusion (RRF)
+    // 1) Publication rankings
+    const pubVectorScores = filteredPublications.map((publication) => {
+      const emb = getEmbeddingForItem(publication);
+      const cosine = emb ? cosineSimilarity(queryEmbedding, emb) : 0;
+      return { publication, score: normalizeCosineToUnitInterval(cosine) };
+    });
+    const pubVectorRanked = [...pubVectorScores].sort((a, b) => b.score - a.score);
+
+    const pubBm25Results = calculateBm25Corpus(queryTokens, filteredPublications, {
+      getText: collectPublicationSearchText,
+      extractKeyEntities: (p) => p?.publication_model?.key_entities || [],
+      boostExactPhrase: normalizedQuery
+    });
+    const pubBm25Ranked = [...pubBm25Results].sort((a, b) => b.bm25_score - a.bm25_score);
+    const pubBm25ByPub = new Map(pubBm25Results.map((r) => [r.document, r]));
+    const pubVectorByPub = new Map(pubVectorScores.map((r) => [r.publication, r.score]));
+
+    const pubRrf = reciprocalRankFusion([
+      {
+        name: 'vector',
+        rankedItems: pubVectorRanked.map((r) => r.publication),
+        weight: 0.6,
+        getId: (p) => p?.publication_id || String(p)
+      },
+      {
+        name: 'bm25',
+        rankedItems: pubBm25Ranked.map((r) => r.document),
+        weight: 0.4,
+        getId: (p) => p?.publication_id || String(p)
+      }
+    ]);
+    const pubRrfByPub = new Map(pubRrf.map((r) => [r.item, r]));
+
     const rankedPublications = filteredPublications
       .map((publication) => {
-        const emb = getEmbeddingForItem(publication);
-        const cosine = emb ? cosineSimilarity(queryEmbedding, emb) : 0;
-        const embeddingScore = normalizeCosineToUnitInterval(cosine);
-        const tokenScore = calculateTokenScore(queryTokens, collectPublicationSearchText(publication), {
-          boostExactPhrase: normalizedQuery
-        });
+        const bm25Data = pubBm25ByPub.get(publication) || { bm25_score: 0, matched_tokens: [] };
+        const vectorScore = pubVectorByPub.get(publication) || 0;
+        const rrfEntry = pubRrfByPub.get(publication);
+        const rrfScore = rrfEntry?.normalized_score || 0;
         const rankSignals = precedentRankSignals(publication, 'publication');
+
         const score = scoreRetrievalHit({
-          embeddingScore,
-          tokenScore: tokenScore.score,
+          embeddingScore: vectorScore,
+          tokenScore: bm25Data.bm25_score,
           engagementSignal: rankSignals.engagement,
-          trustSignal: rankSignals.trust
+          trustSignal: rankSignals.trust,
+          rrfScore
         });
 
         return {
           type: 'publication',
           score: Number(score.toFixed(4)),
-          matched_tokens: tokenScore.matched_tokens,
+          matched_tokens: bm25Data.matched_tokens,
+          vector_score: Number(vectorScore.toFixed(4)),
+          bm25_score: bm25Data.bm25_score,
+          rrf_score: rrfEntry?.rrf_score || 0,
           data: publication
         };
       })
@@ -721,26 +790,62 @@ export async function searchPrecedents(searchQuery, options = {}) {
       .sort((a, b) => b.score - a.score)
       .slice(0, Math.max(limit, 20));
 
+    // 2) Content Plan rankings
+    const planVectorScores = filteredContentPlans.map((contentPlan) => {
+      const emb = getEmbeddingForItem(contentPlan);
+      const cosine = emb ? cosineSimilarity(queryEmbedding, emb) : 0;
+      return { contentPlan, score: normalizeCosineToUnitInterval(cosine) };
+    });
+    const planVectorRanked = [...planVectorScores].sort((a, b) => b.score - a.score);
+
+    const planBm25Results = calculateBm25Corpus(queryTokens, filteredContentPlans, {
+      getText: collectContentPlanSearchText,
+      extractKeyEntities: (p) => p?.content_plan_model?.audience_segments || [],
+      boostExactPhrase: normalizedQuery
+    });
+    const planBm25Ranked = [...planBm25Results].sort((a, b) => b.bm25_score - a.bm25_score);
+    const planBm25ByPlan = new Map(planBm25Results.map((r) => [r.document, r]));
+    const planVectorByPlan = new Map(planVectorScores.map((r) => [r.contentPlan, r.score]));
+
+    const planRrf = reciprocalRankFusion([
+      {
+        name: 'vector',
+        rankedItems: planVectorRanked.map((r) => r.contentPlan),
+        weight: 0.6,
+        getId: (p) => p?.plan_id || String(p)
+      },
+      {
+        name: 'bm25',
+        rankedItems: planBm25Ranked.map((r) => r.document),
+        weight: 0.4,
+        getId: (p) => p?.plan_id || String(p)
+      }
+    ]);
+    const planRrfByPlan = new Map(planRrf.map((r) => [r.item, r]));
+
     const rankedContentPlans = filteredContentPlans
       .map((contentPlan) => {
-        const emb = getEmbeddingForItem(contentPlan);
-        const cosine = emb ? cosineSimilarity(queryEmbedding, emb) : 0;
-        const embeddingScore = normalizeCosineToUnitInterval(cosine);
-        const tokenScore = calculateTokenScore(queryTokens, collectContentPlanSearchText(contentPlan), {
-          boostExactPhrase: normalizedQuery
-        });
+        const bm25Data = planBm25ByPlan.get(contentPlan) || { bm25_score: 0, matched_tokens: [] };
+        const vectorScore = planVectorByPlan.get(contentPlan) || 0;
+        const rrfEntry = planRrfByPlan.get(contentPlan);
+        const rrfScore = rrfEntry?.normalized_score || 0;
         const rankSignals = precedentRankSignals(contentPlan, 'content_plan');
+
         const score = scoreRetrievalHit({
-          embeddingScore,
-          tokenScore: tokenScore.score,
+          embeddingScore: vectorScore,
+          tokenScore: bm25Data.bm25_score,
           engagementSignal: rankSignals.engagement,
-          trustSignal: rankSignals.trust
+          trustSignal: rankSignals.trust,
+          rrfScore
         });
 
         return {
           type: 'content_plan',
           score: Number(score.toFixed(4)),
-          matched_tokens: tokenScore.matched_tokens,
+          matched_tokens: bm25Data.matched_tokens,
+          vector_score: Number(vectorScore.toFixed(4)),
+          bm25_score: bm25Data.bm25_score,
+          rrf_score: rrfEntry?.rrf_score || 0,
           data: contentPlan
         };
       })
@@ -755,7 +860,7 @@ export async function searchPrecedents(searchQuery, options = {}) {
       total_publications_searched: filteredPublications.length,
       total_content_plans_searched: filteredContentPlans.length,
       retrieval: {
-        type: retrievalType,
+        type: retrievalType || 'hybrid_rrf',
         embedding_model: queryEmbeddingResult.model,
         embedding_model_version: modelVersion,
         ann_candidates: annCandidatesLimit || null,
@@ -763,6 +868,11 @@ export async function searchPrecedents(searchQuery, options = {}) {
         quality_gate: {
           min_score: RETRIEVAL_MIN_SCORE,
           dynamic_delta: RETRIEVAL_DYNAMIC_DELTA
+        },
+        hybrid: {
+          mode: 'rrf_bm25_vector',
+          rrf_k: 60,
+          weights: { vector: 0.6, bm25: 0.4 }
         },
         hybrid_weights: {
           embedding: RETRIEVAL_EMBEDDING_WEIGHT,
@@ -776,7 +886,7 @@ export async function searchPrecedents(searchQuery, options = {}) {
     }
     return enrichedResult;
   } catch (error) {
-    console.warn('[precedentRepository] Embedding search failed, fallback to token overlap:', error.message);
+    console.warn('[precedentRepository] Embedding search failed, fallback to lexical BM25:', error.message);
 
     const fallbackStorage = await readStorage();
     const fallbackScoped = resolveFilteredCollections(fallbackStorage, options);
@@ -784,23 +894,27 @@ export async function searchPrecedents(searchQuery, options = {}) {
     const filteredPublications = fallbackScoped.publications;
     const filteredContentPlans = fallbackScoped.content_plans;
 
-    const rankedPublications = filteredPublications
-      .map((publication) => {
-        const searchText = collectPublicationSearchText(publication);
-        const scoreData = calculateTokenScore(fallbackQueryTokens, searchText, {
-          boostExactPhrase: normalizedQuery
-        });
+    const pubBm25 = calculateBm25Corpus(fallbackQueryTokens, filteredPublications, {
+      getText: collectPublicationSearchText,
+      extractKeyEntities: (p) => p?.publication_model?.key_entities || [],
+      boostExactPhrase: normalizedQuery
+    });
+
+    const rankedPublications = pubBm25
+      .map((item) => {
+        const publication = item.document;
         const rankSignals = precedentRankSignals(publication, 'publication');
 
         return {
           type: 'publication',
           score: scoreRetrievalHit({
             embeddingScore: 0,
-            tokenScore: scoreData.score,
+            tokenScore: item.bm25_score,
             engagementSignal: rankSignals.engagement,
             trustSignal: rankSignals.trust
           }),
-          matched_tokens: scoreData.matched_tokens,
+          matched_tokens: item.matched_tokens,
+          bm25_score: item.bm25_score,
           data: publication
         };
       })
@@ -808,23 +922,27 @@ export async function searchPrecedents(searchQuery, options = {}) {
       .sort((a, b) => b.score - a.score)
       .slice(0, limit);
 
-    const rankedContentPlans = filteredContentPlans
-      .map((contentPlan) => {
-        const searchText = collectContentPlanSearchText(contentPlan);
-        const scoreData = calculateTokenScore(fallbackQueryTokens, searchText, {
-          boostExactPhrase: normalizedQuery
-        });
+    const planBm25 = calculateBm25Corpus(fallbackQueryTokens, filteredContentPlans, {
+      getText: collectContentPlanSearchText,
+      extractKeyEntities: (p) => p?.content_plan_model?.audience_segments || [],
+      boostExactPhrase: normalizedQuery
+    });
+
+    const rankedContentPlans = planBm25
+      .map((item) => {
+        const contentPlan = item.document;
         const rankSignals = precedentRankSignals(contentPlan, 'content_plan');
 
         return {
           type: 'content_plan',
           score: scoreRetrievalHit({
             embeddingScore: 0,
-            tokenScore: scoreData.score,
+            tokenScore: item.bm25_score,
             engagementSignal: rankSignals.engagement,
             trustSignal: rankSignals.trust
           }),
-          matched_tokens: scoreData.matched_tokens,
+          matched_tokens: item.matched_tokens,
+          bm25_score: item.bm25_score,
           data: contentPlan
         };
       })

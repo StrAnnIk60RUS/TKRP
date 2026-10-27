@@ -19,26 +19,59 @@ function asNumber(value, fallback = 0) {
   return Number.isFinite(numeric) ? numeric : fallback;
 }
 
-function validateOptimizationInputs(draft, stage1Config = {}) {
+function validateOptimizationInputs(draft, stage1Config = {}, formInput = null) {
+  if (!stage1Config.constraints || typeof stage1Config.constraints !== 'object') {
+    stage1Config.constraints = {};
+  }
+  const constraints = stage1Config.constraints;
+
+  const startDate =
+    constraints.date_min ||
+    draft?.planning_horizon?.start_date ||
+    formInput?.contentPlanStartDate;
+  const endDate =
+    constraints.date_max ||
+    draft?.planning_horizon?.end_date ||
+    formInput?.contentPlanEndDate;
+
+  let computedDuration = 0;
+  if (startDate && endDate) {
+    const diff = Math.round((new Date(endDate) - new Date(startDate)) / (1000 * 60 * 60 * 24));
+    if (diff > 0) computedDuration = diff;
+  }
+
   const durationDays =
-    asNumber(stage1Config?.constraints?.duration_days, 0) ||
-    asNumber(draft?.planning_horizon?.duration_days, 0);
-  const postsPerWeek = asNumber(stage1Config?.constraints?.posts_per_week, 0);
+    asNumber(constraints.duration_days, 0) ||
+    asNumber(draft?.planning_horizon?.duration_days, 0) ||
+    computedDuration ||
+    14;
+
+  constraints.duration_days = durationDays;
+  if (!constraints.date_min && startDate) constraints.date_min = startDate;
+  if (!constraints.date_max && endDate) constraints.date_max = endDate;
+
+  const pubCount = Array.isArray(draft?.publications) ? draft.publications.length : 0;
+  const derivedPostsPerWeek = durationDays > 0 && pubCount > 0
+    ? Math.max(1, Math.round((pubCount / durationDays) * 7))
+    : 3;
+
+  const postsPerWeek =
+    asNumber(constraints.posts_per_week, 0) ||
+    asNumber(draft?.planning_horizon?.posts_per_week, 0) ||
+    derivedPostsPerWeek;
+
+  constraints.posts_per_week = postsPerWeek;
+  if (!constraints.min_publications) {
+    constraints.min_publications = Math.max(1, Math.min(pubCount, Math.floor((postsPerWeek * durationDays) / 7)));
+  }
 
   console.log('[GA:input]', JSON.stringify({
     duration_days: durationDays,
     posts_per_week: postsPerWeek,
-    min_publications: stage1Config?.constraints?.min_publications ?? null,
-    date_min: stage1Config?.constraints?.date_min ?? null,
-    date_max: stage1Config?.constraints?.date_max ?? null
+    min_publications: constraints.min_publications,
+    date_min: constraints.date_min,
+    date_max: constraints.date_max
   }));
-
-  if (durationDays <= 0) {
-    throw new Error('Для эволюции контент-плана требуется положительная длительность плана (duration_days).');
-  }
-  if (postsPerWeek <= 0) {
-    throw new Error('Для эволюции контент-плана требуется posts_per_week > 0. Проверьте форму и demo-настройки.');
-  }
 }
 
 function pickPositiveInt(value) {
@@ -196,21 +229,25 @@ export function repairPlanConstraints(plan, constraints = {}) {
   return { publications, repairs, unfixable };
 }
 
-/** Display-fitness KPI of a final publication set (for LLM rewrite guard). */
 async function scorePlanFitness(plan, publications) {
-  const prediction = await predictContentPlanMetrics(
-    { ...(plan || {}), publications },
-    { forceTrain: false }
-  );
-  return kpiScore(
-    [
-      asNumber(prediction?.predictedLikes, 0),
-      asNumber(prediction?.predictedShares, 0),
-      asNumber(prediction?.predictedViews, 0)
-    ],
-    prediction?.metadata,
-    { keyPrefix: 'total_' }
-  );
+  try {
+    const prediction = await predictContentPlanMetrics(
+      { ...(plan || {}), publications },
+      { forceTrain: false }
+    );
+    return kpiScore(
+      [
+        asNumber(prediction?.predictedLikes, 0),
+        asNumber(prediction?.predictedShares, 0),
+        asNumber(prediction?.predictedViews, 0)
+      ],
+      prediction?.metadata,
+      { keyPrefix: 'total_' }
+    );
+  } catch (error) {
+    console.warn('[GA:scorePlanFitness] Failed to score plan fitness via ML:', error?.message);
+    return 0.5;
+  }
 }
 
 export async function runHierarchicalOptimization(payload = {}) {
@@ -230,13 +267,27 @@ export async function runHierarchicalOptimization(payload = {}) {
      8
    );
 
-   validateOptimizationInputs(draft, stage1Config);
+   validateOptimizationInputs(draft, stage1Config, formInput);
   
+  const onProgress = typeof payload?.onProgress === 'function' ? payload.onProgress : null;
+  if (onProgress) {
+    onProgress({ phase: 'stage1_start', message: 'Эволюция структуры плана (Stage 1)' });
+  }
+
   // Stage 1: эволюция структуры плана
   const contentPlanResult = await optimizeContentPlanEvolution(draft, {
     ...stage1Config,
-    lockedFields
+    lockedFields,
+    onProgress: (p) => {
+      if (onProgress) {
+        onProgress({ phase: 'stage1', ...p });
+      }
+    }
   });
+
+  if (onProgress) {
+    onProgress({ phase: 'stage2_start', message: 'Эволюция параметров постов (Stage 2)' });
+  }
   
   // Подготовка lockedFields для stage2 на основе результатов stage1
   const planFeatureMap = contentPlanResult.planFeatureMap;
@@ -276,6 +327,11 @@ export async function runHierarchicalOptimization(payload = {}) {
        ...(stage2Config.ga || stage2Config),
        targetCtaShare: planFeatureMap.cta_share,
        targetUniqueTones: planFeatureMap.unique_tones,
+       onProgress: (p) => {
+         if (onProgress) {
+           onProgress({ phase: 'stage2_filling', ...p });
+         }
+       },
        llmContext: {
          form_input: formInput,
          ragResults
@@ -381,6 +437,7 @@ export async function runHierarchicalOptimization(payload = {}) {
   const optimizedContentPlan = {
     ...contentPlanResult.optimizedPlan,
     publications: finalPublications,
+    pareto_strategies: contentPlanResult.paretoStrategies || null,
     expected_kpi: {
       ...(contentPlanResult.optimizedPlan.expected_kpi || {}),
       predicted_total_likes: safeFinalPredictedLikes,
@@ -399,12 +456,15 @@ export async function runHierarchicalOptimization(payload = {}) {
       predicted_total_views: contentPlanResult.predictedViews,
       target_posts_count: contentPlanResult.planFeatureMap.posts_count,
       plan_features: contentPlanResult.planFeatureMap,
+      pareto_strategies: contentPlanResult.paretoStrategies || null,
       ga: {
         best_score: contentPlanResult.ga.best_score,
         best_meta: contentPlanResult.ga.best_meta || null,
         generations: contentPlanResult.ga.generations,
         stop_reason: contentPlanResult.ga.stop_reason,
-        history: contentPlanResult.ga.history
+        history: contentPlanResult.ga.history,
+        pareto_front: contentPlanResult.ga.pareto_front || null,
+        pareto_archetypes: contentPlanResult.ga.pareto_archetypes || null
       }
     },
     stage3: {
@@ -444,6 +504,7 @@ export async function runHierarchicalOptimization(payload = {}) {
         unfixable: repairedConstraints.unfixable
       }
     },
+    pareto_strategies: contentPlanResult.paretoStrategies || null,
     optimized_publications: finalPublications,
     best_publication: postResult.bestPublication,
     optimized_content_plan: optimizedContentPlan

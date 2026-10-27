@@ -80,15 +80,24 @@ test('query fails on unreachable DATABASE_URL (negative)', async () => {
   }
 });
 
-test('live SELECT roundtrip with params', async () => {
+test('live SELECT roundtrip with params', async (t) => {
   loadDatabaseUrlFromRootEnv();
+  if (!process.env.DATABASE_URL) {
+    t.skip('Пропуск: DATABASE_URL не задан');
+    return;
+  }
   process.env.USE_DATABASE = 'true';
   const res = await query('SELECT $1 AS value, $2 AS label', [41, 'tkrp']);
   assert.equal(Number(res.rows[0].value), 41);
   assert.equal(res.rows[0].label, 'tkrp');
 });
 
-test('live withTransaction commits mutation', async () => {
+test('live withTransaction commits mutation', async (t) => {
+  loadDatabaseUrlFromRootEnv();
+  if (!process.env.DATABASE_URL) {
+    t.skip('Пропуск: DATABASE_URL не задан');
+    return;
+  }
   const marker = `__dbtest_commit_${Date.now()}`;
   await withTransaction(async (client) => {
     await client.query(
@@ -101,7 +110,12 @@ test('live withTransaction commits mutation', async () => {
   await query('DELETE FROM precedents_metadata WHERE key = $1', [marker]);
 });
 
-test('live withTransaction rolls back on throw (negative)', async () => {
+test('live withTransaction rolls back on throw (negative)', async (t) => {
+  loadDatabaseUrlFromRootEnv();
+  if (!process.env.DATABASE_URL) {
+    t.skip('Пропуск: DATABASE_URL не задан');
+    return;
+  }
   const marker = `__dbtest_rollback_${Date.now()}`;
   try {
     await withTransaction(async (client) => {

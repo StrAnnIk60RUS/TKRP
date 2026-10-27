@@ -1,15 +1,9 @@
 import React from 'react';
-
-const formatScore = (score) => `${Math.round((Number(score) || 0) * 100)}%`;
-
-const formatReliabilityLabel = (reliability) => {
-  const r = Number(reliability);
-  if (!Number.isFinite(r)) return null;
-  const pct = Math.round(r * 100);
-  if (pct >= 75) return { label: `${pct}%`, tone: 'success', title: 'Высокая надёжность' };
-  if (pct >= 50) return { label: `${pct}%`, tone: 'neutral', title: 'Средняя надёжность' };
-  return { label: `${pct}%`, tone: 'warn', title: 'Низкая надёжность' };
-};
+import {
+  formatPrecedentScore,
+  formatReliabilityLabel,
+  renderMatchExplanation
+} from '../../lib/precedentPresentationUtils';
 
 const renderCardScore = (item) => {
   if (Number.isFinite(Number(item.reliability))) {
@@ -20,16 +14,7 @@ const renderCardScore = (item) => {
       </span>
     );
   }
-  return <span className="precedent-card-score" title="Релевантность">{formatScore(item.score)}</span>;
-};
-
-const renderMatchExplanation = (matchedTokens = [], retrieval = null) => {
-  const type = retrieval?.type;
-  if (type === 'embedding_cosine') {
-    return 'Поиск по смыслу (эмбеддинги): совпавшие слова не считаются';
-  }
-  if (!matchedTokens.length) return 'Без совпавших токенов';
-  return matchedTokens.join(', ');
+  return <span className="precedent-card-score" title="Релевантность">{formatPrecedentScore(item.score)}</span>;
 };
 
 const PrecedentSearchStep = ({
@@ -193,7 +178,7 @@ const PrecedentSearchStep = ({
                         </div>
                         <div>
                           Средняя вовлечённость:{' '}
-                          {formatScore(item.data.content_plan_model?.kpi_estimate?.avg_engagement_rate)}
+                          {formatPrecedentScore(item.data.content_plan_model?.kpi_estimate?.avg_engagement_rate)}
                         </div>
                         <div>
                           Почему найдено: {renderMatchExplanation(item.matched_tokens, retrieval)}

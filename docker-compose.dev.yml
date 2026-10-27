@@ -1,0 +1,49 @@
+# ==============================================================================
+# Development Docker Compose конфигурация для проекта TKRP
+# Запуск: docker compose -f docker-compose.dev.yml up
+# ==============================================================================
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: tkrp-db-dev
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-tkrp}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    ports:
+      - '5432:5432'
+    volumes:
+      - db_data_dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-tkrp}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: tkrp-app-dev
+    ports:
+      - '5173:5173'
+      - '3001:3001'
+    volumes:
+      - .:/app
+      - root_node_modules:/app/node_modules
+      - api_node_modules:/app/apps/api/node_modules
+    environment:
+      PYTHON_BIN: /opt/tkrp-py/bin/python
+      CHOKIDAR_USEPOLLING: 'true'
+      WATCHPACK_POLLING: 'true'
+    env_file:
+      - path: .env
+        required: false
+    stdin_open: true
+    tty: true
+
+volumes:
+  db_data_dev:
+  root_node_modules:
+  api_node_modules:

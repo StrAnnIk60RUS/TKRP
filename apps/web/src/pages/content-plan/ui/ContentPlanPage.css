@@ -505,9 +505,12 @@
 }
 
 .post-edit-actions {
-  margin-top: 14px;
+  margin-top: 16px;
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: flex-end;
+  gap: 12px;
 }
 
 .post-edit-btn {
@@ -641,8 +644,8 @@
 }
 
 .plan-history-card.is-current {
-  border-color: #16a34a;
-  box-shadow: 4px 4px 0 0 #16a34a;
+  border-color: #2563eb;
+  box-shadow: 4px 4px 0 0 #2563eb;
 }
 
 .plan-history-current-badge {
@@ -650,9 +653,9 @@
   align-items: center;
   width: fit-content;
   padding: 6px 10px;
-  border: 2px solid #16a34a;
-  background: #f0fdf4;
-  color: #166534;
+  border: 2px solid #2563eb;
+  background: #eff6ff;
+  color: #1d4ed8;
   font-size: 0.78rem;
   font-weight: 800;
   text-transform: uppercase;
@@ -698,6 +701,67 @@
 .history-delete-btn:hover {
   background: #fef2f2;
   color: #991b1b;
+}
+
+/* Dark theme overrides for Plan History */
+body.theme-dark .content-plan-page .plan-history-card.precedent-card,
+body.theme-dark .content-plan-page .plan-section .precedent-card,
+body.theme-dark .plan-history-card {
+  background: var(--bg-raised, #14161e);
+  border-color: var(--line, #2a2c38);
+  color: var(--ink, #d4d2de);
+  box-shadow: 4px 4px 0 0 var(--shadow, #101218);
+}
+
+body.theme-dark .content-plan-page .plan-history-card .precedent-card-title,
+body.theme-dark .precedent-card-title {
+  color: var(--ink, #f1f5f9);
+}
+
+body.theme-dark .content-plan-page .plan-history-card .precedent-card-score,
+body.theme-dark .precedent-card-score {
+  color: #f472b6;
+}
+
+body.theme-dark .content-plan-page .plan-history-card .precedent-card-body,
+body.theme-dark .content-plan-page .plan-history-card .precedent-card-body div,
+body.theme-dark .precedent-card-body,
+body.theme-dark .precedent-card-body div {
+  color: var(--ink-muted, #94a3b8);
+}
+
+body.theme-dark .plan-history-card.is-current {
+  border-color: #3b82f6;
+  box-shadow: 4px 4px 0 0 #1e3a5f;
+}
+
+body.theme-dark .plan-history-current-badge {
+  background: #172554;
+  color: #93c5fd;
+  border-color: #3b82f6;
+}
+
+body.theme-dark .plan-history-diff {
+  background: #0f121a;
+  border-color: var(--line, #2a2c38);
+  color: var(--ink, #d4d2de);
+}
+
+body.theme-dark .plan-history-constraint-msg {
+  background: #2a2015;
+  border-color: #b45309;
+  color: #fcd34d;
+}
+
+body.theme-dark .history-delete-btn {
+  background: #201416;
+  border-color: #ef4444;
+  color: #fca5a5;
+}
+
+body.theme-dark .history-delete-btn:hover {
+  background: #38181c;
+  color: #fecaca;
 }
 
 .plan-filters-grid {
@@ -1188,4 +1252,95 @@
     display: grid;
     gap: 6px;
   }
+}
+
+
+/* Pareto strategies bar */
+.pareto-strategies-bar {
+  margin-top: 1rem;
+  padding: 0.85rem 1.15rem;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+body.theme-dark .pareto-strategies-bar {
+  background: var(--bg-raised, #14161e);
+  border-color: var(--line, #2a2c38);
+}
+
+.pareto-strategies-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pareto-strategies-title {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+body.theme-dark .pareto-strategies-title {
+  color: #f1f5f9;
+}
+
+.pareto-strategies-desc {
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+body.theme-dark .pareto-strategies-desc {
+  color: var(--ink-muted, #8e8ca0);
+}
+
+.pareto-strategies-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pareto-strategy-btn {
+  padding: 6px 12px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  border-radius: 4px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #334155;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.pareto-strategy-btn:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+
+.pareto-strategy-btn.active {
+  font-weight: 600;
+  border-color: #0284c7;
+  background: #f0f9ff;
+  color: #0369a1;
+}
+
+body.theme-dark .pareto-strategy-btn {
+  background: var(--bg-control, #161822);
+  border-color: var(--line, #2a2c38);
+  color: var(--ink, #d4d2de);
+}
+
+body.theme-dark .pareto-strategy-btn:hover {
+  background: #232738;
+}
+
+body.theme-dark .pareto-strategy-btn.active {
+  border-color: #0284c7;
+  background: rgba(2, 132, 199, 0.18);
+  color: #38bdf8;
 }

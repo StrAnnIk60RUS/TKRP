@@ -10,6 +10,21 @@ import PlanCalendarBoard from '../../../features/content-plan/ui/PlanCalendarBoa
 import PostCard from '../../../features/content-plan/ui/PostCard'
 import PostEditModal from '../../../features/content-plan/ui/PostEditModal'
 import PlanEditModal from '../../../features/content-plan/ui/PlanEditModal'
+import ContentPlanEmptyState from '../../../features/content-plan/ui/ContentPlanEmptyState'
+import {
+  DEFAULT_FILTERS,
+  MAX_PLAN_DISPLAY_NAME_LEN,
+  clamp01,
+  ensureUniquePublicationIds,
+  extractSnapshotTokenFromInput,
+  formatSavedAt,
+  formatSavedPlatforms,
+  getPlatformsFromPublications,
+  matchesFilters,
+  normalizeText,
+  sanitizeExportBasename,
+  sortPublicationsByDate
+} from '../../../features/content-plan/lib/contentPlanPageUtils'
 import { normalizePublicationForUi } from '../../../features/content-plan/lib/publicationPresentation'
 import {
   getCurrentHistoryEntry,
@@ -20,67 +35,17 @@ import {
   removePlanFromHistory,
   savePlanSnapshot
 } from '../../../features/content-plan/model/planStorage'
-import { exportToExcel, exportToPdf } from '../../../shared/lib/contentPlanExport'
+import {
+  getPlanSnapshotFromServer,
+  listPlanSnapshotsFromServer
+} from '../../../shared/api/enrichmentService'
+import OptimizationTracePanel from '../../../features/project-form/ui/projectForm/OptimizationTracePanel'
 import { useInstagramAccess } from '../../../shared/lib/useInstagramAccess'
 import { ToastContainer } from '../../../shared/ui/Toast'
 import AuthGate from '../../../shared/ui/AuthGate'
 import { isUserAuthenticated } from '../../../shared/ui/AuthGate'
 import './ContentPlanPage.css'
 
-const DEFAULT_FILTERS = {
-  search: '',
-  platform: 'all',
-  format: 'all',
-  dateFrom: '',
-  dateTo: ''
-}
-
-const ensureUniquePublicationIds = (plan) => {
-  if (!plan || typeof plan !== 'object') return plan
-  const pubs = Array.isArray(plan.publications) ? plan.publications : []
-  if (!pubs.length) return plan
-
-  const used = new Set()
-  const normalized = pubs.map((pub, idx) => {
-    const base = typeof pub?.publication_id === 'string' ? pub.publication_id.trim() : ''
-    let next = base || `pub_${String(idx + 1).padStart(3, '0')}`
-    while (used.has(next)) next = `${next}_${idx + 1}`
-    used.add(next)
-    return { ...pub, publication_id: next }
-  })
-
-  return { ...plan, publications: normalized }
-}
-
-const MAX_PLAN_DISPLAY_NAME_LEN = 120
-
-const sanitizeExportBasename = (name) => {
-  const t = typeof name === 'string' ? name.trim().slice(0, 80) : ''
-  if (!t) return null
-  const cleaned = t.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').replace(/\s+/g, '_')
-  return cleaned || null
-}
-
-const getPlatformsFromPublications = (pubs) => {
-  const allowed = new Set(['vk', 'telegram', 'linkedin', 'instagram'])
-  const set = new Set()
-  pubs.forEach((p) => {
-    if (allowed.has(p?.platform)) set.add(p.platform)
-  })
-  return Array.from(set)
-}
-
-const getDateTimestamp = (value) => {
-  if (!value) return 0
-  const timestamp = new Date(value).getTime()
-  return Number.isNaN(timestamp) ? 0 : timestamp
-}
-
-const sortPublicationsByDate = (pubs) =>
-  [...pubs].sort((a, b) => getDateTimestamp(a?.planned_date) - getDateTimestamp(b?.planned_date))
-
-const normalizeText = (value) => (typeof value === 'string' ? value.toLowerCase() : '')
-const clamp01 = (value) => Math.max(0, Math.min(1, Number(value) || 0))
 const PLATFORM_UI_LABELS = { vk: 'VK', telegram: 'Telegram', linkedin: 'LinkedIn', instagram: 'Instagram' }
 const METRICS_NORMALIZATION_TOLERANCE_RATIO = 0.05
 
@@ -133,37 +98,13 @@ const normalizeMetricByTotal = (items, rawKey, totalValue) => {
   return floored
 }
 
-const matchesFilters = (publication, filters) => {
-  if (filters.platform !== 'all' && publication.platform !== filters.platform) return false
-  if (filters.format !== 'all' && publication.format !== filters.format) return false
-
-  const plannedDate = publication.planned_date || ''
-  if (filters.dateFrom && plannedDate && plannedDate < filters.dateFrom) return false
-  if (filters.dateTo && plannedDate && plannedDate > filters.dateTo) return false
-
-  if (filters.search.trim()) {
-    const haystack = [
-      publication.title,
-      publication.topic,
-      publication.key_message,
-      publication.cta,
-      publication.objective,
-      publication.tone
-    ]
-      .map(normalizeText)
-      .join(' ')
-
-    if (!haystack.includes(filters.search.trim().toLowerCase())) return false
-  }
-
-  return true
-}
-
 const ContentPlanPage = () => {
   const navigate = useNavigate()
-  const { isDeveloper } = useUserRole()
+  const { isAnalyst } = useUserRole()
   const allowInstagram = useInstagramAccess()
-  const editorPlatforms = allowInstagram ? ['vk', 'linkedin', 'instagram'] : ['vk', 'linkedin']
+  const editorPlatforms = allowInstagram
+    ? ['vk', 'telegram', 'linkedin', 'instagram']
+    : ['vk', 'telegram', 'linkedin']
   const [contentPlan, setContentPlan] = useState(null)
   const [loading, setLoading] = useState(true)
   const [optimizationMeta, setOptimizationMeta] = useState(null)
@@ -175,8 +116,36 @@ const ContentPlanPage = () => {
   const [downloadMenuOpen, setDownloadMenuOpen] = useState(false)
   const [isEditingPlanName, setIsEditingPlanName] = useState(false)
   const [planNameDraft, setPlanNameDraft] = useState('')
+  const [savedSnapshots, setSavedSnapshots] = useState([])
+  const [savedListLoading, setSavedListLoading] = useState(false)
+  const [savedListError, setSavedListError] = useState(false)
+  const [savedPlansFilter, setSavedPlansFilter] = useState('')
+  const [tokenInput, setTokenInput] = useState('')
+  const [openingToken, setOpeningToken] = useState(false)
   const [toasts, setToasts] = useState([])
   const toastCounterRef = useRef(0)
+
+  const [activeStrategyKey, setActiveStrategyKey] = useState('balanced')
+  const paretoStrategies = optimizationMeta?.pareto_strategies || contentPlan?.pareto_strategies || null
+
+  const handleSelectStrategy = (key) => {
+    if (!paretoStrategies?.[key]?.plan) return
+    setActiveStrategyKey(key)
+    const selected = paretoStrategies[key]
+    const updatedPubs = ensureUniquePublicationIds(selected.plan.publications || [])
+    setContentPlan((prev) => ({
+      ...prev,
+      ...selected.plan,
+      publications: updatedPubs,
+      expected_kpi: {
+        ...(prev?.expected_kpi || {}),
+        predicted_total_likes: selected.predictedLikes,
+        predicted_total_shares: selected.predictedShares,
+        predicted_total_views: selected.predictedViews
+      }
+    }))
+    addToast(`Применена стратегия «${selected.title}»`, 'info')
+  }
 
   const addToast = useCallback((message, type = 'error') => {
     toastCounterRef.current += 1
@@ -461,8 +430,8 @@ const ContentPlanPage = () => {
     }
   }
 
-  const handleSavePostEdit = async (nextPartialPublication) => {
-    if (!publicationToEdit?.publication_id || !safePlan) return
+  const handleSavePostEdit = async (nextPartialPublication, options = {}) => {
+    if (!publicationToEdit?.publication_id || !safePlan) return false
 
     const nextPublications = Array.isArray(safePlan.publications)
       ? safePlan.publications.map((p) =>
@@ -476,13 +445,30 @@ const ContentPlanPage = () => {
       platforms: getPlatformsFromPublications(nextPublications)
     })
 
+    const nextOptimization = optimizationMeta
+      ? { ...optimizationMeta, modified_after_optimization: true }
+      : null
+    const nextType = nextOptimization ? 'optimized' : 'draft'
+    const token = getPlanSnapshotToken()
+
     try {
-      const ok = await savePlanSnapshot(nextPlan, { type: 'draft', optimization: null })
+      const ok = await savePlanSnapshot(nextPlan, {
+        type: nextType,
+        optimization: nextOptimization,
+        ...(token ? { token } : {})
+      })
       if (!ok) return false
       setContentPlan(nextPlan)
-      setOptimizationMeta(null)
+      setOptimizationMeta(nextOptimization)
       setPlanHistory(getPlanHistory())
-      setPublicationToEdit(null)
+      if (options?.keepOpen) {
+        const updatedPub = nextPlan.publications.find(
+          (p) => p?.publication_id === publicationToEdit.publication_id
+        )
+        if (updatedPub) setPublicationToEdit(updatedPub)
+      } else {
+        setPublicationToEdit(null)
+      }
       return true
     } catch (e) {
       console.error('Не удалось сохранить редактирование поста:', e)
@@ -535,12 +521,19 @@ const ContentPlanPage = () => {
       publications: nextPublications
     })
 
+    const nextType = optimizationMeta ? 'optimized' : 'draft'
+    const token = getPlanSnapshotToken()
+
     try {
-      await savePlanSnapshot(nextPlan, { type: 'draft', optimization: optimizationMeta })
+      await savePlanSnapshot(nextPlan, {
+        type: nextType,
+        optimization: optimizationMeta,
+        ...(token ? { token } : {})
+      })
       setContentPlan(nextPlan)
       setPlanHistory(getPlanHistory())
       window.alert(
-        `🎉 Пост успешно опубликован в ${platformLabel}!\nСсылка: ${simulatedUrl}\nФактические метрики зафиксированы и будут переданы в модель ML.`
+        `Пост успешно опубликован в ${platformLabel}!\nСсылка: ${simulatedUrl}\nФактические показатели зафиксированы для уточнения аналитики.`
       )
     } catch (e) {
       console.error('Ошибка публикации поста:', e)
@@ -565,8 +558,13 @@ const ContentPlanPage = () => {
 
     const type = optimizationMeta ? 'optimized' : 'draft'
     const optimization = optimizationMeta || null
+    const token = getPlanSnapshotToken()
     try {
-      await savePlanSnapshot(nextPlan, { type, optimization })
+      await savePlanSnapshot(nextPlan, {
+        type,
+        optimization,
+        ...(token ? { token } : {})
+      })
       setContentPlan(nextPlan)
       setPlanHistory(getPlanHistory())
     } catch (e) {
@@ -585,10 +583,20 @@ const ContentPlanPage = () => {
       notes: nextPlanFields.notes
     })
 
+    const nextOptimization = optimizationMeta
+      ? { ...optimizationMeta, modified_after_optimization: true }
+      : null
+    const nextType = nextOptimization ? 'optimized' : 'draft'
+    const token = getPlanSnapshotToken()
+
     try {
-      await savePlanSnapshot(nextPlan, { type: 'draft', optimization: null })
+      await savePlanSnapshot(nextPlan, {
+        type: nextType,
+        optimization: nextOptimization,
+        ...(token ? { token } : {})
+      })
       setContentPlan(nextPlan)
-      setOptimizationMeta(null)
+      setOptimizationMeta(nextOptimization)
       setPlanHistory(getPlanHistory())
       setIsPlanEditOpen(false)
     } catch (e) {
@@ -639,6 +647,71 @@ const ContentPlanPage = () => {
     }
   }
 
+  const refreshSavedSnapshots = useCallback(async () => {
+    setSavedListLoading(true)
+    setSavedListError(false)
+    try {
+      const res = await listPlanSnapshotsFromServer(50)
+      setSavedSnapshots(Array.isArray(res?.snapshots) ? res.snapshots : [])
+    } catch {
+      setSavedListError(true)
+    } finally {
+      setSavedListLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!loading && !contentPlan && isUserAuthenticated()) {
+      refreshSavedSnapshots()
+    }
+  }, [loading, contentPlan, refreshSavedSnapshots])
+
+  const filteredSavedSnapshots = useMemo(() => {
+    const q = normalizeText(savedPlansFilter).trim()
+    if (!q) return savedSnapshots
+    return savedSnapshots.filter((item) => {
+      const haystack = [
+        item?.token,
+        item?.plan_id,
+        item?.saved_at,
+        item?.summary?.display_name,
+        item?.summary?.plan_id,
+        ...(Array.isArray(item?.summary?.platforms) ? item.summary.platforms : [])
+      ]
+        .map(normalizeText)
+        .join(' ')
+      return haystack.includes(q)
+    })
+  }, [savedPlansFilter, savedSnapshots])
+
+  const handleOpenByToken = async (rawTokenInput) => {
+    const extracted = extractSnapshotTokenFromInput(rawTokenInput) || String(rawTokenInput || '').trim()
+    if (!extracted) return
+    setOpeningToken(true)
+    try {
+      const res = await getPlanSnapshotFromServer(extracted)
+      const snap = res?.snapshot
+      if (snap?.plan) {
+        const nextPlan = ensureUniquePublicationIds(snap.plan)
+        const nextOpt = snap.optimization || null
+        await savePlanSnapshot(nextPlan, {
+          type: nextOpt ? 'optimized' : 'draft',
+          optimization: nextOpt,
+          token: extracted
+        })
+        setContentPlan(nextPlan)
+        setOptimizationMeta(nextOpt)
+        setPlanHistory(getPlanHistory())
+      } else {
+        addToast('Снимок плана не найден на сервере', 'error')
+      }
+    } catch (err) {
+      addToast(err?.message || 'Не удалось открыть снимок плана', 'error')
+    } finally {
+      setOpeningToken(false)
+    }
+  }
+
   const baseFilename =
     sanitizeExportBasename(safePlan?.display_name) ||
     `content_plan_${new Date().toISOString().split('T')[0]}`
@@ -658,15 +731,21 @@ const ContentPlanPage = () => {
     setDownloadMenuOpen(false)
   }
 
-  const handleDownloadExcel = () => {
+  const handleDownloadExcel = async () => {
     if (!contentPlan) return
-    exportToExcel(contentPlan, baseFilename, { optimizationMeta })
+    try {
+      const { exportToExcel } = await import('../../../shared/lib/contentPlanExport')
+      await exportToExcel(contentPlan, baseFilename, { optimizationMeta })
+    } catch (e) {
+      console.error('Ошибка экспорта Excel:', e)
+    }
     setDownloadMenuOpen(false)
   }
 
   const handleDownloadPdf = async () => {
     if (!contentPlan) return
     try {
+      const { exportToPdf } = await import('../../../shared/lib/contentPlanExport')
       await exportToPdf(contentPlan, {
         filename: baseFilename,
         isOptimized: !!optimizationMeta,
@@ -695,15 +774,25 @@ const ContentPlanPage = () => {
 
   if (!contentPlan) {
     return (
-      <div className="content-plan-page">
-        <div className="empty-state">
-          <h2>Контент-план не найден</h2>
-          <p>Создайте новый контент-план на главной странице</p>
-          <button className="primary-btn" onClick={() => navigate('/')}>
-            Создать контент-план
-          </button>
-        </div>
-      </div>
+      <>
+        <ContentPlanEmptyState
+          navigate={navigate}
+          savedSnapshots={savedSnapshots}
+          savedListLoading={savedListLoading}
+          savedListError={savedListError}
+          refreshSavedSnapshots={refreshSavedSnapshots}
+          savedPlansFilter={savedPlansFilter}
+          onSavedPlansFilterChange={setSavedPlansFilter}
+          filteredSavedSnapshots={filteredSavedSnapshots}
+          tokenInput={tokenInput}
+          onTokenInputChange={setTokenInput}
+          openingToken={openingToken}
+          onOpenByToken={handleOpenByToken}
+          formatSavedAt={formatSavedAt}
+          formatSavedPlatforms={formatSavedPlatforms}
+        />
+        <ToastContainer toasts={toasts} removeToast={removeToast} />
+      </>
     )
   }
 
@@ -721,7 +810,7 @@ const ContentPlanPage = () => {
               onClick={() => navigate('/analytics')}
               title="Перейти к сквозной аналитике и статистике роста соцсетей"
             >
-              📊 Статистика соцсетей
+              Статистика соцсетей
             </button>
             <button
               className="secondary-btn"
@@ -758,13 +847,17 @@ const ContentPlanPage = () => {
                         PDF
                       </button>
                     </li>
-                    {isDeveloper && (
+
                       <li>
-                        <button type="button" onClick={handleDownloadJson}>
+                        <button
+                          type="button"
+                          onClick={handleDownloadJson}
+                          title={isAnalyst ? 'Экспорт полного плана в JSON для аналитики' : 'Скачать план в JSON'}
+                        >
                           JSON
                         </button>
                       </li>
-                    )}
+
                   </ul>
                 </>
               )}
@@ -823,6 +916,45 @@ const ContentPlanPage = () => {
             optimizationMeta={optimizationMeta}
             planExpectedKpi={safePlan?.expected_kpi}
           />
+
+          {paretoStrategies && (
+            <div className="pareto-strategies-bar">
+              <div className="pareto-strategies-info">
+                <strong className="pareto-strategies-title">
+                  {isAnalyst ? '🎯 Опорная стратегия Парето-фронта (NSGA-II):' : '🎯 Фокус контент-плана:'}
+                </strong>
+                <span className="pareto-strategies-desc">
+                  {paretoStrategies[activeStrategyKey]?.description || 'Выбор баланса охвата, продаж и разнообразия'}
+                </span>
+              </div>
+              <div className="pareto-strategies-buttons">
+                {Object.entries(paretoStrategies).map(([key, strat]) => {
+                  const isActive = activeStrategyKey === key
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      className={`pareto-strategy-btn ${isActive ? 'active' : ''}`}
+                      onClick={() => handleSelectStrategy(key)}
+                    >
+                      {key === 'viral_reach' && '⚡ '}
+                      {key === 'balanced' && '✨ '}
+                      {key === 'conversion' && '🎯 '}
+                      {strat.title}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {isAnalyst && optimizationMeta && (
+            <OptimizationTracePanel
+              optimizationResult={optimizationMeta}
+              bestPublication={optimizationMeta?.stage2?.best_post || null}
+              isAnalyst={isAnalyst}
+            />
+          )}
         </section>
 
         <PlanFilters

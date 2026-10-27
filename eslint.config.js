@@ -5,7 +5,7 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import globals from 'globals';
 
 const unusedVarsRule = [
-  'warn',
+  'error',
   { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrors: 'none' }
 ];
 

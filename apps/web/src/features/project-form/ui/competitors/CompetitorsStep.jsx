@@ -8,11 +8,13 @@ const CompetitorsStep = ({
   postsLimit,
   isParsingFromUrls,
   isEnriching,
+  isSeedingPrecedents = false,
   isProcessing,
   isEnrichmentServerAvailable,
   canEnrich,
   showEnrichButton = true,
   precedentsAlreadyInDb = false,
+  precedentsSummary = null,
   allowInstagram = false,
   onUrlChange,
   onAddUrl,
@@ -20,239 +22,277 @@ const CompetitorsStep = ({
   onPostsLimitChange,
   onParseFromUrls,
   onEnrichUploaded,
-  onRemoveData
+  onRemoveData,
+  onSeedDemoPrecedents,
+  onSkipToNextStep
 }) => {
-  const isActionsDisabled = isParsingFromUrls || isEnriching || isProcessing;
-  const competitorsCount = competitorsData?.competitors?.length || 0;
+  const isActionsDisabled = isParsingFromUrls || isEnriching || isSeedingPrecedents || isProcessing
+  const competitorsCount = competitorsData?.competitors?.length || 0
   const parsedPostsCount = (competitorsData?.competitors || []).reduce((sum, c) => {
-    const posts = Array.isArray(c?.posts) ? c.posts.length : 0;
-    return sum + posts;
-  }, 0);
+    const posts = Array.isArray(c?.posts) ? c.posts.length : 0
+    return sum + posts
+  }, 0)
 
-  const normalizedLimit = postsLimit === 'all' ? null : Number(postsLimit);
+  const dbPublicationsCount = Number(precedentsSummary?.publications_count) || 0
+  const dbPlansCount = Number(precedentsSummary?.content_plans_count) || 0
+  const dbTotalCount = dbPublicationsCount + dbPlansCount
+  const isSourceReady = precedentsAlreadyInDb || competitorsCount > 0 || dbTotalCount > 0
+
+  const normalizedLimit = postsLimit === 'all' ? null : Number(postsLimit)
   const estimatedMaxPosts =
     normalizedLimit && Number.isFinite(normalizedLimit)
       ? normalizedLimit * (competitorUrls?.length || 0)
-      : null;
+      : null
 
   const serverBadge =
     isEnrichmentServerAvailable === false
       ? { text: 'Сервер недоступен', tone: 'danger' }
       : isEnrichmentServerAvailable === true
-      ? null
-      : { text: 'Проверка backend…', tone: 'neutral' };
+      ? { text: 'Сервер подключён', tone: 'success' }
+      : { text: 'Проверка соединения…', tone: 'neutral' }
 
   return (
     <div className="quick-actions competitors-step">
       <div className="actions-group competitors-actions-group">
         <div className="competitors-step-header">
-          <span className="actions-label">Конкуренты: ссылки и данные</span>
+          <span className="actions-label">Шаг 1. Источники успешных примеров (Конкуренты и база)</span>
           <span className="actions-description">
-            Парсинг и обогащение нужны только если данных конкурентов ещё нет в базе прецедентов. Если база уже
-            заполнена, можно перейти к следующим шагам.
+            Чтобы контент-план был эффективным, искусственный интеллект и модель прогноза вовлечённости опираются на реальные посты с известным охватом.
+            Выберите удобный вариант ниже: используйте уже накопленную базу примеров или добавьте ссылки на конкурентов.
           </span>
         </div>
 
-        {precedentsAlreadyInDb && !competitorsData && (
-          <div className="ui-callout ui-callout-light" style={{ marginBottom: '0.75rem' }}>
-            <div className="ui-callout-title">База прецедентов уже содержит данные</div>
-            <div className="ui-callout-text">
-              Повторный парсинг и обогащение не обязательны. При необходимости добавьте новых конкурентов ниже.
-            </div>
-          </div>
-        )}
-
+        {/* Блок 1: Быстрый путь через базу прецедентов */}
         <div className="ui-panel competitors-dashboard">
           <div className="ui-panel-header">
-            <div className="ui-panel-title">Статус шага</div>
-            {serverBadge && <div className={`ui-badge ui-badge-${serverBadge.tone}`}>{serverBadge.text}</div>}
+            <div className="ui-panel-title">Вариант 1 (Быстрый): База прецедентов</div>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+              <span className={`ui-badge ui-badge-${isSourceReady ? 'success' : 'danger'}`}>
+                {isSourceReady ? 'Источник данных готов' : 'Нужны примеры в базе или ссылки'}
+              </span>
+              {serverBadge && <div className={`ui-badge ui-badge-${serverBadge.tone}`}>{serverBadge.text}</div>}
+            </div>
           </div>
+
           <div className="ui-panel-grid">
             <div className="ui-metric">
-              <div className="ui-metric-label">Ссылок</div>
-              <div className="ui-metric-value">{competitorUrls?.length || 0}</div>
+              <div className="ui-metric-label">Публикаций в базе</div>
+              <div className="ui-metric-value">{dbPublicationsCount}</div>
+              <div className="ui-metric-hint">Готовые примеры постов</div>
             </div>
             <div className="ui-metric">
-              <div className="ui-metric-label">Лимит постов</div>
-              <div className="ui-metric-value">{postsLimit === 'all' ? 'Все' : postsLimit}</div>
-              {estimatedMaxPosts !== null && (
-                <div className="ui-metric-hint">Оценка: до {estimatedMaxPosts} постов</div>
-              )}
+              <div className="ui-metric-label">Планов в базе</div>
+              <div className="ui-metric-value">{dbPlansCount}</div>
+              <div className="ui-metric-hint">Эталонные структуры</div>
             </div>
             <div className="ui-metric">
-              <div className="ui-metric-label">Получено конкурентов</div>
+              <div className="ui-metric-label">Новых конкурентов в форме</div>
               <div className="ui-metric-value">{competitorsCount}</div>
+              <div className="ui-metric-hint">Добавлено в этой сессии</div>
             </div>
             <div className="ui-metric">
-              <div className="ui-metric-label">Получено постов</div>
+              <div className="ui-metric-label">Новых постов в форме</div>
               <div className="ui-metric-value">{parsedPostsCount}</div>
+              {estimatedMaxPosts !== null && parsedPostsCount === 0 && (
+                <div className="ui-metric-hint">Лимит парсинга: до {estimatedMaxPosts}</div>
+              )}
             </div>
           </div>
 
-          <details className="ui-details">
-            <summary className="ui-details-summary">Подсказки по ссылкам (открыть)</summary>
-            <div className="ui-details-body">
-              <div className="ui-callout">
-                <div className="ui-callout-title">Что вставлять</div>
-                <div className="ui-callout-text">
-                  Ссылку на страницу/профиль/группу конкурента в VK или LinkedIn
-                  {allowInstagram ? ' или Instagram' : ''}. Можно вставлять несколько ссылок —
-                  каждая будет обработана отдельно.
-                </div>
-              </div>
-              <div className="ui-callout ui-callout-light">
-                <div className="ui-callout-title">Примеры</div>
-                <div className="ui-callout-text">
-                  <div className="ui-mono">https://vk.com/company</div>
-                  <div className="ui-mono">https://www.linkedin.com/company/company-name/</div>
-                  {allowInstagram && <div className="ui-mono">https://www.instagram.com/company/</div>}
-                </div>
-              </div>
-              <div className="ui-callout ui-callout-warning">
-                <div className="ui-callout-title">Если парсинг «ничего не нашёл»</div>
-                <div className="ui-callout-text">
-                  Проверьте, что страница публичная и содержит публикации. Если LinkedIn ограничивает доступ,
-                  попробуйте другой URL конкурента или уменьшите лимит постов.
-                </div>
-              </div>
+          {isSeedingPrecedents && (
+            <div style={{ marginTop: '12px' }}>
+              <ProcessIndicator active processId="seedingPrecedents" contextual />
             </div>
-          </details>
-        </div>
+          )}
 
-        {isParsingFromUrls && (
-          <ProcessIndicator active processId="parsing" contextual />
-        )}
-
-        <div className="competitors-inputs">
-          {competitorUrls.map((url, index) => (
-            <div key={index} className="competitor-url-row">
-              <input
-                type="text"
-                value={url}
-                onChange={(e) => onUrlChange(index, e.target.value)}
-                placeholder={
-                  allowInstagram
-                    ? 'https://vk.com/..., https://www.linkedin.com/..., https://www.instagram.com/...'
-                    : 'https://vk.com/..., https://www.linkedin.com/...'
-                }
-                className="form-input competitor-url-input"
-              />
-              {competitorUrls.length > 1 && (
+          <div
+            className={`ui-callout ${isSourceReady ? 'ui-callout-light' : 'ui-callout-warning'}`}
+            style={{ marginTop: '12px' }}
+          >
+            <div className="ui-callout-title">
+              {isSourceReady
+                ? 'Что делать сейчас: можно сразу переходить к следующему шагу!'
+                : 'База прецедентов пока пуста — загрузите демо-базу в 1 клик или спарсите конкурентов'}
+            </div>
+            <div className="ui-callout-text">
+              {isSourceReady
+                ? `В системе уже доступно ${dbTotalCount} прецедентов в базе${
+                    competitorsCount > 0 ? ` и ${parsedPostsCount} постов в форме` : ''
+                  }. Парсить ссылки ниже необязательно — нажмите «Продолжить с текущей базой», чтобы перейти к описанию проекта.`
+                : 'Если у вас нет под рукой ссылок на группы конкурентов или вы хотите быстро протестировать систему, нажмите «Загрузить демо-базу примеров» — это займёт пару секунд.'}
+            </div>
+            <div className="competitors-controls" style={{ marginTop: '12px' }}>
+              {isSourceReady && typeof onSkipToNextStep === 'function' && (
                 <button
                   type="button"
-                  className="action-btn danger competitor-remove-btn"
-                  onClick={() => onRemoveUrl(index)}
+                  className="action-btn competitors-parse-btn"
+                  onClick={onSkipToNextStep}
                   disabled={isActionsDisabled}
+                  style={{ background: '#ff6b9d', borderColor: '#ff6b9d' }}
                 >
-                  Удалить
+                  <span>Продолжить с текущей базой</span>
+                </button>
+              )}
+              {typeof onSeedDemoPrecedents === 'function' && (
+                <button
+                  type="button"
+                  className="action-btn"
+                  onClick={onSeedDemoPrecedents}
+                  disabled={isActionsDisabled || isEnrichmentServerAvailable === false}
+                  title="Заполнить базу проверенными IT-публикациями и контент-планами для быстрого старта"
+                >
+                  <span>
+                    {isSeedingPrecedents
+                      ? 'Загрузка демо-базы...'
+                      : dbTotalCount > 0
+                        ? 'Обновить демо-базу прецедентов'
+                        : 'Загрузить демо-базу примеров (1 клик)'}
+                  </span>
                 </button>
               )}
             </div>
-          ))}
-
-          <div className="competitors-controls">
-            <div className="competitors-select-block">
-              <span className="competitors-select-label">Сколько постов парсить</span>
-              <select
-                className="form-select competitors-select"
-                value={postsLimit}
-                onChange={(e) => onPostsLimitChange(e.target.value)}
-                disabled={isActionsDisabled}
-              >
-                <option value="1">1 пост</option>
-                <option value="10">10 постов</option>
-                <option value="50">50 постов</option>
-                <option value="100">100 постов</option>
-                <option value="all">Все посты</option>
-              </select>
-            </div>
-
-            <button
-              type="button"
-              className="action-btn competitors-add-btn"
-              onClick={onAddUrl}
-              disabled={isActionsDisabled}
-            >
-              + Добавить ссылку
-            </button>
-
-            <button
-              type="button"
-              className="action-btn competitors-parse-btn"
-              onClick={onParseFromUrls}
-              disabled={isActionsDisabled || isEnrichmentServerAvailable === false}
-              style={{
-                backgroundColor: isEnrichmentServerAvailable === false ? '#666' : undefined,
-                cursor: isParsingFromUrls ? 'wait' : undefined
-              }}
-              title={
-                isEnrichmentServerAvailable === false
-                  ? 'Сервер парсинга/обогащения недоступен'
-                  : 'Спарсить конкурентов по ссылкам'
-              }
-            >
-              {isParsingFromUrls ? 'Парсинг...' : 'Спарсить'}
-            </button>
           </div>
         </div>
 
-        {competitorsData && (
-          <div className="competitors-status">
-            {isEnriching && <ProcessIndicator active processId="enriching" contextual />}
-            <span className="competitors-status-text">
-              ✓ Данные конкурентов в форме
-              {competitorsFileName && ` (${competitorsFileName})`}
-              {` — ${competitorsData.competitors?.length || 0} конкурентов`}
-            </span>
+        {/* Блок 2: Парсинг конкурентов по ссылкам */}
+        <div className="ui-panel competitors-dashboard">
+          <div className="ui-panel-header">
+            <div className="ui-panel-title">
+              Вариант 2 (Опционально): Собрать посты конкурентов по ссылкам
+            </div>
+          </div>
 
-            {showEnrichButton && (
+          <div className="ui-callout" style={{ marginBottom: '12px' }}>
+            <div className="ui-callout-title">Как добавить своих конкурентов</div>
+            <div className="ui-callout-text">
+              Вставьте ссылку на публичную группу или страницу конкурента в VK или LinkedIn
+              {allowInstagram ? ' или Instagram' : ''} и нажмите <strong>«Спарсить по ссылкам»</strong>.
+            </div>
+          </div>
+
+          {isParsingFromUrls && (
+            <ProcessIndicator active processId="parsing" contextual />
+          )}
+
+          <div className="competitors-inputs">
+            {competitorUrls.map((url, index) => (
+              <div key={index} className="competitor-url-row">
+                <input
+                  type="text"
+                  value={url}
+                  onChange={(e) => onUrlChange(index, e.target.value)}
+                  placeholder={
+                    allowInstagram
+                      ? 'Например: https://vk.com/company или https://www.linkedin.com/company/... или https://www.instagram.com/...'
+                      : 'Например: https://vk.com/company или https://www.linkedin.com/company/...'
+                  }
+                  className="form-input competitor-url-input"
+                />
+                {competitorUrls.length > 1 && (
+                  <button
+                    type="button"
+                    className="action-btn danger competitor-remove-btn"
+                    onClick={() => onRemoveUrl(index)}
+                    disabled={isActionsDisabled}
+                  >
+                    Удалить
+                  </button>
+                )}
+              </div>
+            ))}
+
+            <div className="competitors-controls">
+              <div className="competitors-select-block">
+                <span className="competitors-select-label">Сколько постов забрать с каждой ссылки</span>
+                <select
+                  className="form-select competitors-select"
+                  value={postsLimit}
+                  onChange={(e) => onPostsLimitChange(e.target.value)}
+                  disabled={isActionsDisabled}
+                >
+                  <option value="1">1 пост (быстрая проверка)</option>
+                  <option value="10">10 постов (рекомендуется)</option>
+                  <option value="50">50 постов</option>
+                  <option value="100">100 постов</option>
+                  <option value="all">Все доступные посты</option>
+                </select>
+              </div>
+
               <button
                 type="button"
-                className="action-btn competitors-enrich-btn"
-                onClick={onEnrichUploaded}
-                disabled={isEnriching || isProcessing || !canEnrich || isEnrichmentServerAvailable === false}
+                className="action-btn competitors-add-btn"
+                onClick={onAddUrl}
+                disabled={isActionsDisabled}
+              >
+                + Ещё ссылка
+              </button>
+
+              <button
+                type="button"
+                className="action-btn competitors-parse-btn"
+                onClick={onParseFromUrls}
+                disabled={isActionsDisabled || isEnrichmentServerAvailable === false}
                 style={{
                   backgroundColor: isEnrichmentServerAvailable === false ? '#666' : undefined,
-                  cursor: isEnriching || !canEnrich ? 'not-allowed' : undefined
+                  cursor: isParsingFromUrls ? 'wait' : undefined
                 }}
                 title={
                   isEnrichmentServerAvailable === false
-                    ? 'Сервер обогащения недоступен'
-                    : !canEnrich
-                    ? 'Сначала получите данные конкурентов (кнопка «Спарсить»)'
-                    : 'Обогатить данные конкурентов'
+                    ? 'Сервер парсинга/обогащения недоступен'
+                    : 'Спарсить конкурентов по указанным ссылкам'
                 }
               >
-                {isEnriching ? 'Обогащение...' : 'Обогатить'}
+                {isParsingFromUrls ? 'Парсинг...' : 'Спарсить по ссылкам'}
               </button>
-            )}
-
-            <button
-              type="button"
-              className="action-btn danger competitors-clear-btn"
-              onClick={onRemoveData}
-              disabled={isEnriching || isProcessing}
-            >
-              Очистить конкурентов
-            </button>
-          </div>
-        )}
-
-        {!competitorsData && (
-          <div className="ui-empty">
-            <div className="ui-empty-title">Данных конкурентов пока нет</div>
-            <div className="ui-empty-text">
-              Если база прецедентов уже заполнена с прошлых запусков, этот блок можно не тратить. Иначе добавьте
-              ссылки, выберите лимит и нажмите <strong>Спарсить</strong>.
-              {showEnrichButton
-                ? ' После парсинга доступна кнопка «Обогатить» (повтор не нужен для уже обогащённых данных).'
-                : ' После парсинга данные обогатятся автоматически.'}
             </div>
           </div>
-        )}
+
+          {competitorsData && (
+            <div className="competitors-status">
+              {isEnriching && <ProcessIndicator active processId="enriching" contextual />}
+              <span className="competitors-status-text">
+                Загружены данные конкурентов
+                {competitorsFileName && ` (${competitorsFileName})`}
+                {` — ${competitorsCount} конкурентов, ${parsedPostsCount} постов`}
+              </span>
+
+              {showEnrichButton && (
+                <button
+                  type="button"
+                  className="action-btn competitors-enrich-btn"
+                  onClick={onEnrichUploaded}
+                  disabled={isEnriching || isProcessing || !canEnrich || isEnrichmentServerAvailable === false}
+                  style={{
+                    backgroundColor: isEnrichmentServerAvailable === false ? '#666' : undefined,
+                    cursor: isEnriching || !canEnrich ? 'not-allowed' : undefined
+                  }}
+                  title={
+                    isEnrichmentServerAvailable === false
+                      ? 'Сервер обогащения недоступен'
+                      : !canEnrich
+                      ? 'Сначала получите данные конкурентов'
+                      : 'Обогатить данные конкурентов и сохранить в базу прецедентов'
+                  }
+                >
+                  {isEnriching ? 'Обогащение...' : 'Обогатить и сохранить в базу'}
+                </button>
+              )}
+
+              <button
+                type="button"
+                className="action-btn danger competitors-clear-btn"
+                onClick={onRemoveData}
+                disabled={isEnriching || isProcessing}
+              >
+                Очистить конкурентов
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
-  );
-};
+  )
+}
 
-export default CompetitorsStep;
+export default CompetitorsStep
+

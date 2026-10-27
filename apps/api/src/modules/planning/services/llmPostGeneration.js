@@ -19,6 +19,26 @@ export const POST_CONTENT_JSON_SCHEMA = {
   required: ['key_message', 'summary']
 };
 
+export const PLAN_ANGLES_JSON_SCHEMA = {
+  type: 'object',
+  properties: {
+    angles: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          index: { type: 'integer' },
+          angle_title: { type: 'string' },
+          hook_opening: { type: 'string' },
+          key_angle: { type: 'string' }
+        },
+        required: ['index', 'angle_title', 'hook_opening', 'key_angle']
+      }
+    }
+  },
+  required: ['angles']
+};
+
 function clip(value, maxLen) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();
   if (!text) return '';
@@ -88,6 +108,138 @@ function clipMediaPrompt(value) {
 }
 
 /**
+ * Builds deterministic fallback angles matrix for plan slots when LLM is in test mode or unavailable.
+ * @param {Array<Object>} slots
+ * @returns {Array<{ index: number, angle_title: string, hook_opening: string, key_angle: string }>}
+ */
+export function buildFallbackAnglesMatrix(slots = []) {
+  return slots.map((slot, idx) => {
+    const slotIdx = Number.isFinite(Number(slot?.index)) ? Number(slot.index) : idx;
+    const rawTopic = slot?.topic || `Тема ${slotIdx + 1}`;
+    const hook = slot?.hook || 'direct';
+    const hookDesc = hookInstruction(hook);
+    const objective = slot?.objective || 'информирование';
+    const format = slot?.format || 'текст';
+    return {
+      index: slotIdx,
+      angle_title: rawTopic,
+      hook_opening: `Заход: ${hookDesc} к теме «${rawTopic}»`,
+      key_angle: `Фокус: ${objective} в формате ${format}`
+    };
+  });
+}
+
+/**
+ * Generates plan-wide topic angles matrix in a single quick LLM call to guarantee
+ * diverse angles and distinct hooks across the entire plan prior to parallel post generation.
+ * @param {Array<Object>} slots
+ * @param {Object} formInput
+ * @param {Object} ragResults
+ * @param {Object} usage
+ * @returns {Promise<Array<{ index: number, angle_title: string, hook_opening: string, key_angle: string }>>}
+ */
+export async function generatePlanAnglesMatrix(slots = [], formInput = {}, ragResults = {}, usage = {}) {
+  if (!Array.isArray(slots) || slots.length === 0) return [];
+  if (process.env.TEST_MODE === 'true') {
+    return buildFallbackAnglesMatrix(slots);
+  }
+
+  const systemPrompt = [
+    'Ты главный редактор контент-плана для соцсетей.',
+    'Твоя задача — сгенерировать единую матрицу уникальных углов подачи (topic angles) и открывающих фраз (hooks) для всех слотов плана сразу.',
+    'Верни только JSON по схеме: массив angles, где для каждого слота указаны index, angle_title, hook_opening, key_angle.',
+    'Правила:',
+    '1. Ни один пост плана не должен повторять угол или начало другого поста.',
+    '2. hook_opening — это готовая первая фраза поста (до 140 символов) строго под заданный тип крючка.',
+    '3. angle_title — конкретный доменный угол темы (без общих штампов вроде «важность внедрения»).',
+    '4. key_angle — главная мысль или рабочий кейс этого слота.'
+  ].join(' ');
+
+  const compactSlots = slots.map((slot, idx) => ({
+    index: Number.isFinite(Number(slot?.index)) ? Number(slot.index) : idx,
+    topic: slot?.topic || '',
+    format: slot?.format || 'text',
+    objective: slot?.objective || 'inform',
+    tone: slot?.tone || 'expert',
+    platform: slot?.platform || '',
+    hook: hookInstruction(slot?.hook || 'direct'),
+    length: lengthInstruction(slot?.length || 'medium')
+  }));
+
+  const buildPromptForSlots = (slotsChunk) => `Составь матрицу углов для ${slotsChunk.length} слотов плана:
+Досье проекта:
+${JSON.stringify(compactFormBrief(formInput))}
+
+Ориентиры прецедентов:
+${JSON.stringify(compactRagBrief(ragResults))}
+
+Слоты плана:
+${JSON.stringify(slotsChunk, null, 2)}
+`;
+
+  try {
+    const chunkSize = 25;
+    const chunks = [];
+    for (let i = 0; i < compactSlots.length; i += chunkSize) {
+      chunks.push(compactSlots.slice(i, i + chunkSize));
+    }
+
+    const allAngles = [];
+    for (const chunk of chunks) {
+      const userPrompt = buildPromptForSlots(chunk);
+      const llmResponse = await callOpenRouterChat(systemPrompt, userPrompt, {
+        temperature: 0.65,
+        maxTokens: Math.max(2500, chunk.length * 160),
+        reasoningEffort: 'none',
+        jsonSchema: PLAN_ANGLES_JSON_SCHEMA,
+        schemaName: 'plan_angles_matrix',
+        responseFormat: 'json_schema'
+      });
+
+      if (usage) {
+        usage.prompt_tokens = (usage.prompt_tokens || 0) + (llmResponse.usage?.prompt_tokens || 0);
+        usage.completion_tokens = (usage.completion_tokens || 0) + (llmResponse.usage?.completion_tokens || 0);
+        usage.total_tokens = (usage.total_tokens || 0) + (llmResponse.usage?.total_tokens || 0);
+      }
+
+      const content = String(llmResponse.content || '').trim();
+      let parsed;
+      try {
+        parsed = JSON.parse(content);
+      } catch {
+        const match = content.match(/\{[\s\S]*\}/);
+        if (match) parsed = JSON.parse(match[0]);
+      }
+
+      if (Array.isArray(parsed?.angles)) {
+        allAngles.push(...parsed.angles);
+      }
+    }
+
+    if (allAngles.length > 0) {
+      const byIndex = new Map(allAngles.map((a) => [Number(a?.index), a]));
+      return slots.map((slot, idx) => {
+        const slotIdx = Number.isFinite(Number(slot?.index)) ? Number(slot.index) : idx;
+        const candidate = byIndex.get(slotIdx);
+        if (candidate?.angle_title && candidate?.hook_opening) {
+          return {
+            index: slotIdx,
+            angle_title: String(candidate.angle_title).trim(),
+            hook_opening: String(candidate.hook_opening).trim(),
+            key_angle: String(candidate.key_angle || candidate.angle_title).trim()
+          };
+        }
+        return buildFallbackAnglesMatrix([slot])[0];
+      });
+    }
+  } catch (err) {
+    console.error('Error generating plan angles matrix via LLM:', err);
+  }
+
+  return buildFallbackAnglesMatrix(slots);
+}
+
+/**
  * Generates post content (key_message, summary, cta, and a media prompt for image/video).
  * @returns {Promise<{ key_message: string, summary: string, cta: string, media_prompt: string }>}
  */
@@ -118,6 +270,7 @@ export async function generatePostContent(slot, gaOptimizedParams, formInput, ra
   const index = Number.isFinite(Number(gaOptimizedParams?.index)) ? Number(gaOptimizedParams.index) : 0;
   const avoidOpenings = Array.isArray(gaOptimizedParams?.avoid_openings) ? gaOptimizedParams.avoid_openings : [];
   const avoidTopics = Array.isArray(gaOptimizedParams?.avoid_topics) ? gaOptimizedParams.avoid_topics : [];
+  const assignedAngle = gaOptimizedParams?.assigned_angle || null;
 
   const minSummary = summaryFloor(format, length);
   const systemPrompt = [
@@ -135,6 +288,9 @@ export async function generatePostContent(slot, gaOptimizedParams, formInput, ra
   const userPrompt = `Слот ${index + 1}.
 Платформа: ${platform || 'не указана'}
 Тема: ${topic}
+${assignedAngle ? `Уникальный угол подачи: ${assignedAngle.angle_title}
+Рекомендованный хук/заход: ${assignedAngle.hook_opening}
+Ключевой фокус: ${assignedAngle.key_angle}` : ''}
 Формат: ${format}
 Цель: ${objective}
 Тон: ${tone}
@@ -164,7 +320,8 @@ ${visualKind ? `media_prompt — промпт на английском для �
   try {
     const llmResponse = await callOpenRouterChat(systemPrompt, userPrompt, {
       temperature: temperatureFromCreativity(creativity),
-      maxTokens: visualKind ? 1100 : 900,
+      maxTokens: Math.max(3000, Number(process.env.POST_GENERATION_MAX_TOKENS || 3000)),
+      reasoningEffort: 'none',
       jsonSchema: POST_CONTENT_JSON_SCHEMA,
       schemaName: 'post_content_generation',
       responseFormat: 'json_schema'
@@ -209,25 +366,27 @@ ${visualKind ? `media_prompt — промпт на английском для �
 
   const resolvedTopic = normalizePublicationTopicForUi(topic || '');
   const resolvedTone = alignToneToObjective(resolvedTopic, tone || '', objective || '');
+  const baseKeyMessage = slot?.key_message || slot?.keyMessage || '';
+  const baseSummary = slot?.summary || '';
   const semanticCore = {
     topic: resolvedTopic,
-    key_message: '',
-    summary: '',
+    key_message: baseKeyMessage,
+    summary: baseSummary,
     objective: objective || '',
     format: format || '',
     tone: resolvedTone
   };
-  const keyMessage = choosePreferredKeyMessage(semanticCore, '', {
+  const keyMessage = choosePreferredKeyMessage(semanticCore, baseKeyMessage, {
     topic: resolvedTopic,
     objective,
     format,
     tone: resolvedTone,
     index
   });
-  const summary = choosePreferredSummary(semanticCore, '', {
+  const summary = choosePreferredSummary(semanticCore, baseSummary, {
     topic: resolvedTopic,
     format,
-    fallbackSummary: ''
+    fallbackSummary: baseSummary
   });
   const cta = hasCta ? buildObjectiveCta(objective || '', '', resolvedTopic, index) : '';
   return {

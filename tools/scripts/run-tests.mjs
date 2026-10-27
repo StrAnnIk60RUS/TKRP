@@ -18,11 +18,14 @@ const testFiles = [
   'apps/web/tests/frontend-formUtils.test.js',
   'apps/web/tests/keyDatesModel.test.js',
   'apps/web/tests/publicationPresentation.test.js',
+  'apps/web/tests/breadcrumbs.test.js',
+  'apps/web/tests/contentPlanExport.test.js',
   'apps/web/tests/functional-requirements-ui.test.js',
   'apps/web/tests/functional-requirements-registry.test.js',
   'apps/api/tests/ontologyAggregation.test.js',
   'apps/api/tests/security.test.js',
   'apps/api/tests/securityMore.test.js',
+  'apps/api/tests/securityAuth.test.js',
   'apps/api/tests/planRoutes.integration.test.js',
   'apps/api/tests/routeUtils.test.js',
   'apps/api/tests/expressHttp.integration.test.js',
@@ -39,6 +42,7 @@ const testFiles = [
   'apps/api/tests/llmJsonParsing.test.js',
   'apps/api/tests/asyncGaCore.test.js',
   'apps/api/tests/fitnessUtils.test.js',
+  'apps/api/tests/paretoUtils.test.js',
   'apps/api/tests/hierarchicalGa.test.js',
   'apps/api/tests/postEvolution.test.js',
   'apps/api/tests/mediaGenerationService.test.js',
@@ -52,6 +56,7 @@ const testFiles = [
   'apps/api/tests/dbClient.test.js',
   'apps/api/tests/dbMigrations.test.js',
   'apps/api/tests/precedentRepositoryDb.live.test.js',
+  'apps/api/tests/hybridPrecedentSearch.test.js',
   'apps/api/tests/embeddingVersioning.test.js',
 'apps/api/tests/mlFeatureVersioning.test.js',
   'apps/api/tests/ragQueryCache.test.js',
@@ -59,11 +64,15 @@ const testFiles = [
   'apps/api/tests/authRoutes.integration.test.js',
   'apps/api/tests/instagramAccess.test.js',
   'apps/api/tests/jobQueue.test.js',
+  'apps/api/tests/sseJobQueue.test.js',
   'apps/api/tests/draftStore.test.js',
   'apps/api/tests/draftStore.db.test.js',
   'apps/api/tests/planSnapshotStore.test.js',
   'apps/api/tests/planSnapshotStore.db.test.js',
-  'apps/api/tests/pythonJsonWorker.test.js'
+  'apps/api/tests/pythonJsonWorker.test.js',
+  'apps/api/tests/logger.test.js',
+  'apps/api/tests/asyncTracing.test.js',
+  'apps/api/tests/telemetryRoutes.integration.test.js'
 ].map((p) => join(root, p));
 
 const mode = process.argv[2];

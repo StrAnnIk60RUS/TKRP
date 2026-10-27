@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DRAFT_PLAN_PIPELINE_TEST_UTILS } from '../src/modules/planning/services/draftPlanGenerationPipeline.js';
+import {
+  DRAFT_PLAN_PIPELINE_TEST_UTILS,
+  sanitizeUserFacingSummary
+} from '../src/modules/planning/services/draftPlanGenerationPipeline.js';
 import {
   scoreGeneTopicDraftAlignment,
   scorePlanDraftGeneAlignment,
@@ -22,7 +25,10 @@ const {
   calibrateExpectedKpi,
   choosePreferredTopic,
   choosePreferredKeyMessage,
-  choosePreferredSummary
+  choosePreferredSummary,
+  repairSkeleton,
+  buildSummaryRepairFromTopic,
+  repairPublicationSemanticCoherence
 } = DRAFT_PLAN_PIPELINE_TEST_UTILS;
 
 test('hasSemanticOverlap keeps long summary matched to short topic', () => {
@@ -372,3 +378,110 @@ test('GA draft-alignment: plan-level average reflects mixed genomes', () => {
   const avg = scorePlanDraftGeneAlignment(genome, pubs);
   assert.ok(avg > 0.45 && avg < 0.85);
 });
+
+test('repairSkeleton extracts publication slots from LLM calendar_plan schema', () => {
+  const rawSkeleton = {
+    planning_horizon: { start_date: '2026-04-01', end_date: '2026-04-30' },
+    platforms: ['vk'],
+    calendar_plan: [
+      {
+        month: '2026-04',
+        slots: [
+          {
+            slot_id: 'slot_001',
+            planned_date: '2026-04-05',
+            platform: 'vk',
+            format: 'video',
+            objective: 'convert',
+            tone: 'inspirational'
+          },
+          {
+            slot_id: 'slot_002',
+            planned_date: '2026-04-12',
+            platform: 'vk',
+            format: 'image',
+            objective: 'educate',
+            tone: 'casual'
+          }
+        ]
+      }
+    ]
+  };
+  const formInput = {
+    platforms: ['vk'],
+    timeline: { start_date: '2026-04-01', end_date: '2026-04-30' }
+  };
+  const repaired = repairSkeleton(rawSkeleton, formInput, 2, {});
+  assert.equal(repaired.publication_slots.length, 2);
+  assert.equal(repaired.publication_slots[0].format, 'video');
+  assert.equal(repaired.publication_slots[0].objective, 'convert');
+  assert.equal(repaired.publication_slots[0].tone, 'inspiring');
+  assert.equal(repaired.publication_slots[1].format, 'image');
+  assert.equal(repaired.publication_slots[1].objective, 'educate');
+  assert.equal(repaired.publication_slots[1].tone, 'friendly');
+});
+
+test('hasSemanticOverlap matches Russian inflected forms and ё/е normalization', () => {
+  const topic = 'почему ребёнок отвечает невпопад на онлайн-уроке';
+  const summary =
+    'Когда ребенок во время дистанционного урока теряет концентрацию и начинает отвечать наугад, причина часто кроется в перегрузке восприятия.';
+  assert.equal(hasSemanticOverlap(topic, summary, { minSharedTokens: 2, minOverlapRatio: 0.1 }), true);
+});
+
+test('repairPublicationSemanticCoherence preserves usable LLM summary instead of overwriting with fallback', () => {
+  const llmSummary =
+    'Когда школьник на дистанционном занятии теряет нить разговора и даёт случайные ответы, преподавателю важно переключить внимание коротким интерактивным вопросом и снизить темп объяснения материала.';
+  const pub = {
+    topic: 'почему ребёнок отвечает невпопад на онлайн-уроке',
+    format: 'text',
+    objective: 'educate',
+    tone: 'friendly',
+    key_message: 'Дистанционные занятия требуют коротких пауз для удержания внимания ученика.',
+    summary: llmSummary
+  };
+  const fallback = {
+    topic: pub.topic,
+    summary: 'Fallback summary'
+  };
+  const { publication } = repairPublicationSemanticCoherence(pub, fallback, {
+    consumerCategory: 'B2C',
+    projectBenefits: 'сочетание инновационных технологий обучения с индивидуальным подходом'
+  });
+  assert.equal(publication.summary, llmSummary);
+  assert.doesNotMatch(publication.summary, /Аудитория слота:/i);
+  assert.doesNotMatch(publication.summary, /достаточно одного рабочего эпизода/i);
+});
+
+test('buildSummaryRepairFromTopic and sanitizeUserFacingSummary do not emit Аудитория слота or editor imperatives', () => {
+  const formInput = {
+    consumerCategory: 'B2C',
+    projectBenefits: 'сочетание инновационных технологий обучения с индивидуальным подходом'
+  };
+  const repaired = buildSummaryRepairFromTopic(
+    'почему ребёнок отвечает невпопад на онлайн-уроке',
+    'text',
+    formInput
+  );
+  assert.doesNotMatch(repaired, /Аудитория слота/i);
+  assert.doesNotMatch(repaired, /достаточно одного рабочего эпизода/i);
+  assert.doesNotMatch(repaired, /Назовите, что меняется/i);
+  assert.doesNotMatch(repaired, /Отдельно стоит назвать ограничение/i);
+  assert.doesNotMatch(repaired, /В конце оставьте читателю один вопрос/i);
+  assert.match(repaired, /Сочетание инновационных технологий обучения с индивидуальным подходом\./);
+
+  const polluted =
+    'По теме «почему ребёнок отвечает невпопад на онлайн-уроке» достаточно одного рабочего эпизода, а не полного описания продукта. сочетание инновационных технологий обучения с индивидуальным подходом Аудитория слота: B2C. Назовите, что меняется после этого шага и как это проверить без пересказа остальных публикаций плана. Отдельно стоит назвать ограничение: где метод не подходит и какой сигнал говорит, что пора сменить подход.';
+  const sanitized = sanitizeUserFacingSummary(
+    polluted,
+    'почему ребёнок отвечает невпопад на онлайн-уроке',
+    'text',
+    formInput,
+    'educate'
+  );
+  assert.doesNotMatch(sanitized, /Аудитория слота/i);
+  assert.doesNotMatch(sanitized, /достаточно одного рабочего эпизода/i);
+  assert.doesNotMatch(sanitized, /Назовите, что меняется/i);
+  assert.doesNotMatch(sanitized, /Отдельно стоит назвать ограничение/i);
+});
+
+

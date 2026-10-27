@@ -1,4 +1,5 @@
 import { spawn } from 'child_process';
+import { logger } from '../logging/logger.js';
 
 const DEFAULT_PYTHON_BIN = process.env.PYTHON_BIN || 'python';
 
@@ -20,6 +21,13 @@ export function runPythonProcess({
 }) {
   return new Promise((resolve, reject) => {
     const pythonBin = process.env.PYTHON_BIN || DEFAULT_PYTHON_BIN;
+    const startTime = Date.now();
+    logger.debug(`Spawning python process: ${description}`, {
+      module: 'pythonRuntime',
+      scriptPath,
+      args
+    });
+
     const child = spawn(pythonBin, ['-u', scriptPath, ...args], {
       cwd,
       env: {
@@ -37,7 +45,13 @@ export function runPythonProcess({
       if (settled) return;
       settled = true;
       child.kill('SIGTERM');
-      reject(new Error(`${description} timed out after ${timeoutMs} ms`));
+      const err = new Error(`${description} timed out after ${timeoutMs} ms`);
+      logger.error(`Python process timed out: ${description}`, {
+        module: 'pythonRuntime',
+        scriptPath,
+        timeoutMs
+      });
+      reject(err);
     }, timeoutMs);
 
     child.stdout.on('data', (data) => {
@@ -52,6 +66,11 @@ export function runPythonProcess({
       if (settled) return;
       settled = true;
       clearTimeout(cleanupTimer);
+      logger.error(`Python process error: ${description}`, {
+        module: 'pythonRuntime',
+        scriptPath,
+        error
+      });
       reject(error);
     });
 
@@ -59,6 +78,23 @@ export function runPythonProcess({
       if (settled) return;
       settled = true;
       clearTimeout(cleanupTimer);
+
+      const durationMs = Date.now() - startTime;
+      if (exitCode !== 0) {
+        logger.warn(`Python process exited with code ${exitCode}: ${description} (${durationMs}ms)`, {
+          module: 'pythonRuntime',
+          scriptPath,
+          exitCode,
+          duration_ms: durationMs,
+          stderr: (stderr || '').slice(0, 1000)
+        });
+      } else {
+        logger.debug(`Python process finished successfully: ${description} (${durationMs}ms)`, {
+          module: 'pythonRuntime',
+          scriptPath,
+          duration_ms: durationMs
+        });
+      }
 
       resolve({
         exitCode,

@@ -81,9 +81,20 @@ function loadFromDisk() {
     const raw = fs.readFileSync(cfg.file, 'utf-8');
     const parsed = JSON.parse(raw);
     if (parsed && typeof parsed === 'object') {
-      Object.entries(parsed).forEach(([key, value]) => {
+      Object.entries(parsed).forEach(([key, rawEntry]) => {
         if (cacheEntries.size >= cfg.maxEntries) return;
-        cacheEntries.set(key, { value, stored_at: Date.now() });
+        const isWrapped =
+          rawEntry !== null &&
+          typeof rawEntry === 'object' &&
+          !Array.isArray(rawEntry) &&
+          Object.prototype.hasOwnProperty.call(rawEntry, 'value') &&
+          typeof rawEntry.stored_at === 'number';
+        cacheEntries.set(
+          key,
+          isWrapped
+            ? { value: rawEntry.value, stored_at: rawEntry.stored_at }
+            : { value: rawEntry, stored_at: Date.now() }
+        );
       });
     }
   } catch (error) {

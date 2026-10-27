@@ -175,10 +175,17 @@ async function generateVideo(http, apiKey, { model, prompt, aspectRatio, sleep, 
     if (status === 'completed') {
       const contentUrl = polled.data?.unsigned_urls?.[0];
       if (!contentUrl) throw httpError('OpenRouter не вернул ссылку на видео');
+      const isSameOrigin = (() => {
+        try {
+          return new URL(contentUrl).origin === new URL(OPENROUTER_VIDEOS_URL).origin;
+        } catch {
+          return false;
+        }
+      })();
       const file = await callHttp(http, {
         method: 'GET',
         url: contentUrl,
-        headers: openRouterHeaders(apiKey),
+        headers: isSameOrigin ? openRouterHeaders(apiKey) : {},
         responseType: 'arraybuffer',
         timeout: 120000
       });

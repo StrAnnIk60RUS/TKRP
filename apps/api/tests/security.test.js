@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import cors from 'cors'
 
 import {
   createCorsOptions,
@@ -50,6 +51,82 @@ test('createCorsOptions allows localhost origin on any port (Vite fallback)', as
       resolve()
     })
   })
+})
+
+test('createCorsOptions includes telemetry and trace headers in allowedHeaders and exposedHeaders', () => {
+  const corsOptions = createCorsOptions()
+
+  assert.ok(Array.isArray(corsOptions.allowedHeaders))
+  assert.ok(corsOptions.allowedHeaders.includes('x-trace-id'))
+  assert.ok(corsOptions.allowedHeaders.includes('X-Trace-Id'))
+  assert.ok(corsOptions.allowedHeaders.includes('x-request-id'))
+  assert.ok(corsOptions.allowedHeaders.includes('X-Request-Id'))
+  assert.ok(corsOptions.allowedHeaders.includes('Content-Type'))
+  assert.ok(corsOptions.allowedHeaders.includes('Authorization'))
+  assert.ok(corsOptions.allowedHeaders.includes('X-Server-API-Key'))
+
+  assert.ok(Array.isArray(corsOptions.exposedHeaders))
+  assert.ok(corsOptions.exposedHeaders.includes('x-trace-id'))
+  assert.ok(corsOptions.exposedHeaders.includes('X-Trace-Id'))
+  assert.ok(corsOptions.exposedHeaders.includes('x-request-id'))
+  assert.ok(corsOptions.exposedHeaders.includes('X-Request-Id'))
+})
+
+test('createCorsOptions extends allowedHeaders with CORS_ALLOWED_HEADERS env', () => {
+  const prev = process.env.CORS_ALLOWED_HEADERS
+  process.env.CORS_ALLOWED_HEADERS = 'X-Custom-Client-Id, X-Another-Header'
+  try {
+    const corsOptions = createCorsOptions()
+    assert.ok(corsOptions.allowedHeaders.includes('X-Custom-Client-Id'))
+    assert.ok(corsOptions.allowedHeaders.includes('X-Another-Header'))
+    assert.ok(corsOptions.allowedHeaders.includes('x-trace-id'))
+  } finally {
+    if (prev === undefined) {
+      delete process.env.CORS_ALLOWED_HEADERS
+    } else {
+      process.env.CORS_ALLOWED_HEADERS = prev
+    }
+  }
+})
+
+test('cors middleware permits x-trace-id in preflight OPTIONS request', async () => {
+  const corsMiddleware = cors(createCorsOptions())
+  const req = {
+    method: 'OPTIONS',
+    headers: {
+      origin: 'http://localhost:5173',
+      'access-control-request-method': 'GET',
+      'access-control-request-headers': 'x-trace-id'
+    }
+  }
+  const headersSet = {}
+  let ended = false
+  const res = {
+    statusCode: null,
+    setHeader(key, value) {
+      headersSet[key.toLowerCase()] = value
+    },
+    getHeader(key) {
+      return headersSet[key.toLowerCase()]
+    },
+    end() {
+      ended = true
+    }
+  }
+
+  await new Promise((resolve, reject) => {
+    corsMiddleware(req, res, (err) => {
+      if (err) reject(err)
+      else resolve()
+    })
+    if (ended) resolve()
+  })
+
+  assert.equal(headersSet['access-control-allow-origin'], 'http://localhost:5173')
+  const allowed = headersSet['access-control-allow-headers']
+  assert.ok(allowed, 'Access-Control-Allow-Headers must be set')
+  const allowedList = allowed.split(',').map((h) => h.trim().toLowerCase())
+  assert.ok(allowedList.includes('x-trace-id'), 'x-trace-id must be allowed in CORS preflight')
 })
 
 test('requireLocalOrApiKey accepts local requests without key', () => {

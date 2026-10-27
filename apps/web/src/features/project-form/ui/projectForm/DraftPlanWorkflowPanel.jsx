@@ -1,5 +1,6 @@
 import React from 'react'
 import ProcessIndicator from '../../../../shared/ui/ProcessIndicator'
+import OptimizationTracePanel from './OptimizationTracePanel'
 
 const formatPercent = (value) => `${((Number(value) || 0) * 100).toFixed(1)}%`
 const formatNumber = (value) => {
@@ -53,7 +54,9 @@ const DraftPlanWorkflowPanel = ({
   optimizationResult,
   onGenerateDraftPlan,
   onGenerateWithPrecedents,
+  onGenerateAndOptimizePlan,
   onOptimizeDraftPlan,
+  onGoToOptimizeStep,
   onOpenPlan,
   isGeneratingDraftPlan,
   isOptimizingPlan,
@@ -64,12 +67,14 @@ const DraftPlanWorkflowPanel = ({
   canSearchPrecedents = true,
   smmSearchBlockedReasons = [],
   publicationDayMode = 'spread',
+  isAnalyst = false,
   isDeveloper = false,
   isEmbedded = false,
   combineSearchAndDraft = false,
   isFlatSmmFlow = false,
   phase = 'draft'
 }) => {
+  const isAnalystMode = Boolean(isAnalyst || isDeveloper)
   const draftPlan = draftPlanResult?.draft?.draft_content_plan || null
   const optimizedPlan = optimizationResult?.optimized_content_plan || null
   const planFeatures = optimizedPlan?.plan_features || optimizationResult?.stage1?.plan_features || null
@@ -134,6 +139,7 @@ const DraftPlanWorkflowPanel = ({
   const constraintIssuesCount = constraintMessages.length
   const canRunCombinedAction = canSearchPrecedents && isEnrichmentServerAvailable !== false
   const combinedBlockedReasons = smmSearchBlockedReasons.length > 0 ? smmSearchBlockedReasons : smmBlockedReasons
+  const canTriggerDraft = combineSearchAndDraft ? canRunCombinedAction : canGenerateDraft
   const gaChanges = draftPlan && optimizedPlan
     ? [
         ['min_publications', draftPlan.constraints?.min_publications, optimizedPlan.constraints?.min_publications]
@@ -152,20 +158,22 @@ const DraftPlanWorkflowPanel = ({
         <div>
           {isFlatSmmFlow ? null : isEmbedded ? (
             <h3 className="smm-unified-step-title">
-              {phase === 'optimize' ? 'Оптимизация плана' : 'Черновик плана'}
+              {phase === 'optimize'
+                ? 'Улучшение контент-плана (прогноз отклика и эволюционный отбор)'
+                : 'Сборка чернового контент-плана'}
             </h3>
           ) : (
             <h2 className="section-title">
-              {phase === 'optimize' ? 'Оптимизация плана' : 'Черновик плана'}
+              {phase === 'optimize'
+                ? 'Улучшение контент-плана (прогноз отклика и эволюционный отбор)'
+                : 'Сборка чернового контент-плана'}
             </h2>
           )}
           {!isFlatSmmFlow && (
             <p className="workflow-section-subtitle">
               {phase === 'optimize'
-                ? 'Улучшение меняет структуру плана и тексты постов. Открыть экран плана можно и до этого: тогда там будет черновик.'
-                : combineSearchAndDraft
-                  ? 'Кнопка сама подбирает прецеденты и собирает черновик. Улучшение плана — на следующем шаге.'
-                  : 'Черновик собирается по форме и прецедентам из базы. Отдельный поиск на прошлом шаге нужен только чтобы заранее посмотреть примеры.'}
+                ? 'Двухэтапная оптимизация: модель машинного обучения прогнозирует ожидаемые просмотры, лайки и репосты, а эволюционный (генетический) алгоритм подбирает оптимальное сочетание тем, форматов, тональности и призывов к действию для максимизации отклика аудитории.'
+                : 'Вы можете сначала собрать черновик от ИИ или сразу запустить полный цикл (генерация черновика + двухэтапная оптимизация на основе прогноза вовлечённости и эволюционного алгоритма подбора) одной кнопкой.'}
             </p>
           )}
         </div>
@@ -175,58 +183,120 @@ const DraftPlanWorkflowPanel = ({
 
       <div className="workflow-action-row workflow-action-row-tight">
         {phase !== 'optimize' && (
-          <button
-            type="button"
-            className="submit-button primary"
-            onClick={combineSearchAndDraft ? onGenerateWithPrecedents : onGenerateDraftPlan}
-            disabled={
-              isProcessing ||
-              isGeneratingDraftPlan ||
-              isEnrichmentServerAvailable === false ||
-              (combineSearchAndDraft ? !canRunCombinedAction : !canGenerateDraft)
-            }
-            title={
-              combinedBlockedReasons.length > 0
-                ? `Сначала выполните: ${combinedBlockedReasons.join(', ')}`
-                : combineSearchAndDraft
-                  ? 'Подобрать прецеденты и сразу сформировать черновой план'
-                  : 'Сформировать черновой план по данным формы и прецедентам'
-            }
-          >
-            <span>{isGeneratingDraftPlan ? 'ГЕНЕРАЦИЯ...' : 'СФОРМИРОВАТЬ ЧЕРНОВОЙ ПЛАН'}</span>
-          </button>
+          <>
+            {typeof onGenerateAndOptimizePlan === 'function' && (
+              <button
+                type="button"
+                className="submit-button primary"
+                onClick={onGenerateAndOptimizePlan}
+                disabled={
+                  isProcessing ||
+                  isGeneratingDraftPlan ||
+                  isOptimizingPlan ||
+                  isEnrichmentServerAvailable === false ||
+                  !canTriggerDraft
+                }
+                title={
+                  combinedBlockedReasons.length > 0
+                    ? `Сначала выполните: ${combinedBlockedReasons.join(', ')}`
+                    : 'Рекомендуется: подобрать прецеденты, создать черновик и сразу улучшить его алгоритмом'
+                }
+              >
+                <span>
+                  {isGeneratingDraftPlan
+                    ? 'ШАГ 1/2: ГЕНЕРАЦИЯ ЧЕРНОВИКА...'
+                    : isOptimizingPlan
+                      ? 'ШАГ 2/2: ОПТИМИЗАЦИЯ ПЛАНА...'
+                      : 'СОЗДАТЬ И ОПТИМИЗИРОВАТЬ ПЛАН (РЕКОМЕНДУЕТСЯ)'}
+                </span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              className={typeof onGenerateAndOptimizePlan === 'function' ? 'submit-button secondary' : 'submit-button primary'}
+              onClick={combineSearchAndDraft ? onGenerateWithPrecedents : onGenerateDraftPlan}
+              disabled={
+                isProcessing ||
+                isGeneratingDraftPlan ||
+                isEnrichmentServerAvailable === false ||
+                !canTriggerDraft
+              }
+              title={
+                combinedBlockedReasons.length > 0
+                  ? `Сначала выполните: ${combinedBlockedReasons.join(', ')}`
+                  : combineSearchAndDraft
+                    ? 'Подобрать прецеденты и сформировать только черновой план'
+                    : 'Сформировать черновой план по данным формы и прецедентам'
+              }
+            >
+              <span>{isGeneratingDraftPlan ? 'ГЕНЕРАЦИЯ...' : 'ТОЛЬКО ЧЕРНОВОЙ ПЛАН'}</span>
+            </button>
+
+            {draftPlan && (
+              <button
+                type="button"
+                className="submit-button secondary"
+                onClick={onOpenPlan}
+                title="Посмотреть сгенерированный план в календаре"
+              >
+                <span>{optimizedPlan ? 'ОТКРЫТЬ ОПТИМИЗИРОВАННЫЙ ПЛАН' : 'ОТКРЫТЬ ЧЕРНОВИК'}</span>
+              </button>
+            )}
+          </>
         )}
 
         {phase === 'optimize' && (
           <>
-            <button
-              type="button"
-              className="submit-button primary"
-              onClick={onOptimizeDraftPlan}
-              disabled={
-                !draftPlan ||
-                isOptimizingPlan ||
-                isProcessing ||
-                isEnrichmentServerAvailable === false
-              }
-              title={
-                !draftPlan
-                  ? 'Сначала соберите черновик на предыдущем шаге'
-                  : isDeveloper
-                    ? 'Запустить оптимизацию плана, затем постов'
-                    : 'Улучшить план на основе ограничений и целей'
-              }
-            >
-              <span>
-                {isOptimizingPlan
-                  ? isDeveloper
-                    ? 'ОПТИМИЗАЦИЯ...'
-                    : 'УЛУЧШЕНИЕ...'
-                  : isDeveloper
-                    ? 'ОПТИМИЗИРОВАТЬ ПЛАН'
-                    : 'УЛУЧШИТЬ ПЛАН'}
-              </span>
-            </button>
+            {draftPlan ? (
+              <button
+                type="button"
+                className="submit-button primary"
+                onClick={onOptimizeDraftPlan}
+                disabled={
+                  isOptimizingPlan ||
+                  isProcessing ||
+                  isEnrichmentServerAvailable === false
+                }
+                title={
+                  isAnalystMode
+                    ? 'Запустить оптимизацию структуры плана (этап 1), затем параметров постов (этап 2)'
+                    : 'Улучшить план на основе модели прогноза вовлечённости и эволюционного поиска'
+                }
+              >
+                <span>
+                  {isOptimizingPlan
+                    ? 'ИДЁТ ОПТИМИЗАЦИЯ ПЛАНА...'
+                    : optimizedPlan
+                      ? 'ПЕРЕЗАПУСТИТЬ ОПТИМИЗАЦИЮ'
+                      : 'ЗАПУСТИТЬ ОПТИМИЗАЦИЮ ПЛАНА'}
+                </span>
+              </button>
+            ) : (
+              typeof onGenerateAndOptimizePlan === 'function' && (
+                <button
+                  type="button"
+                  className="submit-button primary"
+                  onClick={onGenerateAndOptimizePlan}
+                  disabled={
+                    isProcessing ||
+                    isGeneratingDraftPlan ||
+                    isOptimizingPlan ||
+                    isEnrichmentServerAvailable === false ||
+                    !canTriggerDraft
+                  }
+                  title="Собрать черновик и сразу выполнить оптимизацию"
+                >
+                  <span>
+                    {isGeneratingDraftPlan
+                      ? 'ШАГ 1/2: ГЕНЕРАЦИЯ ЧЕРНОВИКА...'
+                      : isOptimizingPlan
+                        ? 'ШАГ 2/2: ОПТИМИЗАЦИЯ...'
+                        : 'СОЗДАТЬ ЧЕРНОВИК И СРАЗУ ОПТИМИЗИРОВАТЬ'}
+                  </span>
+                </button>
+              )
+            )}
 
             <button
               type="button"
@@ -235,33 +305,26 @@ const DraftPlanWorkflowPanel = ({
               disabled={!draftPlan && !optimizedPlan}
               title={
                 optimizedPlan
-                  ? 'Открыть план после оптимизации'
+                  ? 'Открыть готовый оптимизированный план в календаре'
                   : 'Открыть черновик без улучшения'
               }
             >
-              <span>{optimizedPlan ? 'ОТКРЫТЬ ПЛАН' : 'ОТКРЫТЬ ЧЕРНОВИК'}</span>
+              <span>{optimizedPlan ? 'ОТКРЫТЬ ГОТОВЫЙ КОНТЕНТ-ПЛАН' : 'ОТКРЫТЬ ЧЕРНОВИК'}</span>
             </button>
           </>
         )}
       </div>
-      {phase !== 'optimize' && !combineSearchAndDraft && !canGenerateDraft && smmBlockedReasons.length > 0 && (
+      {!canTriggerDraft && combinedBlockedReasons.length > 0 && (
         <div className="precedent-empty-state precedent-empty-state-light" role="status" aria-live="polite">
-          <strong>Почему кнопка неактивна:</strong> {smmBlockedReasons.join(' · ')}
-        </div>
-      )}
-      {phase !== 'optimize' && combineSearchAndDraft && !canRunCombinedAction && combinedBlockedReasons.length > 0 && (
-        <div className="precedent-empty-state precedent-empty-state-light" role="status" aria-live="polite">
-          <strong>Почему кнопка неактивна:</strong> {combinedBlockedReasons.join(' · ')}
+          <strong>Что осталось сделать перед запуском:</strong> {combinedBlockedReasons.join(' · ')}.
         </div>
       )}
 
       {!draftPlan && (
         <div className="precedent-empty-state precedent-empty-state-light">
-          {combineSearchAndDraft
-            ? 'После запуска здесь появится краткая сводка по структуре чернового плана.'
-            : phase === 'optimize'
-            ? 'Сначала соберите черновик на предыдущем шаге. Без него оптимизацию запустить нельзя.'
-            : 'После нажатия «Сформировать черновой план» здесь появится краткая сводка по структуре плана.'}
+          {phase === 'optimize'
+            ? 'Черновик ещё не создан. Нажмите «Создать черновик и сразу оптимизировать» выше — возвращаться на предыдущий шаг не обязательно!'
+            : 'Нажмите «Создать и оптимизировать план», чтобы система автоматически прошла весь пайплайн, или «Только черновой план», если хотите проверить черновик перед оптимизацией.'}
         </div>
       )}
 
@@ -270,7 +333,7 @@ const DraftPlanWorkflowPanel = ({
           <div className="workflow-result-card">
             <div className="workflow-result-header">
               <h3>Черновой план</h3>
-              <span className="ui-badge ui-badge-neutral">{isDeveloper ? 'Поиск и генерация' : 'Черновик ИИ'}</span>
+              <span className="ui-badge ui-badge-neutral">{isAnalystMode ? 'RAG + LLM генерация' : 'Черновик ИИ'}</span>
             </div>
             <div className="workflow-result-list">
               <div>План: {draftPlan.plan_id || '—'}</div>
@@ -290,13 +353,25 @@ const DraftPlanWorkflowPanel = ({
             <div className="workflow-next-action">
               <strong>
                 {phase === 'optimize'
-                  ? 'Можно улучшить план или открыть черновик как есть.'
-                  : 'Дальше — шаг «Оптимизация».'}
+                  ? 'Черновик готов. Запустите оптимизацию или откройте план.'
+                  : optimizedPlan
+                    ? 'План уже оптимизирован и готов к просмотру!'
+                    : 'Черновик готов! Теперь улучшите его алгоритмом или откройте в календаре.'}
               </strong>
+              {phase !== 'optimize' && !optimizedPlan && typeof onGoToOptimizeStep === 'function' && (
+                <div style={{ marginTop: '10px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <button type="button" className="action-btn" onClick={onGoToOptimizeStep}>
+                    <span>Перейти к шагу оптимизации</span>
+                  </button>
+                  <button type="button" className="action-btn" onClick={onOpenPlan}>
+                    <span>Открыть черновик в календаре</span>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
-          {phase === 'optimize' && (
+          {(phase === 'optimize' || !!optimizedPlan) && (
           <div className="workflow-result-card">
             <div className="workflow-result-header">
               <h3>Оптимизация</h3>
@@ -310,6 +385,7 @@ const DraftPlanWorkflowPanel = ({
                 После запуска оптимизации здесь появится лучший контент-план, прогноз лайков и результат эволюции постов.
               </div>
             )}
+
 
             {!!optimizedPlan && (
               <div className="workflow-result-list">
@@ -331,10 +407,10 @@ const DraftPlanWorkflowPanel = ({
                 {planFeatures && <div>Уникальных тонов: {planFeatures.unique_tones ?? '—'}</div>}
                 {planFeatures && <div>Средняя креативность (шкала 0-1): {formatNumber(planFeatures.avg_creativity)}</div>}
                 {planFeatures && <div>Доля постов с призывом: {formatPercent(planFeatures.cta_share)}</div>}
-                {isDeveloper && <div>Целевое число постов: {optimizationResult?.stage1?.target_posts_count ?? '—'}</div>}
-                {isDeveloper && <div>Этап 1, причина остановки: {optimizationResult?.stage1?.ga?.stop_reason ?? '—'}</div>}
-                {isDeveloper && <div>Этап 1 поколений: {optimizationResult?.stage1?.ga?.generations ?? '—'}</div>}
-                {isDeveloper && <div>Лучший пост: {optimizationResult?.best_publication?.publication_id ?? '—'}</div>}
+                {isAnalystMode && <div>Целевое число постов: {optimizationResult?.stage1?.target_posts_count ?? '—'}</div>}
+                {isAnalystMode && <div>Этап 1, причина остановки: {optimizationResult?.stage1?.ga?.stop_reason ?? '—'}</div>}
+                {isAnalystMode && <div>Этап 1 поколений: {optimizationResult?.stage1?.ga?.generations ?? '—'}</div>}
+                {isAnalystMode && <div>Лучший пост: {optimizationResult?.best_publication?.publication_id ?? '—'}</div>}
                 {bestPublication && <div>Лайки лучшего поста (максимум по постам): {formatNumber(bestPostPredictedLikes)}</div>}
                 {bestPublicationFeatures && <div>Креативность лучшего поста (шкала 0-1): {formatNumber(bestPublicationFeatures.creativity)}</div>}
                 {bestPublicationFeatures && <div>Призыв у лучшего поста: {bestPublicationFeatures.has_cta ? 'да' : 'нет'}</div>}
@@ -371,14 +447,21 @@ const DraftPlanWorkflowPanel = ({
                       ))}
                     </div>
                   )}
-                {isDeveloper && <div>Изменено ограничений алгоритма: {gaChanges.length}</div>}
-                {isDeveloper &&
+                {isAnalystMode && <div>Изменено ограничений алгоритма: {gaChanges.length}</div>}
+                {isAnalystMode &&
                   gaChanges.map(([key, beforeValue, afterValue]) => (
                     <div key={key}>
                       {key === 'min_publications' ? 'Минимум публикаций' : key}: {String(beforeValue ?? '—')} → {String(afterValue ?? '—')}
                     </div>
                   ))}
               </div>
+            )}
+            {!!optimizedPlan && (
+              <OptimizationTracePanel
+                optimizationResult={optimizationResult}
+                bestPublication={bestPublication}
+                isAnalyst={isAnalystMode}
+              />
             )}
           </div>
           )}

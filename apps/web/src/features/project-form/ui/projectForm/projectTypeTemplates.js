@@ -1,7 +1,7 @@
 /**
  * Шаблоны начальных значений формы под тип проекта
  */
-import { initialFormData } from './formConfig'
+import { initialFormData } from './formConfig.js'
 
 function addMonthsIso(months) {
   const d = new Date()

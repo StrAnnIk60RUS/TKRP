@@ -5,6 +5,7 @@ import {
   getKpiPresentation,
   getObjectiveLabel,
   getPlatformLabel,
+  getPublicationStatusLabel,
   isMeaningfulCta,
   normalizePublicationForUi
 } from '../lib/publicationPresentation'
@@ -44,10 +45,8 @@ const PlanPublicationTable = ({ publications, onEdit }) => {
               <td data-label="Цель">{getObjectiveLabel(normalizedPost.objective)}</td>
               <td data-label="Статус">
                 <span className={`post-status-badge post-status-${status}`}>
-                  {status === 'published' && '🟢 Опубликован'}
-                  {status === 'scheduled' && '⏰ Запланирован'}
-                  {status === 'draft' && '📝 Черновик'}
-                  {status === 'failed' && '❌ Ошибка'}
+                  <span className="post-status-dot" aria-hidden="true" />
+                  <span>{getPublicationStatusLabel(status)}</span>
                 </span>
                 {normalizedPost.post_url && (
                   <div>

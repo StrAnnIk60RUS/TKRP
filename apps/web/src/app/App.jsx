@@ -1,16 +1,26 @@
-import React from 'react'
+import React, { Suspense, lazy, useEffect } from 'react'
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import { UserRoleProvider } from './providers/UserRoleContext'
 import Layout from '../shared/ui/Layout'
 import ParticleBackground from '../shared/ui/ParticleBackground'
-import HomePage from '../pages/home/ui/HomePage'
-import ContentPlanPage from '../pages/content-plan/ui/ContentPlanPage'
-import AnalyticsPage from '../pages/analytics/ui/AnalyticsPage'
-import LoginPage from '../pages/auth/ui/LoginPage'
-import RegisterPage from '../pages/auth/ui/RegisterPage'
-import NotFoundPage from '../pages/not-found/ui/NotFoundPage'
+import ErrorBoundary from '../shared/ui/ErrorBoundary'
 import { useIsAuthenticated } from '../shared/ui/AuthGate'
+import { initBreadcrumbListeners } from '../shared/lib/telemetry/breadcrumbs'
 import './styles/App.css'
+
+const HomePage = lazy(() => import('../pages/home/ui/HomePage'))
+const ContentPlanPage = lazy(() => import('../pages/content-plan/ui/ContentPlanPage'))
+const AnalyticsPage = lazy(() => import('../pages/analytics/ui/AnalyticsPage'))
+const LoginPage = lazy(() => import('../pages/auth/ui/LoginPage'))
+const RegisterPage = lazy(() => import('../pages/auth/ui/RegisterPage'))
+const NotFoundPage = lazy(() => import('../pages/not-found/ui/NotFoundPage'))
+
+const PageFallback = () => (
+  <div className="loading-state" style={{ padding: '40px', textAlign: 'center' }}>
+    <div className="spinner"></div>
+    <p>Загрузка страницы...</p>
+  </div>
+)
 
 const AuthenticatedOnly = ({ children }) => {
   const isAuthenticated = useIsAuthenticated()
@@ -18,23 +28,32 @@ const AuthenticatedOnly = ({ children }) => {
 }
 
 function App() {
+  useEffect(() => {
+    initBreadcrumbListeners()
+  }, [])
+
   return (
     <Router>
-      <UserRoleProvider>
-        <ParticleBackground />
-        <Layout>
-        <Routes>
-          <Route path="/" element={<AuthenticatedOnly><HomePage /></AuthenticatedOnly>} />
-          <Route path="/content-plan" element={<AuthenticatedOnly><ContentPlanPage /></AuthenticatedOnly>} />
-          <Route path="/analytics" element={<AuthenticatedOnly><AnalyticsPage /></AuthenticatedOnly>} />
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
-          <Route path="*" element={<NotFoundPage />} />
-        </Routes>
-      </Layout>
-      </UserRoleProvider>
+      <ErrorBoundary>
+        <UserRoleProvider>
+          <ParticleBackground />
+          <Layout>
+            <Suspense fallback={<PageFallback />}>
+              <Routes>
+                <Route path="/" element={<AuthenticatedOnly><HomePage /></AuthenticatedOnly>} />
+                <Route path="/content-plan" element={<AuthenticatedOnly><ContentPlanPage /></AuthenticatedOnly>} />
+                <Route path="/analytics" element={<AuthenticatedOnly><AnalyticsPage /></AuthenticatedOnly>} />
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/register" element={<RegisterPage />} />
+                <Route path="*" element={<NotFoundPage />} />
+              </Routes>
+            </Suspense>
+          </Layout>
+        </UserRoleProvider>
+      </ErrorBoundary>
     </Router>
   )
 }
 
 export default App
+

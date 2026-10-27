@@ -163,7 +163,8 @@ def parse_vk_account(url: str, headers: Optional[Dict[str, str]] = None) -> List
     if not url.startswith("http"):
         url = "https://" + url
 
-    screen_name = url.split("/")[-1].split("?")[0]
+    path_parts = [p for p in url.split("?")[0].split("/") if p]
+    screen_name = path_parts[-1] if path_parts else ''
 
     # --- VK API (только API, без Selenium) ---
     api_token = os.getenv("VK_API_TOKEN", "")
@@ -182,7 +183,7 @@ def parse_vk_account(url: str, headers: Optional[Dict[str, str]] = None) -> List
     }
 
     try:
-        resp = requests.get(api_url, params=params, timeout=30)
+        resp = requests.post(api_url, data=params, timeout=30)
         if not resp.ok:
             raise VKParserError(f"VK API HTTP error for '{screen_name}': {resp.status_code}")
 
@@ -260,7 +261,8 @@ def parse_vk_account(url: str, headers: Optional[Dict[str, str]] = None) -> List
         return posts
 
     except requests.RequestException as e:
-        raise VKParserError(f"VK API request failed for '{screen_name}': {e}")
+        sanitized_e = re.sub(r'(access_token|token)=[^&\s]+', r'\1=[REDACTED]', str(e))
+        raise VKParserError(f"VK API request failed for '{screen_name}': {sanitized_e}")
 
 
 class InstagramParserError(Exception):
@@ -321,8 +323,7 @@ def _parse_instagram_via_apify(username: str, token: str) -> List[VKPost]:
     """Parse recent posts from an Instagram profile using Apify's Instagram Scraper."""
     profile_url = f"https://www.instagram.com/{username}/"
     actor_endpoint = (
-        f"https://api.apify.com/v2/actors/apify~instagram-scraper/run-sync-get-dataset-items"
-        f"?token={token}"
+        "https://api.apify.com/v2/actors/apify~instagram-scraper/run-sync-get-dataset-items"
     )
     payload = {
         "resultsType": "posts",
@@ -331,6 +332,7 @@ def _parse_instagram_via_apify(username: str, token: str) -> List[VKPost]:
     }
     headers = {
         "Content-Type": "application/json",
+        "Authorization": f"Bearer {token}",
         "User-Agent": "TKRP-Content-Planner/1.0",
     }
 
@@ -342,7 +344,8 @@ def _parse_instagram_via_apify(username: str, token: str) -> List[VKPost]:
             timeout=120,
         )
     except requests.RequestException as exc:
-        raise InstagramParserError(f"Apify request failed for '{username}': {exc}") from exc
+        sanitized_exc = re.sub(r'(access_token|token)=[^&\s]+', r'\1=[REDACTED]', str(exc))
+        raise InstagramParserError(f"Apify request failed for '{username}': {sanitized_exc}") from None
 
     if resp.status_code == 401:
         raise InstagramParserError("Неверный APIFY_API_TOKEN в .env")

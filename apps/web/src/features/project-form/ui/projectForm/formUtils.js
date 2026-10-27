@@ -32,27 +32,70 @@ export function getRecommendedPublicationsByFrequency(formData = {}) {
   return Math.max(1, Math.round((postsPerWeek * horizonDays) / 7))
 }
 
-export const mapExamplePayloadToFormData = (data = {}) => ({
-  ...initialFormData,
-  producerName: data.producer_info?.name || '',
-  producerActivitySpecification: data.producer_info?.activity_specification || '',
-  projectName: data.it_project_info?.name || '',
-  projectDescription: data.it_project_info?.description || '',
-  projectGoals: data.it_project_info?.goals || '',
-  projectFeatures: data.it_project_info?.features || '',
-  projectBenefits: data.it_project_info?.benefits || '',
-  consumerCategory: data.consumer_profile?.category || '',
-  consumerDemographics: data.consumer_profile?.demographics || '',
-  consumerPurchaseGoal: data.consumer_profile?.purchase_goal || '',
-  consumerLifestyle: data.consumer_profile?.lifestyle || '',
-  contentPlanStartDate: data.content_plan_info?.timeline?.start_date || '',
-  contentPlanEndDate: data.content_plan_info?.timeline?.end_date || '',
-  publicationFrequency: data.content_plan_info?.publication_frequency || '',
-  publicationDayMode: data.content_plan_info?.publication_day_mode === 'shared' ? 'shared' : 'spread',
-  keyDates: data.content_plan_info?.key_dates || '',
-  contentFormats: data.content_plan_info?.content_formats || [],
-  platforms: data.content_plan_info?.platforms || []
-})
+export function buildTimelineRange(months = 1) {
+  const start = new Date()
+  start.setDate(start.getDate() + 1)
+  const end = new Date(start)
+  end.setMonth(end.getMonth() + months)
+  const startDate = formatDateISO(start)
+  const endDate = formatDateISO(end)
+  return {
+    startDate,
+    endDate,
+    contentPlanStartDate: startDate,
+    contentPlanEndDate: endDate
+  }
+}
+
+function normalizeExampleTimeline(startRaw, endRaw) {
+  if (!startRaw || !endRaw) return { startDate: startRaw || '', endDate: endRaw || '' }
+  const start = new Date(startRaw)
+  const end = new Date(endRaw)
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return { startDate: startRaw, endDate: endRaw }
+  }
+  if (start >= today) {
+    return { startDate: startRaw, endDate: endRaw }
+  }
+  const durationMs = Math.max(7 * 24 * 60 * 60 * 1000, end.getTime() - start.getTime())
+  const shiftedStart = new Date()
+  shiftedStart.setDate(shiftedStart.getDate() + 1)
+  const shiftedEnd = new Date(shiftedStart.getTime() + durationMs)
+  return {
+    startDate: formatDateISO(shiftedStart),
+    endDate: formatDateISO(shiftedEnd)
+  }
+}
+
+export const mapExamplePayloadToFormData = (data = {}) => {
+  const normalizedDates = normalizeExampleTimeline(
+    data.content_plan_info?.timeline?.start_date || '',
+    data.content_plan_info?.timeline?.end_date || ''
+  )
+  return {
+    ...initialFormData,
+    producerName: data.producer_info?.name || '',
+    producerActivitySpecification: data.producer_info?.activity_specification || '',
+    projectName: data.it_project_info?.name || '',
+    projectDescription: data.it_project_info?.description || '',
+    projectGoals: data.it_project_info?.goals || '',
+    projectFeatures: data.it_project_info?.features || '',
+    projectBenefits: data.it_project_info?.benefits || '',
+    consumerCategory: data.consumer_profile?.category || '',
+    consumerDemographics: data.consumer_profile?.demographics || '',
+    consumerPurchaseGoal: data.consumer_profile?.purchase_goal || '',
+    consumerLifestyle: data.consumer_profile?.lifestyle || '',
+    contentPlanStartDate: normalizedDates.startDate,
+    contentPlanEndDate: normalizedDates.endDate,
+    publicationFrequency: data.content_plan_info?.publication_frequency || '',
+    publicationDayMode: data.content_plan_info?.publication_day_mode === 'shared' ? 'shared' : 'spread',
+    keyDates: data.content_plan_info?.key_dates || '',
+    contentFormats: data.content_plan_info?.content_formats || [],
+    platforms: data.content_plan_info?.platforms || []
+  }
+}
 
 export function validateFieldValue(name, value, formData) {
   let error = ''

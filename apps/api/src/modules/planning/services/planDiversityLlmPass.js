@@ -5,7 +5,7 @@ import { callOpenRouterChat, OPENROUTER_API_KEY } from '../../../../openrouter.j
 import { extractJsonObjectFromContent } from '../../enrichment/services/semanticEnrichmentPipeline.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PROMPT_PATH = path.join(__dirname, '../../shared/prompts/planDiversityTextRewritePrompt.txt');
+export const PROMPT_PATH = path.join(__dirname, '../../../shared/prompts/planDiversityTextRewritePrompt.txt');
 
 export const PLAN_DIVERSITY_REWRITE_JSON_SCHEMA = {
   type: 'object',

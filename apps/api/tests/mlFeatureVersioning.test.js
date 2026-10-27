@@ -8,6 +8,7 @@ import {
   buildPostFeatureMap,
   buildPostFeatureVectorWithMeta,
   buildPlanFeatureVectorWithMeta,
+  buildPlanFeatureMap,
   buildMlTrainingDatasets,
   POST_FEATURE_NAMES
 } from '../src/modules/ml/services/ml/ontologyFeatureEngineering.js';
@@ -94,4 +95,69 @@ test('optimized plan snapshots feed plan training samples', () => {
   assert.equal(meta.optimized, true);
   assert.equal(meta.final_fitness, 0.9);
   assert.deepEqual(datasets.contentPlanDataset.targets[0], [120, 12, 1200]);
+});
+
+test('buildPlanFeatureMap recognizes published_at for timeline metrics', () => {
+  const publications = [
+    { published_at: '2026-03-01T10:00:00Z', topic: 'Topic 1', format: 'text', raw_metrics: { likes: 5 } },
+    { published_at: '2026-03-11T10:00:00Z', topic: 'Topic 2', format: 'video', raw_metrics: { likes: 10 } },
+    { published_at: '2026-03-21T10:00:00Z', topic: 'Topic 3', format: 'image', raw_metrics: { likes: 15 } }
+  ];
+  const featureMap = buildPlanFeatureMap(publications, {});
+  assert.equal(featureMap.posts_count, 3);
+  assert.ok(featureMap.duration_days > 15, `Expected duration_days > 15, got ${featureMap.duration_days}`);
+  assert.ok(featureMap.timeline_density > 0, `Expected timeline_density > 0, got ${featureMap.timeline_density}`);
+});
+
+test('buildMlTrainingDatasets excludes ga_optimized synthetic targets when includeGaOptimized is false', () => {
+  const snapshot = { publications: [], content_plans: [] };
+  const optimizedPlans = [
+    {
+      plan: { plan_id: 'p1', publications: [{ topic: 'T', raw_metrics: { likes: 1 } }] },
+      optimization: {
+        stage1: { ga: { best_meta: { fitness: 0.8, predicted_likes: 99, predicted_shares: 9, predicted_views: 999 } } }
+      }
+    }
+  ];
+  const datasets = buildMlTrainingDatasets(snapshot, optimizedPlans, { includeGaOptimized: false });
+  assert.equal(datasets.contentPlanDataset.features.length, 0);
+  assert.equal(datasets.contentPlanDataset.targets.length, 0);
+});
+
+
+test('buildMlTrainingDatasets computes source baselines and platform reference baselines for relative normalization', () => {
+  const snapshot = {
+    publications: [
+      {
+        competitor_id: 'comp_vk',
+        platform: 'vk',
+        raw_metrics: { likes: 500, shares: 50, views: 5000 }
+      },
+      {
+        competitor_id: 'comp_vk',
+        platform: 'vk',
+        raw_metrics: { likes: 700, shares: 70, views: 7000 }
+      },
+      {
+        competitor_id: 'comp_b2b',
+        platform: 'telegram',
+        raw_metrics: { likes: 10, shares: 2, views: 100 }
+      }
+    ],
+    content_plans: []
+  };
+
+  const datasets = buildMlTrainingDatasets(snapshot, []);
+  assert.ok(Array.isArray(datasets.postDataset.baselines));
+  assert.equal(datasets.postDataset.baselines.length, 3);
+  // First two belong to VK competitor with median ~600
+  assert.equal(datasets.postDataset.baselines[0][0], 600);
+  assert.equal(datasets.postDataset.baselines[1][0], 600);
+  // Third belongs to Telegram competitor with median ~10
+  assert.equal(datasets.postDataset.baselines[2][0], 10);
+
+  // Platform and reference baselines exist
+  assert.ok(datasets.postDataset.platformBaselines.vk);
+  assert.ok(datasets.postDataset.platformBaselines.telegram);
+  assert.ok(Array.isArray(datasets.postDataset.referenceBaseline));
 });

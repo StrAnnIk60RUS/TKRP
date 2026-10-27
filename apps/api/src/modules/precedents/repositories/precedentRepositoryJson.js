@@ -4,10 +4,12 @@ import { fileURLToPath } from 'url';
 import {
   cosineSimilarity,
   embedTexts,
+  getEmbeddingConfig,
   normalizeCosineToUnitInterval
 } from '../services/embeddingService.js';
 import {
   buildRagCacheKey,
+  clearRagQueryCache,
   getCachedRagSearch,
   setCachedRagSearch,
   isRagCacheEnabled
@@ -199,6 +201,7 @@ export async function reembedPrecedentsWithWrongDimension() {
     };
   });
 
+  clearRagQueryCache();
   return result;
 }
 
@@ -335,6 +338,10 @@ export async function persistPrecedents(enrichedData, options = {}) {
       persistence.updated_content_plans >
     0;
 
+  if (hasChanges) {
+    clearRagQueryCache();
+  }
+
   if (autoTrainEnabled && hasChanges) {
     try {
       await trainRelevanceModel();
@@ -390,12 +397,20 @@ export async function searchPrecedents(query, options = {}) {
   // --- Embedding-based RAG (memo): query -> embedding, docs -> embeddings, cosine similarity, top-N.
   // Если embeddings недоступны (нет ключа/ошибка API), делаем fallback на прежний token-overlap.
   try {
+    const embeddingConfig = getEmbeddingConfig();
+    const configuredModelVersion = embeddingConfig.modelVersion || embeddingConfig.model;
+    const preCacheKey = buildRagCacheKey(normalizedQuery, options, configuredModelVersion, 'json');
+    if (isRagCacheEnabled()) {
+      const cached = getCachedRagSearch(preCacheKey);
+      if (cached) return cached;
+    }
+
     const queryEmbeddingResult = await embedTexts([normalizedQuery]);
     const queryEmbedding = queryEmbeddingResult.embeddings[0];
     const modelVersion = queryEmbeddingResult.modelVersion || queryEmbeddingResult.model;
 
     const cacheKey = buildRagCacheKey(normalizedQuery, options, modelVersion, 'json');
-    if (isRagCacheEnabled()) {
+    if (cacheKey !== preCacheKey && isRagCacheEnabled()) {
       const cached = getCachedRagSearch(cacheKey);
       if (cached) return cached;
     }

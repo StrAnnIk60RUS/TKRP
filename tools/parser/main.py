@@ -47,14 +47,22 @@ def main() -> None:
 
     lowered = url.lower()
     is_instagram = "instagram.com" in lowered or "instagr.am" in lowered
+    is_vk = "vk.com" in lowered or "vkontakte.ru" in lowered
+    is_linkedin = "linkedin.com" in lowered
 
     try:
         if is_instagram:
             print("Parsing posts from Instagram account...")
             posts = parse_instagram_account(url)
-        else:
+        elif is_vk:
             print("Parsing posts from VK account...")
             posts = parse_vk_account(url)
+        elif is_linkedin:
+            print("LinkedIn parsing via direct CLI is not supported.")
+            raise SystemExit(1)
+        else:
+            print(f"Unsupported platform URL: {url}")
+            raise SystemExit(1)
 
         save_posts_to_json(posts, json_path=output_path)
 
@@ -78,6 +86,7 @@ def main() -> None:
         raise SystemExit(1)
     except VKParserError as exc:
         print(f"VK parsing error: {exc}")
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

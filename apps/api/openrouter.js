@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { logger } from './src/shared/logging/logger.js';
 import { applyDeterministicPostProcessing } from './src/modules/enrichment/services/postDeterministicFeatures.js';
 import {
   normalizeCompetitorsContentData
@@ -28,6 +29,8 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.resolve(__dirname, '..', '..', '.env') });
+
+const llmLog = logger.child({ module: 'openrouter' });
 
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
@@ -83,7 +86,7 @@ async function waitForRateLimitSlot() {
       return;
     }
     const waitMs = windowMs - (now - requestTimestamps[0]) + 10;
-    console.log(`[LLM] Rate limit (${perMin}/min) reached; waiting ${waitMs} ms...`);
+    llmLog.warn(`Rate limit (${perMin}/min) reached, waiting ${waitMs}ms`, { perMin, waitMs });
     await new Promise((r) => setTimeout(r, waitMs));
   }
 }
@@ -100,7 +103,8 @@ async function callOpenRouterChatUncached(systemPrompt, userPrompt, options = {}
     responseFormat = null,
     jsonSchema = null,
     schemaName = 'response',
-    schemaStrict = true
+    schemaStrict = true,
+    reasoningEffort = process.env.OPENROUTER_REASONING_EFFORT || 'none'
   } = options;
   const maxTokens =
     options.maxTokens != null && Number.isFinite(Number(options.maxTokens))
@@ -123,6 +127,12 @@ async function callOpenRouterChatUncached(systemPrompt, userPrompt, options = {}
     max_tokens: maxTokens
   };
 
+  // Управление reasoning для моделей-рассуждателей (DeepSeek R1/V4, OpenAI o1/o3 и т.д.)
+  // 'none' отключает трату токенов на reasoning, спасая от исчерпания max_tokens при генерации JSON
+  if (reasoningEffort && reasoningEffort !== 'default') {
+    requestBody.reasoning = { effort: reasoningEffort };
+  }
+
   // Нативный JSON Schema mode или JSON object mode
   if (jsonSchema && typeof jsonSchema === 'object') {
     requestBody.response_format = {
@@ -139,9 +149,14 @@ async function callOpenRouterChatUncached(systemPrompt, userPrompt, options = {}
     requestBody.response_format = { type: 'json_object' };
   }
 
+  const llmLog = logger.child({ module: 'openrouter' });
+
   try {
-    console.log(`[LLM] Отправка запроса`);  
-    console.log(`[LLM] Размер промпта: ${(systemPrompt.length + userPrompt.length) / 1024} KB`);
+    const promptKb = Math.round((systemPrompt.length + userPrompt.length) / 10.24) / 100;
+    llmLog.debug('Отправка запроса к OpenRouter', {
+      model: requestBody.model,
+      prompt_kb: promptKb
+    });
     
     const response = await axios.post(
       OPENROUTER_API_URL,
@@ -157,13 +172,32 @@ async function callOpenRouterChatUncached(systemPrompt, userPrompt, options = {}
       }
     );
 
-    console.log(`[LLM] Ответ получен. Статус: ${response.status}`);
-    console.log(`[LLM] Использовано токенов: ${response.data.usage?.total_tokens || 'N/A'}`);
+    const totalTokens = response.data.usage?.total_tokens || null;
+    llmLog.info('Ответ от OpenRouter получен', {
+      status: response.status,
+      total_tokens: totalTokens
+    });
     
-    const content = response.data.choices?.[0]?.message?.content || null;
+    const choice = response.data.choices?.[0];
+    let content = choice?.message?.content || null;
+
+    // Вторичный фоллбэк: если контент пуст, но есть reasoning, пробуем извлечь JSON из reasoning
+    if (!content && choice?.message?.reasoning) {
+      const reasoningText = String(choice.message.reasoning);
+      const jsonMatch = reasoningText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        content = jsonMatch[0];
+        llmLog.warn('Контент извлечён из reasoning (content был null в ответе)', {
+          extracted_len: content.length
+        });
+      }
+    }
+
     if (!content) {
-      console.warn('[LLM] Внимание: контент отсутствует в ответе');
-      console.log('[LLM] Полный ответ:', JSON.stringify(response.data, null, 2));
+      llmLog.warn('Контент отсутствует в ответе OpenRouter', {
+        finish_reason: choice?.finish_reason,
+        response_preview: JSON.stringify(response.data).slice(0, 500)
+      });
     }
 
     return {
@@ -173,13 +207,27 @@ async function callOpenRouterChatUncached(systemPrompt, userPrompt, options = {}
       usage: response.data.usage || null
     };
   } catch (error) {
+    // Мягкий fallback: если провайдер не поддерживает reasoning, повторяем без него
+    if (
+      requestBody.reasoning &&
+      error.response?.status === 400 &&
+      /reasoning/i.test(String(error.response?.data?.error?.message || error.message || ''))
+    ) {
+      llmLog.warn('Провайдер не поддерживает reasoning, повтор без reasoning параметра');
+      const { reasoningEffort: _, ...restOptions } = options;
+      return await callOpenRouterChatUncached(systemPrompt, userPrompt, {
+        ...restOptions,
+        reasoningEffort: 'default'
+      });
+    }
+
     // Мягкий fallback: если провайдер в OpenRouter не поддерживает json_schema, повторяем с type: 'json_object'
     if (
       requestBody.response_format?.type === 'json_schema' &&
       error.response?.status === 400 &&
       /json_schema|response_format|schema/i.test(String(error.response?.data?.error?.message || error.message || ''))
     ) {
-      console.warn('[LLM] Provider does not support json_schema; retrying with type: json_object fallback...');
+      llmLog.warn('Провайдер не поддерживает json_schema, повтор с type: json_object');
       return await callOpenRouterChatUncached(systemPrompt, userPrompt, {
         ...options,
         jsonSchema: null,
@@ -187,7 +235,10 @@ async function callOpenRouterChatUncached(systemPrompt, userPrompt, options = {}
       });
     }
 
-    console.error('Ошибка при вызове LLM API:', error.response?.data || error.message);
+    llmLog.error('Ошибка при вызове LLM API', {
+      status: error.response?.status,
+      error: error.response?.data || error.message
+    });
 
     let errorMessage = 'Ошибка при обращении к LLM API';
     if (error.response?.data?.error) {
@@ -349,7 +400,7 @@ export async function callOpenRouterChat(systemPrompt, userPrompt, options = {})
     await waitForRateLimitSlot();
     const response = await callOpenRouterChatUncached(systemPrompt, userPrompt, options);
     if (isLlmCacheEnabled()) {
-      console.log(`[LLM] Response cached (key=${cacheKey.slice(0, 12)})`);
+      llmLog.debug('LLM response cached', { cacheKey: cacheKey.slice(0, 12) });
     }
     return response;
   });
@@ -368,7 +419,11 @@ export async function enrichCompetitorsData(competitorsData) {
   const dataWithEngagementRate = enrichWithEngagementRate(competitorsData);
   const limitsSummary = summarizeEnrichmentLimits(dataWithEngagementRate, config);
   const dataSizeKb = (limitsSummary.payload_bytes / 1024).toFixed(2);
-  console.log(`Размер исходных данных для enrichment: ${dataSizeKb} KB`);
+  llmLog.info(`Исходные данные для semantic enrichment: ${dataSizeKb} KB`, {
+    payload_bytes: limitsSummary.payload_bytes,
+    posts_count: limitsSummary.posts_count,
+    batches_count: limitsSummary.batches_count
+  });
 
   if (limitsSummary.max_batch_payload_bytes > config.maxRequestBytes) {
     throw new Error(buildLimitsErrorMessage(limitsSummary));
@@ -430,8 +485,16 @@ export async function enrichCompetitorsData(competitorsData) {
     while (attempt < totalAttempts) {
       const compact = attempt > 0;
       try {
-        console.log(
-          `[LLM] Enrichment batch ${index + 1}/${batches.length}, posts=${batch.stats.posts_count}, bytes=${batch.stats.payload_bytes}, attempt=${attempt + 1}/${totalAttempts}${apiAttempt > 0 ? ` (api retry ${apiAttempt})` : ''}`
+        llmLog.info(
+          `Enrichment batch ${index + 1}/${batches.length}, posts=${batch.stats.posts_count}, bytes=${batch.stats.payload_bytes}, attempt=${attempt + 1}/${totalAttempts}${apiAttempt > 0 ? ` (api retry ${apiAttempt})` : ''}`,
+          {
+            batch_index: index + 1,
+            total_batches: batches.length,
+            posts_count: batch.stats.posts_count,
+            payload_bytes: batch.stats.payload_bytes,
+            attempt: attempt + 1,
+            api_attempt: apiAttempt
+          }
         );
         const batchResult = await enrichSemanticBatch(batch, systemPrompt, { compact });
         semanticMaps.push(batchResult.postsById);
@@ -451,15 +514,19 @@ export async function enrichCompetitorsData(competitorsData) {
         break;
       } catch (error) {
         lastError = error;
-        console.error(
-          `[LLM] Ошибка enrichment batch ${index + 1}/${batches.length}:`,
-          error.message
-        );
+        llmLog.error(`Enrichment batch ${index + 1}/${batches.length} failed: ${error.message}`, {
+          batch_index: index + 1,
+          total_batches: batches.length,
+          error: error.message
+        });
 
         if (isRetryableApiError(error) && apiAttempt < maxApiRetries) {
           apiAttempt += 1;
           const delayMs = 2000;
-          console.log(`[LLM] Повтор запроса через ${delayMs} мс из-за ошибки API (${error.responseStatus})...`);
+          llmLog.warn(`Retrying request in ${delayMs}ms due to API error (${error.responseStatus})`, {
+            delayMs,
+            responseStatus: error.responseStatus
+          });
           await new Promise((r) => setTimeout(r, delayMs));
           continue;
         }
@@ -482,8 +549,9 @@ export async function enrichCompetitorsData(competitorsData) {
         error_type: isApi ? 'api_error' : 'validation_error',
         response_status: lastError.responseStatus ?? null
       });
-      console.warn(
-        `[LLM] Батч ${index + 1}/${batches.length} пропущен; остальные батчи будут объединены при частичном enrichment.`
+      llmLog.warn(
+        `Batch ${index + 1}/${batches.length} skipped; remaining batches will be merged during partial enrichment`,
+        { batch_index: index + 1, total_batches: batches.length }
       );
     }
   }

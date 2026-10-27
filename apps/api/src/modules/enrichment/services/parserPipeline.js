@@ -4,6 +4,9 @@ import { fileURLToPath } from 'url';
 import { createHash } from 'crypto';
 import { computePostEngagementMetrics, enrichCompetitorsData } from '../../../../openrouter.js';
 import { runPythonProcess } from '../../../shared/runtime/pythonRuntime.js';
+import { logger } from '../../../shared/logging/logger.js';
+
+const parserLog = logger.child({ module: 'parserPipeline' });
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -59,17 +62,27 @@ function missingCookieEnvName(url) {
   const platform = detectPlatform(url);
   if (platform === 'vk' && !String(process.env.VK_API_TOKEN || '').trim()) return 'VK_API_TOKEN';
   if (platform === 'linkedin' && !String(process.env.LINKEDIN_COOKIE || '').trim()) return 'LINKEDIN_COOKIE';
-  if (platform === 'instagram' && !String(process.env.INSTAGRAM_COOKIE || '').trim()) return 'INSTAGRAM_COOKIE';
+  if (platform === 'instagram' && !String(process.env.INSTAGRAM_COOKIE || '').trim() && !String(process.env.APIFY_API_TOKEN || '').trim()) return 'INSTAGRAM_COOKIE or APIFY_API_TOKEN';
   return null;
 }
 
 function redactSecrets(text) {
   if (typeof text !== 'string') return text;
   let out = text;
-  for (const name of ['VK_COOKIE', 'LINKEDIN_COOKIE', 'INSTAGRAM_COOKIE']) {
+  for (const name of [
+    'VK_COOKIE',
+    'LINKEDIN_COOKIE',
+    'INSTAGRAM_COOKIE',
+    'VK_API_TOKEN',
+    'APIFY_API_TOKEN',
+    'OPENROUTER_API_KEY',
+    'SERVER_API_KEY',
+    'ADMIN_API_KEY'
+  ]) {
     const value = String(process.env[name] || '');
     if (value.length > 0) out = out.replaceAll(value, '[REDACTED]');
   }
+  out = out.replace(/(access_token|token|api_key|key)=([^&\s"']+)/gi, '$1=[REDACTED]');
   return out;
 }
 
@@ -185,10 +198,14 @@ function mapPostsToCompetitorsData(url, posts) {
   };
 }
 
+let parserJobSeq = 0;
+
 async function runPythonParser(url) {
   return enqueueParserExecution(async () => {
     ensureParserRuntimeDir();
-    const outputPath = path.join(PARSER_RUNTIME_DIR, `posts-${Date.now()}.json`);
+    parserJobSeq += 1;
+    const uniqueSuffix = `${Date.now()}-${parserJobSeq}-${Math.random().toString(36).slice(2, 8)}`;
+    const outputPath = path.join(PARSER_RUNTIME_DIR, `posts-${uniqueSuffix}.json`);
     const result = await runPythonProcess({
       scriptPath: PYTHON_SCRIPT_PATH,
       cwd: PARSER_DIR,
@@ -212,7 +229,7 @@ function cleanupParserOutput(outputPath) {
   try {
     fs.rmSync(outputPath, { force: true });
   } catch (error) {
-    console.warn('Не удалось удалить временный output парсера:', error.message);
+    parserLog.warn('Не удалось удалить временный output парсера', { error: error.message, outputPath });
   }
 }
 
@@ -228,6 +245,7 @@ function applyPostsLimit(allPosts, limit) {
 export async function parseAndEnrichByUrl(url, limit) {
   const missingCookie = missingCookieEnvName(url);
   if (missingCookie) {
+    parserLog.warn(`Missing cookie for URL: ${missingCookie}`, { url });
     return {
       success: false,
       pipeline: 'parse_and_enrich',
@@ -235,11 +253,15 @@ export async function parseAndEnrichByUrl(url, limit) {
       missing_cookie_env: missingCookie
     };
   }
+
+  parserLog.info('Starting parse_and_enrich pipeline', { url, limit });
+  const parseStart = Date.now();
   const runResult = await runPythonParser(url);
   runResult.stdout = redactSecrets(runResult.stdout);
   runResult.stderr = redactSecrets(runResult.stderr);
 
   if (runResult.exitCode !== 0) {
+    parserLog.warn(`Python parser failed with exit code ${runResult.exitCode}`, { url, exitCode: runResult.exitCode });
     return {
       success: false,
       pipeline: 'parse_and_enrich',
@@ -250,6 +272,7 @@ export async function parseAndEnrichByUrl(url, limit) {
   }
 
   if (!fs.existsSync(runResult.outputPath)) {
+    parserLog.error('Python parser output file missing', { url, outputPath: runResult.outputPath });
     return {
       success: false,
       pipeline: 'parse_and_enrich',
@@ -266,6 +289,7 @@ export async function parseAndEnrichByUrl(url, limit) {
     try {
       parsed = JSON.parse(rawPostsJson);
     } catch (e) {
+      parserLog.error('Failed to parse parser output JSON', { url, error: e.message });
       return {
         success: false,
         pipeline: 'parse_and_enrich',
@@ -278,6 +302,7 @@ export async function parseAndEnrichByUrl(url, limit) {
 
     const allPosts = Array.isArray(parsed.posts) ? parsed.posts : [];
     if (!allPosts.length) {
+      parserLog.warn('Parser returned empty posts array', { url });
       return {
         success: false,
         pipeline: 'parse_and_enrich',
@@ -290,8 +315,20 @@ export async function parseAndEnrichByUrl(url, limit) {
     }
 
     const posts = applyPostsLimit(allPosts, limit);
+    parserLog.info(`Parsed ${allPosts.length} posts (using ${posts.length}) in ${Date.now() - parseStart}ms, starting enrichment phase`, {
+      url,
+      total_posts: allPosts.length,
+      selected_posts: posts.length,
+      parse_duration_ms: Date.now() - parseStart
+    });
+
     const competitorsData = mapPostsToCompetitorsData(url, posts);
+    const enrichStart = Date.now();
     const enrichmentResult = await enrichCompetitorsData(competitorsData);
+    parserLog.info(`Enrichment phase finished in ${Date.now() - enrichStart}ms`, {
+      url,
+      enrich_duration_ms: Date.now() - enrichStart
+    });
 
     return {
       success: enrichmentResult.enriched_data !== null,
@@ -309,6 +346,7 @@ export async function parseAndEnrichByUrl(url, limit) {
 export async function parseOnlyByUrl(url, limit) {
   const missingCookie = missingCookieEnvName(url);
   if (missingCookie) {
+    parserLog.warn(`Missing cookie for URL: ${missingCookie}`, { url });
     return {
       success: false,
       pipeline: 'parse_only',
@@ -316,11 +354,15 @@ export async function parseOnlyByUrl(url, limit) {
       missing_cookie_env: missingCookie
     };
   }
+
+  parserLog.info('Starting parse_only pipeline', { url, limit });
+  const parseStart = Date.now();
   const runResult = await runPythonParser(url);
   runResult.stdout = redactSecrets(runResult.stdout);
   runResult.stderr = redactSecrets(runResult.stderr);
 
   if (runResult.exitCode !== 0) {
+    parserLog.warn(`Python parser failed with exit code ${runResult.exitCode}`, { url, exitCode: runResult.exitCode });
     return {
       success: false,
       pipeline: 'parse_only',
@@ -331,6 +373,7 @@ export async function parseOnlyByUrl(url, limit) {
   }
 
   if (!fs.existsSync(runResult.outputPath)) {
+    parserLog.error('Python parser output file missing', { url, outputPath: runResult.outputPath });
     return {
       success: false,
       pipeline: 'parse_only',
@@ -347,6 +390,7 @@ export async function parseOnlyByUrl(url, limit) {
     try {
       parsed = JSON.parse(rawPostsJson);
     } catch (e) {
+      parserLog.error('Failed to parse parser output JSON', { url, error: e.message });
       return {
         success: false,
         pipeline: 'parse_only',
@@ -359,6 +403,7 @@ export async function parseOnlyByUrl(url, limit) {
 
     const allPosts = Array.isArray(parsed.posts) ? parsed.posts : [];
     if (!allPosts.length) {
+      parserLog.warn('Parser returned empty posts array', { url });
       return {
         success: false,
         pipeline: 'parse_only',
@@ -371,15 +416,21 @@ export async function parseOnlyByUrl(url, limit) {
     }
 
     const posts = applyPostsLimit(allPosts, limit);
+    parserLog.info(`Parsed ${allPosts.length} posts (using ${posts.length}) in ${Date.now() - parseStart}ms`, {
+      url,
+      total_posts: allPosts.length,
+      selected_posts: posts.length,
+      duration_ms: Date.now() - parseStart
+    });
     const competitorsData = mapPostsToCompetitorsData(url, posts);
 
     return {
       success: true,
       pipeline: 'parse_only',
-      competitors_data: competitorsData,
       parser_stdout: runResult.stdout,
       parser_stderr: runResult.stderr,
-      raw_parsed_posts: posts
+      raw_parsed_posts: posts,
+      parsed_competitors_data: competitorsData
     };
   } finally {
     cleanupParserOutput(runResult.outputPath);

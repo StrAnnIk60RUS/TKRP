@@ -1,26 +1,12 @@
 import React from 'react'
 import ProcessIndicator from '../../../../shared/ui/ProcessIndicator'
+import {
+  formatPrecedentScore,
+  formatReliabilityLabel,
+  renderMatchExplanation
+} from '../../lib/precedentPresentationUtils'
 
-const formatPrecedentScore = (score) => `${Math.round((Number(score) || 0) * 100)}%`
-
-const formatReliabilityLabel = (reliability) => {
-  const r = Number(reliability)
-  if (!Number.isFinite(r)) return null
-  const pct = Math.round(r * 100)
-  if (pct >= 75) return { label: `${pct}%`, tone: 'success', title: 'Высокая надёжность' }
-  if (pct >= 50) return { label: `${pct}%`, tone: 'neutral', title: 'Средняя надёжность' }
-  return { label: `${pct}%`, tone: 'warn', title: 'Низкая надёжность' }
-}
 const ONTOLOGY_PREVIEW_LIMIT = 12
-
-const renderMatchExplanation = (matchedTokens = [], retrieval = null) => {
-  const type = retrieval?.type
-  if (type === 'embedding_cosine') {
-    return 'Поиск по смыслу: совпадение считается по смыслу, а не по словам'
-  }
-  if (!matchedTokens.length) return 'Без совпавших токенов'
-  return matchedTokens.join(', ')
-}
 
 const formatOntologyClassLabel = (value) =>
   String(value || '')

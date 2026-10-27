@@ -387,7 +387,6 @@ export function setupDemoSession() {
   const tokenKey = `currentContentPlanSnapshotToken:${DEMO_USER.user_id}`
   const entryKey = `currentContentPlanHistoryEntry:${DEMO_USER.user_id}`
   const historyKey = `contentPlanHistory:${DEMO_USER.user_id}`
-  const demoSnapshotKey = `cachedSnapshot:${DEMO_USER.plan_id || 'demo_plan'}`
 
   const snapshotToken = 'token_demo_snapshot_2026'
   localStorage.setItem(tokenKey, JSON.stringify(snapshotToken))
