@@ -30,6 +30,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.resolve(__dirname, '..', '..', '.env') });
 
+const llmLog = logger.child({ module: 'openrouter' });
+
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const AI_MODEL = process.env.AI_MODEL;
@@ -84,7 +86,7 @@ async function waitForRateLimitSlot() {
       return;
     }
     const waitMs = windowMs - (now - requestTimestamps[0]) + 10;
-    console.log(`[LLM] Rate limit (${perMin}/min) reached; waiting ${waitMs} ms...`);
+    llmLog.warn(`Rate limit (${perMin}/min) reached, waiting ${waitMs}ms`, { perMin, waitMs });
     await new Promise((r) => setTimeout(r, waitMs));
   }
 }
@@ -398,7 +400,7 @@ export async function callOpenRouterChat(systemPrompt, userPrompt, options = {})
     await waitForRateLimitSlot();
     const response = await callOpenRouterChatUncached(systemPrompt, userPrompt, options);
     if (isLlmCacheEnabled()) {
-      console.log(`[LLM] Response cached (key=${cacheKey.slice(0, 12)})`);
+      llmLog.debug('LLM response cached', { cacheKey: cacheKey.slice(0, 12) });
     }
     return response;
   });
@@ -417,7 +419,11 @@ export async function enrichCompetitorsData(competitorsData) {
   const dataWithEngagementRate = enrichWithEngagementRate(competitorsData);
   const limitsSummary = summarizeEnrichmentLimits(dataWithEngagementRate, config);
   const dataSizeKb = (limitsSummary.payload_bytes / 1024).toFixed(2);
-  console.log(`Размер исходных данных для enrichment: ${dataSizeKb} KB`);
+  llmLog.info(`Исходные данные для semantic enrichment: ${dataSizeKb} KB`, {
+    payload_bytes: limitsSummary.payload_bytes,
+    posts_count: limitsSummary.posts_count,
+    batches_count: limitsSummary.batches_count
+  });
 
   if (limitsSummary.max_batch_payload_bytes > config.maxRequestBytes) {
     throw new Error(buildLimitsErrorMessage(limitsSummary));
@@ -479,8 +485,16 @@ export async function enrichCompetitorsData(competitorsData) {
     while (attempt < totalAttempts) {
       const compact = attempt > 0;
       try {
-        console.log(
-          `[LLM] Enrichment batch ${index + 1}/${batches.length}, posts=${batch.stats.posts_count}, bytes=${batch.stats.payload_bytes}, attempt=${attempt + 1}/${totalAttempts}${apiAttempt > 0 ? ` (api retry ${apiAttempt})` : ''}`
+        llmLog.info(
+          `Enrichment batch ${index + 1}/${batches.length}, posts=${batch.stats.posts_count}, bytes=${batch.stats.payload_bytes}, attempt=${attempt + 1}/${totalAttempts}${apiAttempt > 0 ? ` (api retry ${apiAttempt})` : ''}`,
+          {
+            batch_index: index + 1,
+            total_batches: batches.length,
+            posts_count: batch.stats.posts_count,
+            payload_bytes: batch.stats.payload_bytes,
+            attempt: attempt + 1,
+            api_attempt: apiAttempt
+          }
         );
         const batchResult = await enrichSemanticBatch(batch, systemPrompt, { compact });
         semanticMaps.push(batchResult.postsById);
@@ -500,15 +514,19 @@ export async function enrichCompetitorsData(competitorsData) {
         break;
       } catch (error) {
         lastError = error;
-        console.error(
-          `[LLM] Ошибка enrichment batch ${index + 1}/${batches.length}:`,
-          error.message
-        );
+        llmLog.error(`Enrichment batch ${index + 1}/${batches.length} failed: ${error.message}`, {
+          batch_index: index + 1,
+          total_batches: batches.length,
+          error: error.message
+        });
 
         if (isRetryableApiError(error) && apiAttempt < maxApiRetries) {
           apiAttempt += 1;
           const delayMs = 2000;
-          console.log(`[LLM] Повтор запроса через ${delayMs} мс из-за ошибки API (${error.responseStatus})...`);
+          llmLog.warn(`Retrying request in ${delayMs}ms due to API error (${error.responseStatus})`, {
+            delayMs,
+            responseStatus: error.responseStatus
+          });
           await new Promise((r) => setTimeout(r, delayMs));
           continue;
         }
@@ -531,8 +549,9 @@ export async function enrichCompetitorsData(competitorsData) {
         error_type: isApi ? 'api_error' : 'validation_error',
         response_status: lastError.responseStatus ?? null
       });
-      console.warn(
-        `[LLM] Батч ${index + 1}/${batches.length} пропущен; остальные батчи будут объединены при частичном enrichment.`
+      llmLog.warn(
+        `Batch ${index + 1}/${batches.length} skipped; remaining batches will be merged during partial enrichment`,
+        { batch_index: index + 1, total_batches: batches.length }
       );
     }
   }

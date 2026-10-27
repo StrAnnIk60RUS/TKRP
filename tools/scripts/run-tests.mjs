@@ -71,6 +71,7 @@ const testFiles = [
   'apps/api/tests/planSnapshotStore.db.test.js',
   'apps/api/tests/pythonJsonWorker.test.js',
   'apps/api/tests/logger.test.js',
+  'apps/api/tests/asyncTracing.test.js',
   'apps/api/tests/telemetryRoutes.integration.test.js'
 ].map((p) => join(root, p));
 

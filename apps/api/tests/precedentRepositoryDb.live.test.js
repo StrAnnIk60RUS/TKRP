@@ -55,7 +55,11 @@ function syntheticCompetitor(postHasModel) {
   };
 }
 
-test('live persist inserts synthetic publication and plan', async () => {
+test('live persist inserts synthetic publication and plan', async (t) => {
+  if (!process.env.DATABASE_URL) {
+    t.skip('Пропуск: DATABASE_URL не задан');
+    return;
+  }
   const before = await getPrecedentsSummary();
   await persistPrecedents(syntheticCompetitor(true));
   const after = await getPrecedentsSummary();
@@ -63,7 +67,11 @@ test('live persist inserts synthetic publication and plan', async () => {
   assert.equal(after.content_plans_count, before.content_plans_count + 1);
 });
 
-test('live re-persist is idempotent (no duplicates)', async () => {
+test('live re-persist is idempotent (no duplicates)', async (t) => {
+  if (!process.env.DATABASE_URL) {
+    t.skip('Пропуск: DATABASE_URL не задан');
+    return;
+  }
   const before = await getPrecedentsSummary();
   await persistPrecedents(syntheticCompetitor(true));
   const after = await getPrecedentsSummary();
@@ -71,7 +79,11 @@ test('live re-persist is idempotent (no duplicates)', async () => {
   assert.equal(after.content_plans_count, before.content_plans_count);
 });
 
-test('live persist stores record with embedding null or current-dim vector (env-agnostic)', async () => {
+test('live persist stores record with embedding null or current-dim vector (env-agnostic)', async (t) => {
+  if (!process.env.DATABASE_URL) {
+    t.skip('Пропуск: DATABASE_URL не задан');
+    return;
+  }
   const res = await query(
     'SELECT embedding IS NOT NULL AS has_embedding, COALESCE(vector_dims(embedding), 0) AS dim, COALESCE(embedding_model_version, embedding_model) AS model_version FROM publications WHERE publication_id = $1',
     [pubId]
@@ -84,7 +96,11 @@ test('live persist stores record with embedding null or current-dim vector (env-
   }
 });
 
-test('live persist with empty competitors changes nothing (negative)', async () => {
+test('live persist with empty competitors changes nothing (negative)', async (t) => {
+  if (!process.env.DATABASE_URL) {
+    t.skip('Пропуск: DATABASE_URL не задан');
+    return;
+  }
   const before = await getPrecedentsSummary();
   await persistPrecedents({ competitors: [] });
   const after = await getPrecedentsSummary();
@@ -92,21 +108,33 @@ test('live persist with empty competitors changes nothing (negative)', async () 
   assert.equal(after.content_plans_count, before.content_plans_count);
 });
 
-test('live persist skips post without publication_model (negative)', async () => {
+test('live persist skips post without publication_model (negative)', async (t) => {
+  if (!process.env.DATABASE_URL) {
+    t.skip('Пропуск: DATABASE_URL не задан');
+    return;
+  }
   const before = await getPrecedentsSummary();
   await persistPrecedents(syntheticCompetitor(false));
   const after = await getPrecedentsSummary();
   assert.equal(after.publications_count, before.publications_count);
 });
 
-test('live search with empty query returns empty result (negative)', async () => {
+test('live search with empty query returns empty result (negative)', async (t) => {
+  if (!process.env.DATABASE_URL) {
+    t.skip('Пропуск: DATABASE_URL не задан');
+    return;
+  }
   const res = await searchPrecedents('   ');
   assert.equal(res.query, '');
   assert.equal(res.publications.length, 0);
   assert.equal(res.content_plans.length, 0);
 });
 
-test('cleanup removes synthetic records', async () => {
+test('cleanup removes synthetic records', async (t) => {
+  if (!process.env.DATABASE_URL) {
+    t.skip('Пропуск: DATABASE_URL не задан');
+    return;
+  }
   await query('DELETE FROM publications WHERE publication_id = $1', [pubId]);
   await query('DELETE FROM content_plans WHERE plan_id = $1', [planId]);
   const pubRes = await query('SELECT COUNT(1) FROM publications WHERE publication_id = $1', [pubId]);

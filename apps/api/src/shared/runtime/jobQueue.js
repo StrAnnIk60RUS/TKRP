@@ -48,6 +48,7 @@ function jobStatusById(jobId) {
     started_at: job.started_at,
     finished_at: job.finished_at,
     error: job.error,
+    error_stack: job.error_stack || null,
     result: job.result,
     progress: job.progress || null,
     userId: job.userId || null
@@ -66,6 +67,15 @@ export function updateJobProgress(jobId, progressData) {
     ...progressPayload,
     updated_at: nowMs().toString()
   };
+
+  logger.debug(`Job [${job.kind}] progress: ${progressPayload.phase || progressPayload.message || 'update'}`, {
+    module: 'jobQueue',
+    job_id: jobId,
+    kind: job.kind,
+    trace_id: job.traceId,
+    progress: progressPayload
+  });
+
   jobEvents.emit(`progress:${jobId}`, job.progress);
 }
 
@@ -83,6 +93,12 @@ function sweepExpiredAndTrim() {
     const job = finished[index];
     const expired = job.finished_at && nowMs() - job.finished_at > ttlMs;
     if (expired || index >= maxRetained) {
+      logger.debug(`Swept job from memory: [${job.kind}] (id: ${job.job_id})`, {
+        module: 'jobQueue',
+        job_id: job.job_id,
+        kind: job.kind,
+        reason: expired ? 'ttl_expired' : 'max_retained_exceeded'
+      });
       jobs.delete(job.job_id);
     }
   }
@@ -125,6 +141,7 @@ function pumpQueue() {
       } catch (error) {
         job.status = 'failed';
         job.error = error?.message || String(error);
+        job.error_stack = error?.stack || null;
         failedTotal += 1;
         const durationMs = Date.now() - startTime;
         jobLog.error(`Async job failed: [${job.kind}] in ${durationMs}ms: ${job.error}`, {
@@ -156,6 +173,7 @@ export function enqueueJob(kind, runFn, payload = null, options = {}) {
     started_at: null,
     finished_at: null,
     error: null,
+    error_stack: null,
     result: null,
     progress: null,
     runFn,
@@ -164,6 +182,15 @@ export function enqueueJob(kind, runFn, payload = null, options = {}) {
   };
   jobs.set(job.job_id, job);
   readyQueue.push(job);
+
+  logger.info(`Job enqueued: [${kind}] (id: ${job.job_id})`, {
+    module: 'jobQueue',
+    job_id: job.job_id,
+    kind,
+    trace_id: traceId,
+    pending_count: readyQueue.length
+  });
+
   pumpQueue();
   return job.job_id;
 }

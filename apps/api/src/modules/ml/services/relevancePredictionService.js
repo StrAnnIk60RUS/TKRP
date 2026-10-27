@@ -18,6 +18,9 @@ import { createPythonJsonWorker } from '../../../shared/runtime/pythonJsonWorker
 import { getPrecedentsSnapshot } from '../../precedents/repositories/precedentRepository.js';
 import { isDatabaseEnabled } from '../../../shared/db/client.js';
 import { listSnapshots, loadSnapshot } from '../../planning/services/planSnapshotStore.js';
+import { logger } from '../../../shared/logging/logger.js';
+
+const mlLog = logger.child({ module: 'ml' });
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = path.join(__dirname, '..', '..', '..', '..');
@@ -96,9 +99,10 @@ function sanitizeFeatureMatrix(featureVectors, contextLabel = 'unknown') {
   });
 
   if (replacements > 0) {
-    console.warn(
-      `[relevancePredictionService] Sanitized non-finite feature values for ${contextLabel}: ${replacements}`
-    );
+    mlLog.warn(`Sanitized non-finite feature values for ${contextLabel}: ${replacements}`, {
+      contextLabel,
+      replacements
+    });
   }
 
   return { matrix, replacements };
@@ -109,7 +113,7 @@ function readJson(filePath, fallback) {
   try {
     return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
   } catch (error) {
-    console.warn('[relevancePredictionService] Failed to read JSON:', filePath, error?.message || error);
+    mlLog.warn('Failed to read JSON file', { filePath, error: error?.message || error });
     return fallback;
   }
 }
@@ -152,20 +156,22 @@ function checkModelFeatureSetVersion(modelKey) {
   const legacy = !metadata?.feature_set_version;
   const match = modelVersion === FEATURE_SET_VERSION;
   if (!match) {
-    console.warn(
-      `[relevancePredictionService] Feature set version mismatch for ${modelKey}: ` +
-      `model=${modelVersion}${legacy ? ' (legacy, unversioned)' : ''}, current=${FEATURE_SET_VERSION}. ` +
-      `Retrain via /ml/relevance/train or run tools/ml/migrate_model_versions.py.`
-    );
+    mlLog.warn(`Feature set version mismatch for ${modelKey}`, {
+      modelKey,
+      model: modelVersion,
+      current: FEATURE_SET_VERSION,
+      legacy
+    });
   }
   const ontologyState = getOntologyFeatureMode();
   const modelOntology = metadata?.ontology_features_enabled;
   if (modelOntology !== undefined && Boolean(modelOntology) !== Boolean(ontologyState.enabled)) {
-    console.warn(
-      `[relevancePredictionService] Ontology enrichment flag mismatch for ${modelKey}: ` +
-      `model=${Boolean(modelOntology)}, current=${Boolean(ontologyState.enabled)} ` +
-      `(ONTOLOGY_LLM_ENRICHMENT_MODE=${ontologyState.mode}). Predictions may drift.`
-    );
+    mlLog.warn(`Ontology enrichment flag mismatch for ${modelKey}`, {
+      modelKey,
+      modelOntology: Boolean(modelOntology),
+      currentOntology: Boolean(ontologyState.enabled),
+      mode: ontologyState.mode
+    });
   }
   return { current: FEATURE_SET_VERSION, model: modelVersion, match, legacy };
 }
@@ -370,17 +376,17 @@ function triggerBackgroundRetrainIfFallback(modelKey, reason) {
   if (now - retrainDebounce[modelKey] < 300000) return;
   retrainDebounce[modelKey] = now;
 
-  console.warn(
-    `[relevancePredictionService] Model ${modelKey} is operating in fallback mode (${reason || 'load error'}). ` +
-    `Initiating background retraining with local environment backend...`
-  );
+  mlLog.warn(`Model ${modelKey} is operating in fallback mode (${reason || 'load error'}), initiating background retraining`, {
+    modelKey,
+    reason
+  });
 
   trainMetricsModel(modelKey)
     .then(() => {
-      console.log(`[relevancePredictionService] Successfully retrained ${modelKey} model with local backend.`);
+      mlLog.info(`Successfully retrained ${modelKey} model with local backend`, { modelKey });
     })
     .catch((err) => {
-      console.warn(`[relevancePredictionService] Background retrain failed for ${modelKey}: ${err.message}`);
+      mlLog.warn(`Background retrain failed for ${modelKey}: ${err.message}`, { modelKey, error: err.message });
     });
 }
 
@@ -462,16 +468,12 @@ async function predictPostMetricsByFeatureVectors(featureVectors, options = {}) 
     try {
       result = await runPythonModel('predict', 'post', reqPayload);
     } catch (err) {
-      console.warn(
-        `[relevancePredictionService] predict post failed (${err.message}). Attempting automatic self-healing retrain...`
-      );
+      mlLog.warn(`predict post failed (${err.message}), attempting automatic self-healing retrain...`, { error: err.message });
       try {
         await trainMetricsModel('post');
         result = await runPythonModel('predict', 'post', reqPayload);
       } catch (retryErr) {
-        console.error(
-          `[relevancePredictionService] self-healing retrain failed for post: ${retryErr.message}. Using heuristic fallback.`
-        );
+        mlLog.error(`self-healing retrain failed for post: ${retryErr.message}, using heuristic fallback`, { error: retryErr.message });
         result = buildHeuristicFallbackResult('post', batch);
       }
     }
@@ -545,16 +547,12 @@ async function predictPlanMetricsByFeatureVectors(featureVectors, options = {}) 
     try {
       result = await runPythonModel('predict', 'content_plan', reqPayload);
     } catch (err) {
-      console.warn(
-        `[relevancePredictionService] predict content_plan failed (${err.message}). Attempting automatic self-healing retrain...`
-      );
+      mlLog.warn(`predict content_plan failed (${err.message}), attempting automatic self-healing retrain...`, { error: err.message });
       try {
         await trainMetricsModel('content_plan');
         result = await runPythonModel('predict', 'content_plan', reqPayload);
       } catch (retryErr) {
-        console.error(
-          `[relevancePredictionService] self-healing retrain failed for content_plan: ${retryErr.message}. Using heuristic fallback.`
-        );
+        mlLog.error(`self-healing retrain failed for content_plan: ${retryErr.message}, using heuristic fallback`, { error: retryErr.message });
         result = buildHeuristicFallbackResult('content_plan', batch);
       }
     }
