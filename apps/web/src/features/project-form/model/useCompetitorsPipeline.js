@@ -97,7 +97,7 @@ export function useCompetitorsPipeline(addToast, options = {}) {
       }
     } catch (error) {
       console.error('Ошибка обогащения данных:', error);
-      addToast(`Ошибка обогащения: ${error.message}`, 'error');
+      addToast(`Ошибка обогащения: ${error.message}`, 'error', { traceId: error?.traceId });
       errorData = {
         error: error.message,
         error_stack: error.stack,
@@ -198,7 +198,8 @@ export function useCompetitorsPipeline(addToast, options = {}) {
 
     if (successfulResults.length === 0) {
       const firstReason = failedUrls[0]?.reason ? ` Причина: ${failedUrls[0].reason}` : '';
-      addToast(`Не удалось спарсить ни одного конкурента. Проверьте ссылки.${firstReason}`, 'error');
+      const firstError = parsedByUrl.find((e) => e?.error)?.error;
+      addToast(`Не удалось спарсить ни одного конкурента. Проверьте ссылки.${firstReason}`, 'error', { traceId: firstError?.traceId });
       setIsParsingFromUrls(false);
       return;
     }
@@ -227,11 +228,11 @@ export function useCompetitorsPipeline(addToast, options = {}) {
             addToast('Обогащение частичное: одна или несколько частей обработки пропущены.', 'warning');
           }
         } else if (result.error) {
-          addToast(`Обогащение не удалось: ${result.error}`, 'error');
+          addToast(`Обогащение не удалось: ${result.error}`, 'error', { traceId: result?.trace_id || result?.traceId });
         }
       } catch (error) {
         console.error('Ошибка автообогащения:', error);
-        addToast(`Обогащение не удалось: ${error.message}`, 'error');
+        addToast(`Обогащение не удалось: ${error.message}`, 'error', { traceId: error?.traceId });
       } finally {
         setIsEnriching(false);
       }

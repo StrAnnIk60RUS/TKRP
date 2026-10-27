@@ -147,10 +147,11 @@ const ContentPlanPage = () => {
     addToast(`Применена стратегия «${selected.title}»`, 'info')
   }
 
-  const addToast = useCallback((message, type = 'error') => {
+  const addToast = useCallback((message, type = 'error', options = {}) => {
     toastCounterRef.current += 1
     const id = `${Date.now()}-${toastCounterRef.current}`
-    setToasts((prev) => [...prev, { id, message, type }])
+    const traceId = typeof options === 'string' ? options : options?.traceId
+    setToasts((prev) => [...prev, { id, message, type, traceId }])
   }, [])
 
   const removeToast = useCallback((id) => {
@@ -706,7 +707,7 @@ const ContentPlanPage = () => {
         addToast('Снимок плана не найден на сервере', 'error')
       }
     } catch (err) {
-      addToast(err?.message || 'Не удалось открыть снимок плана', 'error')
+      addToast(err?.message || 'Не удалось открыть снимок плана', 'error', { traceId: err?.traceId })
     } finally {
       setOpeningToken(false)
     }

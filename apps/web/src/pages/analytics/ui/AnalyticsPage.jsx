@@ -107,7 +107,8 @@ export const AnalyticsPage = () => {
       }
       setSyncToast('Суррогатные ML-модели успешно переобучены на актуальной базе прецедентов!')
     } catch (err) {
-      setSyncToast('Ошибка переобучения: ' + (err?.message || 'Сервер временно недоступен'))
+      const traceSuffix = err?.traceId ? ` (ID: ${err.traceId.slice(0, 8)}…)` : ''
+      setSyncToast('Ошибка переобучения: ' + (err?.message || 'Сервер временно недоступен') + traceSuffix)
     } finally {
       setRetraining(false)
       setTimeout(() => setSyncToast(null), 5000)

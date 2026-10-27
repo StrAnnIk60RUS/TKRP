@@ -279,10 +279,11 @@ const ProjectForm = () => {
     }
   }, [wizardSteps.length, currentStep])
 
-  const addToast = (message, type = 'success') => {
+  const addToast = (message, type = 'success', options = {}) => {
     toastCounterRef.current += 1
     const id = `${Date.now()}-${toastCounterRef.current}-${Math.random().toString(36).substr(2, 9)}`
-    dispatch({ type: 'PUSH_TOAST', payload: { id, message, type } })
+    const traceId = typeof options === 'string' ? options : options?.traceId
+    dispatch({ type: 'PUSH_TOAST', payload: { id, message, type, traceId } })
   }
 
   const setOperationTelemetry = (payload) => dispatch({ type: 'SET_OPERATION_TELEMETRY', payload })
@@ -817,7 +818,7 @@ const ProjectForm = () => {
       return true
     } catch (error) {
       console.error('Ошибка поиска прецедентов:', error)
-      addToast(`Ошибка поиска прецедентов: ${error.message}`, 'error')
+      addToast(`Ошибка поиска прецедентов: ${error.message}`, 'error', { traceId: error?.traceId })
       setOperationTelemetry({ backend: 'error', python: 'idle', llm: 'idle' })
       return false
     }
@@ -847,7 +848,7 @@ const ProjectForm = () => {
       setOperationTelemetry({ backend: 'success', python: 'idle', llm: 'idle' })
     } catch (error) {
       console.error('Ошибка загрузки демо-базы:', error)
-      addToast(`Ошибка: ${error.message}`, 'error')
+      addToast(`Ошибка: ${error.message}`, 'error', { traceId: error?.traceId })
       setOperationTelemetry({ backend: 'error', python: 'idle', llm: 'idle' })
     }
   }
@@ -866,7 +867,7 @@ const ProjectForm = () => {
       setOperationTelemetry({ backend: 'success', python: 'idle', llm: 'idle' })
     } catch (error) {
       console.error('Ошибка экспорта онтологии:', error)
-      addToast(`Ошибка: ${error.message}`, 'error')
+      addToast(`Ошибка: ${error.message}`, 'error', { traceId: error?.traceId })
       setOperationTelemetry({ backend: 'error', python: 'idle', llm: 'idle' })
     }
   }
@@ -886,7 +887,7 @@ const ProjectForm = () => {
       setOperationTelemetry({ backend: 'success', python: 'idle', llm: 'idle' })
     } catch (error) {
       console.error('Ошибка загрузки онтологии:', error)
-      addToast(`Ошибка загрузки онтологии: ${error.message}`, 'error')
+      addToast(`Ошибка загрузки онтологии: ${error.message}`, 'error', { traceId: error?.traceId })
       setOperationTelemetry({ backend: 'error', python: 'idle', llm: 'idle' })
     }
   }
@@ -1034,7 +1035,7 @@ const ProjectForm = () => {
       return generatedResponse
     } catch (error) {
       console.error('Ошибка генерации чернового плана:', error)
-      addToast(`Ошибка генерации: ${error.message}`, 'error')
+      addToast(`Ошибка генерации: ${error.message}`, 'error', { traceId: error?.traceId })
       setOperationTelemetry({ backend: 'error', python: 'error', llm: 'error' })
       return null
     }
@@ -1168,7 +1169,7 @@ const ProjectForm = () => {
       return optResponse
     } catch (error) {
       console.error('Ошибка оптимизации:', error)
-      addToast(`Ошибка оптимизации: ${error.message}`, 'error')
+      addToast(`Ошибка оптимизации: ${error.message}`, 'error', { traceId: error?.traceId })
       setOperationTelemetry({ backend: 'error', python: 'error', llm: 'error' })
       return null
     }
