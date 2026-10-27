@@ -35,10 +35,11 @@ const RegisterPage = () => {
     setUsername(val)
   }
 
-  const addToast = useCallback((msg, type = 'error') => {
+  const addToast = useCallback((msg, type = 'error', options = {}) => {
     toastCounterRef.current += 1
     const id = `${Date.now()}-${toastCounterRef.current}`
-    setToasts((prev) => [...prev, { id, message: msg, type }])
+    const traceId = typeof options === 'string' ? options : options?.traceId
+    setToasts((prev) => [...prev, { id, message: msg, type, traceId }])
   }, [])
 
   const removeToast = useCallback((id) => {
@@ -73,7 +74,7 @@ const RegisterPage = () => {
       const errMsg = error.message || 'Не удалось зарегистрироваться'
       setMessage(errMsg)
       setMessageKind('error')
-      addToast(errMsg, 'error')
+      addToast(errMsg, 'error', { traceId: error?.traceId })
     }
   }
 

@@ -1,12 +1,13 @@
 import { getBreadcrumbs } from './breadcrumbs.js';
 
+const metaEnv = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : {};
 const API_URL =
-  import.meta.env.VITE_ENRICHMENT_API_URL !== undefined &&
-  import.meta.env.VITE_ENRICHMENT_API_URL !== ''
-    ? import.meta.env.VITE_ENRICHMENT_API_URL
-    : (import.meta.env.DEV ? 'http://localhost:3001' : '');
+  metaEnv.VITE_ENRICHMENT_API_URL !== undefined &&
+  metaEnv.VITE_ENRICHMENT_API_URL !== ''
+    ? metaEnv.VITE_ENRICHMENT_API_URL
+    : (metaEnv.DEV ? 'http://localhost:3001' : (typeof process !== 'undefined' && process.env?.API_URL ? process.env.API_URL : ''));
 
-function generateTraceId() {
+export function generateTraceId() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
   }
@@ -16,7 +17,7 @@ function generateTraceId() {
 /**
  * Отправляет диагностический пакет ошибки на сервер
  */
-export async function reportIncident({ error, componentStack, traceId }) {
+export async function reportIncident({ error, componentStack, traceId } = {}) {
   const effectiveTraceId = traceId || error?.traceId || generateTraceId();
 
   const incidentPayload = {
@@ -29,9 +30,9 @@ export async function reportIncident({ error, componentStack, traceId }) {
       componentStack: componentStack || null
     },
     breadcrumbs: getBreadcrumbs(),
-    url: typeof window !== 'undefined' ? window.location.href : '',
+    url: typeof window !== 'undefined' ? window.location?.href || '' : '',
     app_version: '1.0.0',
-    user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : 'browser'
+    user_agent: typeof navigator !== 'undefined' ? navigator.userAgent || 'browser' : 'browser'
   };
 
   try {
@@ -55,4 +56,45 @@ export async function reportIncident({ error, componentStack, traceId }) {
   }
 
   return incidentPayload;
+}
+
+let crashReporterInitialized = false;
+
+/**
+ * Автоматически перехватывает фатальные сбои в браузере и неотловленные Promise.rejection,
+ * отправляя диагностические дампы на бэкенд с защитой от лавины (throttling).
+ */
+export function initGlobalCrashReporting() {
+  if (typeof window === 'undefined' || crashReporterInitialized) return;
+  crashReporterInitialized = true;
+
+  let lastReportTime = 0;
+  const shouldReport = () => {
+    const now = Date.now();
+    if (now - lastReportTime > 3000) {
+      lastReportTime = now;
+      return true;
+    }
+    return false;
+  };
+
+  window.addEventListener('error', (event) => {
+    try {
+      if (shouldReport() && event.error) {
+        reportIncident({ error: event.error }).catch(() => {});
+      }
+    } catch {}
+  });
+
+  window.addEventListener('unhandledrejection', (event) => {
+    try {
+      if (shouldReport()) {
+        const err =
+          event.reason instanceof Error
+            ? event.reason
+            : new Error(String(event.reason || 'Unhandled Promise Rejection'));
+        reportIncident({ error: err }).catch(() => {});
+      }
+    } catch {}
+  });
 }

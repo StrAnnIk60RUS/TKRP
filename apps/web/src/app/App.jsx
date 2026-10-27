@@ -6,6 +6,7 @@ import ParticleBackground from '../shared/ui/ParticleBackground'
 import ErrorBoundary from '../shared/ui/ErrorBoundary'
 import { useIsAuthenticated } from '../shared/ui/AuthGate'
 import { initBreadcrumbListeners } from '../shared/lib/telemetry/breadcrumbs'
+import { initGlobalCrashReporting } from '../shared/lib/telemetry/clientReporter'
 import './styles/App.css'
 
 const HomePage = lazy(() => import('../pages/home/ui/HomePage'))
@@ -30,6 +31,7 @@ const AuthenticatedOnly = ({ children }) => {
 function App() {
   useEffect(() => {
     initBreadcrumbListeners()
+    initGlobalCrashReporting()
   }, [])
 
   return (
@@ -56,4 +58,3 @@ function App() {
 }
 
 export default App
-

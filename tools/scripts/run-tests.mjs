@@ -92,7 +92,6 @@ const mergedNodeOptions = [
 const args = [
   '--test',
   `--test-concurrency=${testConcurrency}`,
-  '--experimental-test-isolation=process'
 ];
 if (mode === 'spec') {
   args.push('--test-reporter=spec');
