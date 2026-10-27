@@ -4,6 +4,7 @@ import { useUserRole } from '../../app/providers/UserRoleContext'
 import { ROLES, ROLE_MODE_LABELS } from '../../app/providers/UserRoleContext'
 import { useIsAuthenticated } from './AuthGate'
 import { logoutUser } from '../api/authService'
+import DiagnosticsModal from './DiagnosticsModal'
 import './Layout.css'
 
 const Layout = ({ children }) => {
@@ -12,6 +13,7 @@ const Layout = ({ children }) => {
   const { role, setRole } = useUserRole()
   const isAuthenticated = useIsAuthenticated()
   const [theme, setTheme] = useState('dark')
+  const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState(false)
 
   useEffect(() => {
     const saved = localStorage.getItem('theme')
@@ -84,6 +86,14 @@ const Layout = ({ children }) => {
               >
                 {theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}
               </button>
+              <button
+                type="button"
+                className="theme-toggle-btn diagnostics-btn"
+                onClick={() => setIsDiagnosticsOpen(true)}
+                title="Диагностика системы и журнал инцидентов"
+              >
+                🩺 Диагностика
+              </button>
             </div>
           </div>
           <nav className="main-nav">
@@ -115,6 +125,11 @@ const Layout = ({ children }) => {
           {children}
         </main>
       </div>
+
+      <DiagnosticsModal
+        isOpen={isDiagnosticsOpen}
+        onClose={() => setIsDiagnosticsOpen(false)}
+      />
     </div>
   )
 }

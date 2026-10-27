@@ -57,16 +57,23 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Setup test environment & DB
+        env:
+          DATABASE_URL: postgresql://postgres:password@localhost:5432/tkrp
+          USE_DATABASE: true
         run: |
           cp .env.example .env
           sed -i 's|DATABASE_URL=.*|DATABASE_URL=postgresql://postgres:password@localhost:5432/tkrp|' .env
           sed -i 's|USE_DATABASE=.*|USE_DATABASE=true|' .env
           node apps/api/scripts/apply-migrations.js
+          node apps/api/scripts/migrate-json-to-db.js
 
       - name: Run lint
         run: npm run lint
 
       - name: Run test suite
+        env:
+          DATABASE_URL: postgresql://postgres:password@localhost:5432/tkrp
+          USE_DATABASE: true
         run: npm run test
 
       - name: Build frontend
