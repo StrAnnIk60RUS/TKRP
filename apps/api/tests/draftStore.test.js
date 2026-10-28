@@ -1,1 +1,55 @@
-﻿import test from 'node:test';import assert from 'node:assert/strict';import { rm, readFile } from 'fs/promises';import { join, dirname } from 'path';import { fileURLToPath } from 'url';import { saveDraft, loadDraft } from '../src/modules/planning/services/draftStore.js';const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');const draftFileFor = (userId) => join(repoRoot, 'data', 'runtime', 'api', 'drafts', `${userId}.json`);test('saveDraft/loadDraft round-trip for user key', async () => {  const userId = 'test_draft_store_a';  const ok = await saveDraft({ formData: { marker: 'A' } }, userId);  assert.equal(ok, true);  const draft = await loadDraft(userId);  assert.deepEqual(draft, { formData: { marker: 'A' } });  await rm(draftFileFor(userId), { force: true });});test('concurrent saveDrafts to same key never interleave (last write wins intact)', async () => {  const userId = 'test_draft_store_b';  const first = saveDraft({ formData: { n: 1 } }, userId);  const second = saveDraft({ formData: { n: 2 } }, userId);  await Promise.all([first, second]);  const raw = await readFile(draftFileFor(userId), 'utf-8');  const parsed = JSON.parse(raw);  assert.equal(typeof parsed.updated_at, 'string');  const draft = await loadDraft(userId);  assert.equal(typeof draft.formData.n, 'number');  await rm(draftFileFor(userId), { force: true });});test('loadDraft returns null for missing file', async () => {  const draft = await loadDraft('test_draft_store_missing');  assert.equal(draft, null);});test('invalid userId falls back to shared draft file', async () => {  const escaped = await loadDraft('../escape');  const shared = await loadDraft(null);  assert.deepEqual(escaped, shared);});
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { rm, readFile } from 'fs/promises';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+import { saveDraft, loadDraft } from '../src/modules/planning/services/draftStore.js';
+
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+const draftFileFor = (userId) => join(repoRoot, 'data', 'runtime', 'api', 'drafts', `${userId}.json`);
+
+// Isolate this test to verify the JSON file-based draft persistence
+const prevUseDb = process.env.USE_DATABASE;
+const prevDbUrl = process.env.DATABASE_URL;
+delete process.env.USE_DATABASE;
+delete process.env.DATABASE_URL;
+
+test.after(() => {
+  if (prevUseDb !== undefined) process.env.USE_DATABASE = prevUseDb;
+  else delete process.env.USE_DATABASE;
+  if (prevDbUrl !== undefined) process.env.DATABASE_URL = prevDbUrl;
+  else delete process.env.DATABASE_URL;
+});
+
+test('saveDraft/loadDraft round-trip for user key', async () => {
+  const userId = 'test_draft_store_a';
+  const ok = await saveDraft({ formData: { marker: 'A' } }, userId);
+  assert.equal(ok, true);
+  const draft = await loadDraft(userId);
+  assert.deepEqual(draft, { formData: { marker: 'A' } });
+  await rm(draftFileFor(userId), { force: true });
+});
+
+test('concurrent saveDrafts to same key never interleave (last write wins intact)', async () => {
+  const userId = 'test_draft_store_b';
+  const first = saveDraft({ formData: { n: 1 } }, userId);
+  const second = saveDraft({ formData: { n: 2 } }, userId);
+  await Promise.all([first, second]);
+  const raw = await readFile(draftFileFor(userId), 'utf-8');
+  const parsed = JSON.parse(raw);
+  assert.equal(typeof parsed.updated_at, 'string');
+  const draft = await loadDraft(userId);
+  assert.equal(typeof draft.formData.n, 'number');
+  await rm(draftFileFor(userId), { force: true });
+});
+
+test('loadDraft returns null for missing file', async () => {
+  const draft = await loadDraft('test_draft_store_missing');
+  assert.equal(draft, null);
+});
+
+test('invalid userId falls back to shared draft file', async () => {
+  const escaped = await loadDraft('../escape');
+  const shared = await loadDraft(null);
+  assert.deepEqual(escaped, shared);
+});
