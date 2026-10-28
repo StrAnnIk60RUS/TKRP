@@ -77,10 +77,25 @@ jobs:
         run: npm run lint
 
       - name: Run test suite
+        id: test_step
+        continue-on-error: true
         env:
           DATABASE_URL: postgresql://postgres:password@localhost:5432/tkrp
           USE_DATABASE: true
-        run: npm run test:spec
+        run: |
+          set -o pipefail
+          node tools/scripts/run-tests.mjs spec 2>&1 | tee test-output.log
+
+      - name: Report test summary to GitHub
+        run: |
+          echo "### Test Suite Report" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          grep -E "✖|ERR_ASSERTION|AssertionError|not ok|failing" test-output.log | head -n 50 >> $GITHUB_STEP_SUMMARY || true
+          tail -n 60 test-output.log >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.test_step.outcome }}" != "success" ]; then
+            exit 1
+          fi
 
       - name: Build frontend
         run: npm run build
