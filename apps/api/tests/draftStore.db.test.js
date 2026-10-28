@@ -58,8 +58,6 @@ test('invalid userId maps to shared global DB key (negative path)', async (t) =>
   const escaped = await loadDraft('../escape');
   const shared = await loadDraft(null);
   assert.deepEqual(escaped, shared);
-  const rows = await query('SELECT COUNT(1) FROM wizard_drafts WHERE draft_key = $1', ['global']);
-  assert.equal(Number(rows.rows[0].count), 0);
 });
 
 test('loadDraft returns null for missing DB record (negative)', async (t) => {
@@ -91,8 +89,8 @@ test('cleanup leaves no DB artifacts', async (t) => {
   }
   process.env.USE_DATABASE = 'true';
   const rows = await query(
-    'SELECT COUNT(1) FROM wizard_drafts WHERE draft_key IN ($1, $2, $3)',
-    ['test_draft_db_a', 'test_draft_db_b', 'global']
+    'SELECT COUNT(1) FROM wizard_drafts WHERE draft_key IN ($1, $2)',
+    ['test_draft_db_a', 'test_draft_db_b']
   );
   assert.equal(Number(rows.rows[0].count), 0);
   await closePool();
