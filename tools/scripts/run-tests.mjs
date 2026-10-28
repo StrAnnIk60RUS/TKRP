@@ -5,12 +5,12 @@
  *
  * Переменные окружения (опционально):
  * - NODE_TEST_CONCURRENCY — параллельных файлов тестов (по умолчанию 1; выше — быстрее, но больше RAM).
- * - NODE_TEST_MAX_OLD_SPACE_SIZE_MB — лимит кучи V8 в МБ (по умолчанию 8192).
+ * - NODE_TEST_MAX_OLD_SPACE_SIZE_MB — лимит кучи V8 в МБ (по умолчанию 4096).
  */
 import { mkdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -110,5 +110,23 @@ const result = spawnSync(process.execPath, [...args, ...testFiles], {
   stdio: 'inherit',
   env: { ...process.env, NODE_OPTIONS: mergedNodeOptions }
 });
+
+if (result.status !== 0) {
+  console.error('\n--- Diagnosing failing test file(s) ---');
+  for (const file of testFiles) {
+    const single = spawnSync(process.execPath, ['--test', '--test-reporter=spec', file], {
+      cwd: root,
+      encoding: 'utf-8',
+      env: { ...process.env, NODE_OPTIONS: mergedNodeOptions }
+    });
+    if (single.status !== 0) {
+      const relPath = relative(root, file).replace(/\\/g, '/');
+      const errorOutput = `${single.stderr || ''}\n${single.stdout || ''}`.trim();
+      const firstErrorLine = errorOutput.split('\n').find((l) => l.includes('AssertionError') || l.includes('Error:') || l.includes('✖')) || 'Test failed';
+      console.error(`::error file=${relPath},title=Test Failed::${firstErrorLine.trim()}`);
+      console.error(`\n❌ FAILED: ${relPath}\n${errorOutput}\n`);
+    }
+  }
+}
 
 process.exit(result.status === null ? 1 : result.status);
