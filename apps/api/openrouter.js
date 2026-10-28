@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { logger } from './src/shared/logging/logger.js';
+import { recordLlmCall } from './src/shared/logging/metrics.js';
 import { applyDeterministicPostProcessing } from './src/modules/enrichment/services/postDeterministicFeatures.js';
 import {
   normalizeCompetitorsContentData
@@ -173,6 +174,7 @@ async function callOpenRouterChatUncached(systemPrompt, userPrompt, options = {}
     );
 
     const totalTokens = response.data.usage?.total_tokens || null;
+    try { recordLlmCall(requestBody.model, 'ok', durationMs / 1000, response.data?.usage); } catch {}
     llmLog.info('Ответ от OpenRouter получен', {
       status: response.status,
       total_tokens: totalTokens
@@ -235,6 +237,7 @@ async function callOpenRouterChatUncached(systemPrompt, userPrompt, options = {}
       });
     }
 
+    try { recordLlmCall(requestBody?.model || 'unknown', 'error', durationMs / 1000); } catch {}
     llmLog.error('Ошибка при вызове LLM API', {
       status: error.response?.status,
       error: error.response?.data || error.message

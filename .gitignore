@@ -68,3 +68,15 @@ apps/api/test-results/junit.xml
 # ------------------------------
 *.tmp
 *.temp
+
+*.docx
+*.vsd
+*.zip
+*.png
+.opencode/
+PROJECT_AUDIT_AND_IDEAS.md
+курсовая*/
+пз*.docx
+~$*
+0
+a.md

@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { runWithContext } from '../logging/requestContext.js';
 import { logger } from '../logging/logger.js';
+import { recordHttpRequest } from '../logging/metrics.js';
 
 const DEFAULT_ALLOWED_ORIGINS = [
   'http://localhost:5173',
@@ -133,6 +134,10 @@ export function attachRequestContext(req, res, next) {
         duration_ms: durationMs,
         client_ip: req?.clientIp
       };
+
+      try {
+        recordHttpRequest(req?.method, pathStr, statusCode, durationMs / 1000);
+      } catch {}
 
       if (statusCode >= 500) {
         logger.error(`HTTP ${req?.method} ${pathStr} -> ${statusCode} (${durationMs}ms)`, logMeta);

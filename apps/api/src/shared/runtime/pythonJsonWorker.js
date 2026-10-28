@@ -13,6 +13,7 @@
 import { spawn } from 'child_process';
 import readline from 'readline';
 import { logger } from '../logging/logger.js';
+import { recordPythonWorkerExecution, recordPythonCircuitBreaker } from '../logging/metrics.js';
 import { getTraceContext } from '../logging/requestContext.js';
 
 const DEFAULT_PYTHON_BIN = process.env.PYTHON_BIN || 'python';
@@ -231,6 +232,7 @@ export function createPythonJsonWorker({
 
     if (!Number.isFinite(requestTimeoutMs) || requestTimeoutMs <= 0) {
       const res = await response;
+      try { recordPythonWorkerExecution(description, 'ok', (Date.now() - startTime) / 1000); } catch {}
       workerLog.debug(`Request #${id} finished in ${Date.now() - startTime}ms`, {
         requestId: id,
         duration_ms: Date.now() - startTime,
@@ -247,6 +249,7 @@ export function createPythonJsonWorker({
         syncRefState();
         handlers.reject(timeoutError);
       }
+      try { recordPythonWorkerExecution(description, 'timeout', (Date.now() - startTime) / 1000); } catch {}
       workerLog.warn(`Request #${id} timed out after ${requestTimeoutMs}ms, restarting worker`, {
         requestId: id,
         trace_id: traceCtx.traceId
@@ -301,6 +304,7 @@ export function createPythonJsonWorker({
         });
         if (consecutiveFailures >= breakerMaxFailures && breakerMaxFailures > 0) {
           breakerOpenedAt = Date.now();
+          try { recordPythonCircuitBreaker(description); } catch {}
           workerLog.error(`Circuit breaker OPENED for ${description} after ${consecutiveFailures} failures`, {
             breakerCooldownMs,
             trace_id: traceCtx.traceId

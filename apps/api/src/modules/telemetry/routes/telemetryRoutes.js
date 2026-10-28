@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { logger, getRecentErrors } from '../../../shared/logging/logger.js';
 import { requireLocalOrApiKey } from '../../../shared/http/security.js';
+import { getMetricsAsPrometheusText } from '../../../shared/logging/metrics.js';
 
 const router = Router();
 
@@ -44,6 +45,14 @@ router.get('/recent-errors', requireLocalOrApiKey, (req, res) => {
     errors,
     timestamp: new Date().toISOString()
   });
+});
+
+/**
+ * Выгрузка метрик в формате Prometheus text exposition format (v0.0.4)
+ */
+router.get('/metrics', requireLocalOrApiKey, (req, res) => {
+  res.setHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
+  res.send(getMetricsAsPrometheusText());
 });
 
 export default router;

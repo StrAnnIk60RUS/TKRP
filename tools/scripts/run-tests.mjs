@@ -74,14 +74,15 @@ const testFiles = [
   'apps/api/tests/pythonJsonWorker.test.js',
   'apps/api/tests/logger.test.js',
   'apps/api/tests/asyncTracing.test.js',
-  'apps/api/tests/telemetryRoutes.integration.test.js'
+  'apps/api/tests/telemetryRoutes.integration.test.js',
+  'apps/api/tests/metrics.test.js'
 ].map((p) => join(root, p));
 
 const mode = process.argv[2];
 
 /** Avoid parallel test files loading heavy API graphs (ML, planning) at once — OOM on typical laptops. */
 const testConcurrency = process.env.NODE_TEST_CONCURRENCY || '1';
-const maxOldSpaceMb = process.env.NODE_TEST_MAX_OLD_SPACE_SIZE_MB || '8192';
+const maxOldSpaceMb = process.env.NODE_TEST_MAX_OLD_SPACE_SIZE_MB || '4096';
 
 const mergedNodeOptions = [
   process.env.NODE_OPTIONS,

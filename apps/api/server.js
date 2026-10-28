@@ -9,7 +9,8 @@ import {
   attachRequestContext,
   applySecurityHeaders,
   createCorsOptions,
-  createRateLimitMiddleware
+  createRateLimitMiddleware,
+  requireLocalOrApiKey
 } from './src/shared/http/security.js';
 import { apiNotFoundHandler, globalErrorHandler } from './src/shared/http/expressHttp.js';
 import { closePool, isDatabaseEnabled, query } from './src/shared/db/client.js';
@@ -17,6 +18,7 @@ import { ensureInstagramPreviewUser } from './src/modules/auth/services/authStor
 import { INSTAGRAM_PREVIEW_USERNAME } from './src/modules/auth/services/instagramAccess.js';
 import { getJobQueueStats } from './src/shared/runtime/jobQueue.js';
 import { getStorageMetricsSnapshot } from './src/shared/runtime/storageMetrics.js';
+import { getMetricsAsPrometheusText } from './src/shared/logging/metrics.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -68,6 +70,11 @@ app.get('/health', async (req, res) => {
   res.status(statusCode).json(healthData);
 });
 
+app.get('/metrics', requireLocalOrApiKey, (req, res) => {
+  res.setHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
+  res.send(getMetricsAsPrometheusText());
+});
+
 app.use('/api', apiRoutes);
 app.use('/api', apiNotFoundHandler);
 app.use(globalErrorHandler);
@@ -106,5 +113,3 @@ process.on('unhandledRejection', (reason, _promise) => {
 process.on('uncaughtException', (error) => {
   console.error('[server] Uncaught Exception:', error);
 });
-
-

@@ -11,6 +11,7 @@
 import crypto from 'crypto';
 import { EventEmitter } from 'events';
 import { logger } from '../logging/logger.js';
+import { recordJobExecution, jobQueueActiveJobs, jobQueueQueuedJobs } from '../logging/metrics.js';
 import { getTraceContext, runWithContext } from '../logging/requestContext.js';
 
 export const jobEvents = new EventEmitter();
@@ -109,6 +110,7 @@ function pumpQueue() {
   while (runningCount < maxConcurrency && readyQueue.length > 0) {
     const job = readyQueue.shift();
     runningCount += 1;
+    try { jobQueueActiveJobs.set({}, runningCount); jobQueueQueuedJobs.set({}, readyQueue.length); } catch {}
     job.status = 'running';
     job.started_at = nowMs().toString();
     jobEvents.emit(`status:${job.job_id}`, { status: 'running' });
@@ -136,6 +138,7 @@ function pumpQueue() {
         job.result = result;
         completedTotal += 1;
         const durationMs = Date.now() - startTime;
+        try { recordJobExecution(job.kind, 'completed', durationMs / 1000); } catch {}
         jobLog.info(`Async job completed: [${job.kind}] in ${durationMs}ms`, { duration_ms: durationMs });
         jobEvents.emit(`completed:${job.job_id}`, { result });
       } catch (error) {
@@ -144,6 +147,7 @@ function pumpQueue() {
         job.error_stack = error?.stack || null;
         failedTotal += 1;
         const durationMs = Date.now() - startTime;
+        try { recordJobExecution(job.kind, 'failed', durationMs / 1000); } catch {}
         jobLog.error(`Async job failed: [${job.kind}] in ${durationMs}ms: ${job.error}`, {
           duration_ms: durationMs,
           error
