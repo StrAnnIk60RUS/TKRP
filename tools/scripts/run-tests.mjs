@@ -22,6 +22,7 @@ const testFiles = [
   'apps/web/tests/clientReporter.test.js',
   'apps/web/tests/diagnosticsPresentation.test.js',
   'apps/web/tests/contentPlanExport.test.js',
+  'apps/web/tests/planStorage.test.js',
   'apps/web/tests/functional-requirements-ui.test.js',
   'apps/web/tests/functional-requirements-registry.test.js',
   'apps/api/tests/ontologyAggregation.test.js',

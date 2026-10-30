@@ -3,8 +3,8 @@ import {
   getPlanSnapshotFromServer,
   listPlanSnapshotsFromServer,
   savePlanSnapshotToServer
-} from '../../../shared/api/enrichmentService'
-import { getCurrentUserId } from '../../../shared/api/authService'
+} from '../../../shared/api/enrichmentService.js'
+import { getCurrentUserId } from '../../../shared/api/authService.js'
 
 const CURRENT_SNAPSHOT_TOKEN_KEY = 'currentContentPlanSnapshotToken'
 const CURRENT_HISTORY_ENTRY_KEY = 'currentContentPlanHistoryEntry'
@@ -102,6 +102,10 @@ function getCurrentSnapshotToken() {
   return safeReadJson(CURRENT_SNAPSHOT_TOKEN_KEY, null)
 }
 
+export function isLocalSnapshotToken(token) {
+  return typeof token === 'string' && token.startsWith('local_')
+}
+
 function clearCurrentPlanPointers() {
   try {
     const snapshotKey = scopedKey(CURRENT_SNAPSHOT_TOKEN_KEY)
@@ -181,8 +185,13 @@ export async function syncPlanHistoryWithServer() {
       }
     })
 
-    safeWriteJson(PLAN_HISTORY_KEY, merged.slice(0, MAX_HISTORY_ITEMS))
-    return merged.slice(0, MAX_HISTORY_ITEMS)
+    const localOnlyEntries = localHistory.filter(
+      (item) => isLocalSnapshotToken(item?.snapshot_token) && localStorage.getItem(`demoPlanSnapshot:${item.snapshot_token}`)
+    )
+    const combined = [...localOnlyEntries, ...merged]
+    safeWriteJson(PLAN_HISTORY_KEY, combined.slice(0, MAX_HISTORY_ITEMS))
+    return combined.slice(0, MAX_HISTORY_ITEMS)
+
   } catch (error) {
     console.warn('Не удалось синхронизировать историю планов с сервером:', error)
     return getPlanHistory()
@@ -206,6 +215,30 @@ export async function getCurrentPlanState() {
   }
 
   if (!token) return null
+
+  if (isLocalSnapshotToken(token)) {
+    try {
+      const localRaw = localStorage.getItem(`demoPlanSnapshot:${token}`)
+      if (localRaw) {
+        const parsed = JSON.parse(localRaw)
+        if (parsed?.plan) {
+          return {
+            plan: parsed.plan,
+            optimization: parsed.optimization || null,
+            token
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Ошибка чтения локального demoPlanSnapshot:', e)
+    }
+    clearCurrentPlanPointers()
+    const synced = await syncPlanHistoryWithServer()
+    if (synced && synced.length > 0 && !isLocalSnapshotToken(synced[0].snapshot_token)) {
+      return getCurrentPlanState()
+    }
+    return null
+  }
   try {
     const response = await getPlanSnapshotFromServer(token)
     const snapshot = response?.snapshot || null
@@ -274,7 +307,7 @@ export async function savePlanSnapshot(plan, metadata = {}) {
     plan: planToSave,
     optimization
   }
-  if (typeof metadata.token === 'string' && metadata.token.trim()) {
+  if (typeof metadata.token === 'string' && metadata.token.trim() && !isLocalSnapshotToken(metadata.token.trim())) {
     body.token = metadata.token.trim()
   }
   let snapshot = null
@@ -364,6 +397,32 @@ export async function loadPlanFromHistory(entryId, entryType = null, savedAt = n
     return item?.saved_at === savedAt
   })
   if (!entry?.snapshot_token) return null
+
+  if (isLocalSnapshotToken(entry.snapshot_token)) {
+    try {
+      const localRaw = localStorage.getItem(`demoPlanSnapshot:${entry.snapshot_token}`)
+      if (localRaw) {
+        const parsed = JSON.parse(localRaw)
+        if (parsed?.plan) {
+          safeWriteJson(CURRENT_SNAPSHOT_TOKEN_KEY, entry.snapshot_token)
+          safeWriteJson(CURRENT_HISTORY_ENTRY_KEY, {
+            id: entry.id,
+            type: entry.type || 'draft',
+            saved_at: entry.saved_at,
+            snapshot_token: entry.snapshot_token
+          })
+          return {
+            plan: parsed.plan,
+            optimization: parsed.optimization || null
+          }
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    removeHistoryEntryFromLocalList(entry)
+    return { missingSnapshot: true }
+  }
   try {
     const response = await getPlanSnapshotFromServer(entry.snapshot_token)
     const snapshot = response?.snapshot || null

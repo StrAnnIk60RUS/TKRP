@@ -690,6 +690,27 @@ const ContentPlanPage = () => {
     if (!extracted) return
     setOpeningToken(true)
     try {
+      if (typeof extracted === 'string' && extracted.startsWith('local_')) {
+        const localRaw = localStorage.getItem(`demoPlanSnapshot:${extracted}`)
+        if (localRaw) {
+          try {
+            const parsed = JSON.parse(localRaw)
+            if (parsed?.plan) {
+              const nextPlan = ensureUniquePublicationIds(parsed.plan)
+              const nextOpt = parsed.optimization || null
+              setContentPlan(nextPlan)
+              setOptimizationMeta(nextOpt)
+              setPlanHistory(getPlanHistory())
+              addToast('Локальный снимок плана открыт из хранилища браузера', 'info')
+              return
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+        addToast('Локальный снимок не найден в хранилище браузера', 'warning')
+        return
+      }
       const res = await getPlanSnapshotFromServer(extracted)
       const snap = res?.snapshot
       if (snap?.plan) {

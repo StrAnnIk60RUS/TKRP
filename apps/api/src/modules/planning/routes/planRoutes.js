@@ -421,6 +421,14 @@ router.post('/snapshots', requireSessionOrAdminApiKey, async (req, res) => {
 router.get('/snapshots/:token', requireSessionOrAdminApiKey, async (req, res) => {
   try {
     const token = req.params?.token;
+    if (typeof token === 'string' && token.startsWith('local_')) {
+      return res.status(404).json({
+        success: false,
+        error: 'Локальный снимок плана сохраняется только в браузере клиента',
+        is_local: true,
+        request_id: req.requestId
+      });
+    }
     const userId = await resolveUserId(req);
     const snapshot = await loadSnapshot(token);
     if (!snapshot) {
@@ -450,6 +458,14 @@ router.get('/snapshots/:token', requireSessionOrAdminApiKey, async (req, res) =>
 router.delete('/snapshots/:token', requireSessionOrAdminApiKey, async (req, res) => {
   try {
     const token = req.params?.token;
+    if (typeof token === 'string' && token.startsWith('local_')) {
+      return res.status(404).json({
+        success: false,
+        error: 'Локальный снимок плана сохраняется только в браузере клиента',
+        is_local: true,
+        request_id: req.requestId
+      });
+    }
     const userId = await resolveUserId(req);
     const snapshot = await loadSnapshot(token);
     if (snapshot && snapshot.owner !== userId) {

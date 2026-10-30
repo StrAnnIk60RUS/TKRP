@@ -2,11 +2,16 @@
  * Сервис для обогащения данных конкурентов через LLM
  */
 
+const env = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : {};
 const API_URL =
-  import.meta.env.VITE_ENRICHMENT_API_URL !== undefined &&
-  import.meta.env.VITE_ENRICHMENT_API_URL !== ''
-    ? import.meta.env.VITE_ENRICHMENT_API_URL
-    : (import.meta.env.DEV ? 'http://localhost:3001' : '');
+  env.VITE_ENRICHMENT_API_URL !== undefined &&
+  env.VITE_ENRICHMENT_API_URL !== ''
+    ? env.VITE_ENRICHMENT_API_URL
+    : (env.DEV ? 'http://localhost:3001' : '');
+
+
+
+
 
 const buildFetchErrorMessage = async (response) => {
   let errorMessage = `HTTP ${response.status}: ${response.statusText}`
@@ -608,6 +613,12 @@ export async function savePlanSnapshotToServer(payload, requestOptions = {}) {
 }
 
 export async function getPlanSnapshotFromServer(token, requestOptions = {}) {
+  if (typeof token === 'string' && token.startsWith('local_')) {
+    const error = new Error('Локальный снимок плана (сохранён только в браузере)')
+    error.status = 404
+    error.isLocal = true
+    throw error
+  }
   try {
     return await fetchJsonOrThrow(`${API_URL}/api/plan/snapshots/${encodeURIComponent(token)}`, {
       method: 'GET',
