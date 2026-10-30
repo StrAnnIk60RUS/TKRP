@@ -40,6 +40,7 @@ export function setSessionToken(token) {
     localStorage.setItem(SESSION_KEY, token);
   } else {
     localStorage.removeItem(SESSION_KEY);
+    setCurrentUserId(null);
   }
   notifyAuth();
 }
@@ -221,7 +222,12 @@ export async function getCurrentUser() {
         'x-trace-id': traceId
       }
     });
-    if (!response.ok) return null;
+    if (!response.ok) {
+      if (response.status === 401) {
+        setSessionToken(null);
+      }
+      return null;
+    }
     const result = await response.json();
     return result.success ? result.user : null;
   } catch (error) {

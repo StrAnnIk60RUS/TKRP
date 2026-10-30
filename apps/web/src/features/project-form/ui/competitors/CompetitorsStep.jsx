@@ -183,8 +183,8 @@ const CompetitorsStep = ({
                   onChange={(e) => onUrlChange(index, e.target.value)}
                   placeholder={
                     allowInstagram
-                      ? 'Например: https://vk.com/company или https://www.linkedin.com/company/... или https://www.instagram.com/...'
-                      : 'Например: https://vk.com/company или https://www.linkedin.com/company/...'
+                      ? 'Например: https://vk.com/company, https://t.me/channel, https://www.instagram.com/... или https://www.linkedin.com/company/...'
+                      : 'Например: https://vk.com/company, https://t.me/channel или https://www.linkedin.com/company/...'
                   }
                   className="form-input competitor-url-input"
                 />

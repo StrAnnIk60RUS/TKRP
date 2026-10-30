@@ -251,16 +251,35 @@ async function scorePlanFitness(plan, publications) {
 }
 
 export async function runHierarchicalOptimization(payload = {}) {
-  const draft = payload?.draft_content_plan || payload?.draftContentPlan || null;
+  let draft = payload?.draft_content_plan || payload?.draftContentPlan || null;
+  if (draft && typeof draft === 'object' && draft.draft_content_plan && typeof draft.draft_content_plan === 'object') {
+    draft = draft.draft_content_plan;
+  }
+  const formInput = payload?.form_input || payload?.formInput || null;
+
   if (!draft || typeof draft !== 'object') {
-    throw new Error('Отсутствует draft_content_plan');
+    if (!formInput || typeof formInput !== 'object') {
+      throw new Error('Отсутствует draft_content_plan или form_input для оптимизации');
+    }
+    const onProgress = typeof payload?.onProgress === 'function' ? payload.onProgress : null;
+    if (onProgress) {
+      onProgress({ phase: 'skeleton_start', message: 'Быстрая генерация структуры контент-плана' });
+    }
+    const { generateDraftPlanBatched } = await import('../draftPlanGenerationPipeline.js');
+    const generated = await generateDraftPlanBatched({
+      formInput,
+      query: payload?.rag_query || formInput.projectName || 'plan',
+      ragResults: payload?.ragResults || { publications: [] },
+      ragLimit: 8,
+      fastSkeleton: true
+    });
+    draft = generated.draft?.draft_content_plan || generated.draft;
   }
 
   const stage1Config = payload?.stage1 || {};
   const stage2Config = payload?.stage2 || {};
   const stage3Config = payload?.stage3 && typeof payload.stage3 === 'object' ? payload.stage3 : {};
    const lockedFields = payload?.locked_fields || {};
-   const formInput = payload?.form_input || payload?.formInput || null;
    const ragResults = mergePinnedPublications(
      payload?.ragResults || {},
      payload?.pinned_publications,
@@ -507,6 +526,7 @@ export async function runHierarchicalOptimization(payload = {}) {
     pareto_strategies: contentPlanResult.paretoStrategies || null,
     optimized_publications: finalPublications,
     best_publication: postResult.bestPublication,
-    optimized_content_plan: optimizedContentPlan
+    optimized_content_plan: optimizedContentPlan,
+    draft_content_plan: draft
   };
 }

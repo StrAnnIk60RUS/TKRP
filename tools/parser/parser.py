@@ -26,6 +26,10 @@ class VKPost:
     views: Optional[int] = None
     attachments: Optional[List[Dict[str, Any]]] = None
     follower_count: Optional[int] = None
+    platform: Optional[str] = None
+
+
+UniversalPost = VKPost
 
 
 class VKParserError(Exception):
@@ -253,8 +257,9 @@ def parse_vk_account(url: str, headers: Optional[Dict[str, str]] = None) -> List
             raise VKParserError(f"VK API returned no posts for '{screen_name}'")
 
         follower_count = _fetch_vk_follower_count(screen_name, api_token)
-        if follower_count is not None:
-            for post in posts:
+        for post in posts:
+            post.platform = "vk"
+            if follower_count is not None:
                 post.follower_count = follower_count
 
         print(f"Fetched {len(posts)} VK posts via API for '{screen_name}'.")
@@ -403,7 +408,14 @@ def _parse_instagram_via_apify(username: str, token: str) -> List[VKPost]:
 
         post_type = str(item.get("type") or "").lower()
         is_video = "video" in post_type or item.get("videoUrl") is not None
-        attachment_type = "video" if is_video else "photo"
+        is_carousel = "sidecar" in post_type or bool(item.get("childPosts")) or bool(item.get("images"))
+        if is_carousel:
+            child_count = len(item.get("childPosts") or item.get("images") or []) or 2
+            attachments = [{"type": "carousel", "items_count": child_count}, {"type": "photo"}]
+        elif is_video:
+            attachments = [{"type": "video"}]
+        else:
+            attachments = [{"type": "photo"}]
 
         posts.append(
             VKPost(
@@ -415,8 +427,9 @@ def _parse_instagram_via_apify(username: str, token: str) -> List[VKPost]:
                 reposts=0,
                 datetime=post_date,
                 views=int(views) if isinstance(views, (int, float)) and views >= 0 else None,
-                attachments=[{"type": attachment_type}],
+                attachments=attachments,
                 follower_count=int(follower_count) if isinstance(follower_count, (int, float)) and follower_count >= 0 else None,
+                platform="instagram",
             )
         )
 
@@ -512,6 +525,14 @@ def _parse_instagram_via_web(username: str) -> List[VKPost]:
         likes = likes_obj.get("count") if isinstance(likes_obj, dict) else None
         comments = comments_obj.get("count") if isinstance(comments_obj, dict) else None
         views = node.get("video_view_count") if node.get("is_video") else None
+        is_sidecar = node.get("__typename") == "GraphSidecar"
+        if is_sidecar:
+            attachments = [{"type": "carousel"}, {"type": "photo"}]
+        elif node.get("is_video"):
+            attachments = [{"type": "video"}]
+        else:
+            attachments = [{"type": "photo"}]
+
         posts.append(
             VKPost(
                 url=post_url,
@@ -522,8 +543,9 @@ def _parse_instagram_via_web(username: str) -> List[VKPost]:
                 reposts=0,
                 datetime=post_date,
                 views=views if isinstance(views, int) else None,
-                attachments=[{"type": "video" if node.get("is_video") else "photo"}],
+                attachments=attachments,
                 follower_count=follower_count,
+                platform="instagram",
             )
         )
 
@@ -547,4 +569,206 @@ def parse_instagram_account(url: str) -> List[VKPost]:
             if not os.getenv("INSTAGRAM_COOKIE", "").strip():
                 raise
 
-    return _parse_instagram_via_web(username)
+    return _parse_instagram_via_web(username)
+
+
+
+class TelegramParserError(VKParserError):
+    """Ошибка парсинга Telegram-канала."""
+
+
+_TG_RESERVED_PATHS = {
+    "joinchat",
+    "addstickers",
+    "share",
+    "login",
+    "c",
+    "s",
+    "iv",
+    "contact",
+    "socks",
+    "proxy",
+    "addtheme",
+    "setlanguage",
+}
+
+
+def extract_telegram_channel(url: str) -> str:
+    """Извлекает валидный username Telegram-канала из ссылки или @username."""
+    raw = url.strip()
+    if raw.startswith("@"):
+        channel = raw[1:].strip()
+    else:
+        if not raw.startswith("http"):
+            raw = "https://" + raw
+        parsed = urlparse(raw)
+        host = parsed.netloc.lower()
+        if host.startswith("www."):
+            host = host[4:]
+        if host not in {"t.me", "telegram.me"}:
+            raise TelegramParserError(f"URL is not a Telegram channel: {url}")
+        parts = [part for part in parsed.path.split("/") if part]
+        if not parts:
+            raise TelegramParserError(f"Не указано имя Telegram-канала в ссылке: {url}")
+        if parts[0].lower() == "s" and len(parts) > 1:
+            channel = parts[1]
+        else:
+            channel = parts[0]
+
+    channel = channel.split("?")[0].strip()
+    if channel.lower() in _TG_RESERVED_PATHS or not re.fullmatch(r"[A-Za-z0-9_]{4,32}", channel):
+        raise TelegramParserError(f"Некорректное имя Telegram-канала: {channel}")
+    return channel
+
+
+def parse_telegram_channel(url: str, limit: int = 30) -> List[VKPost]:
+    """
+    Парсит последние посты из публичного Telegram-канала через веб-версию https://t.me/s/{channel}.
+    Не требует токенов, авторизации и API-ключей.
+    """
+    from bs4 import BeautifulSoup
+
+    channel = extract_telegram_channel(url)
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/125.0.0.0 Safari/537.36"
+        ),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
+    }
+
+    base_s_url = f"https://t.me/s/{channel}"
+    current_url = base_s_url
+    posts: List[VKPost] = []
+    seen_urls = set()
+    pages_checked = 0
+    max_pages = 3
+
+    account_name = channel
+    follower_count = None
+
+    while current_url and len(posts) < limit and pages_checked < max_pages:
+        pages_checked += 1
+        try:
+            resp = requests.get(current_url, headers=headers, timeout=20)
+        except requests.RequestException as exc:
+            raise TelegramParserError(f"Ошибка запроса к Telegram для '{channel}': {exc}") from exc
+
+        if resp.status_code == 404:
+            raise TelegramParserError(f"Telegram-канал '{channel}' не найден или закрыт.")
+        if not resp.ok:
+            raise TelegramParserError(f"Telegram HTTP {resp.status_code} для '{channel}'")
+
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        if pages_checked == 1:
+            title_node = soup.find("div", class_="tgme_channel_info_header_title")
+            if title_node:
+                account_name = title_node.get_text(strip=True) or channel
+            counter_node = soup.find("div", class_="tgme_channel_info_counter")
+            if counter_node:
+                val_node = counter_node.find("span", class_="counter_value")
+                cnt_str = val_node.get_text(strip=True) if val_node else counter_node.get_text(strip=True)
+                follower_count = _parse_int_safe(cnt_str)
+
+        messages = soup.find_all("div", class_="tgme_widget_message")
+        if not messages:
+            break
+
+        for msg in reversed(messages):
+            if len(posts) >= limit:
+                break
+
+            link_el = msg.find("a", class_="tgme_widget_message_date")
+            post_url = link_el.get("href") if link_el else ""
+            if not post_url or post_url in seen_urls:
+                continue
+
+            text_el = msg.find("div", class_="tgme_widget_message_text")
+            text = text_el.get_text(separator="\n", strip=True) if text_el else ""
+            if not text:
+                continue
+
+            seen_urls.add(post_url)
+
+            post_date = None
+            if link_el:
+                time_el = link_el.find("time", class_="time") or link_el.find("time")
+                if time_el and time_el.get("datetime"):
+                    raw_dt = time_el.get("datetime")
+                    try:
+                        clean_dt = raw_dt.replace("Z", "+00:00")
+                        dt = datetime.fromisoformat(clean_dt)
+                        post_date = dt.strftime("%Y-%m-%d %H:%M:%S")
+                    except Exception:
+                        post_date = raw_dt[:19].replace("T", " ")
+
+            views = None
+            views_el = msg.find("span", class_="tgme_widget_message_views")
+            if views_el:
+                views = _parse_int_safe(views_el.get_text(strip=True))
+
+            total_reactions = 0
+            has_reactions = False
+            for rx in msg.find_all("span", class_="tgme_reaction"):
+                rx_text = rx.get_text(strip=True)
+                m = re.search(r"(\d+(?:[.,]\d+)?\s*[kKmM]?)", rx_text)
+                if m:
+                    parsed_rx = _parse_int_safe(m.group(1))
+                    if parsed_rx:
+                        total_reactions += parsed_rx
+                        has_reactions = True
+
+            attachments = []
+            has_photo = bool(
+                msg.find("a", class_="tgme_widget_message_photo_wrap")
+                or msg.find("div", class_="tgme_widget_message_photo_wrap")
+            )
+            has_video = bool(
+                msg.find("div", class_="tgme_widget_message_video_player")
+                or msg.find("video")
+                or msg.find("i", class_="tgme_widget_message_video_thumb")
+                or msg.find("div", class_="tgme_widget_message_roundvideo")
+            )
+            has_doc = bool(msg.find("div", class_="tgme_widget_message_document"))
+            has_poll = bool(msg.find("div", class_="tgme_widget_message_poll"))
+
+            if has_video:
+                attachments.append({"type": "video"})
+            elif has_photo:
+                attachments.append({"type": "photo"})
+            elif has_doc:
+                attachments.append({"type": "doc"})
+            elif has_poll:
+                attachments.append({"type": "poll"})
+
+            posts.append(
+                VKPost(
+                    url=post_url,
+                    account_name=account_name,
+                    text=text,
+                    likes=total_reactions if has_reactions else 0,
+                    comments=0,
+                    reposts=0,
+                    datetime=post_date,
+                    views=views,
+                    attachments=attachments if attachments else None,
+                    follower_count=follower_count,
+                    platform="telegram",
+                )
+            )
+
+        prev_link = soup.find("a", class_="tme_messages_more") or soup.find("a", href=lambda h: bool(h and "before=" in h))
+        if prev_link and prev_link.get("href") and len(posts) < limit:
+            href = prev_link.get("href")
+            current_url = f"https://t.me{href}" if href.startswith("/") else href
+        else:
+            break
+
+    if not posts:
+        raise TelegramParserError(f"У канала '{channel}' не найдено публичных постов с текстом.")
+
+    print(f"Fetched {len(posts)} Telegram posts for '{channel}'.")
+    return posts

@@ -98,6 +98,16 @@ const LoginPage = () => {
           <button type="submit" className="auth-submit-btn">
             Войти в аккаунт
           </button>
+          <button
+            type="button"
+            className="auth-demo-btn"
+            onClick={() => {
+              setUsername('demo')
+              setPassword('demo')
+            }}
+          >
+            Быстрый вход для тестирования (demo / demo)
+          </button>
         </form>
         {message ? (
           <div className={`auth-message auth-message-${messageKind}`}>{message}</div>

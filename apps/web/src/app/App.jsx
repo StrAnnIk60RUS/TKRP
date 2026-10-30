@@ -1,10 +1,11 @@
 import React, { Suspense, lazy, useEffect } from 'react'
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { UserRoleProvider } from './providers/UserRoleContext'
 import Layout from '../shared/ui/Layout'
 import ParticleBackground from '../shared/ui/ParticleBackground'
 import ErrorBoundary from '../shared/ui/ErrorBoundary'
 import { useIsAuthenticated } from '../shared/ui/AuthGate'
+import { getCurrentUser, getSessionToken } from '../shared/api/authService'
 import { initBreadcrumbListeners } from '../shared/lib/telemetry/breadcrumbs'
 import { initGlobalCrashReporting } from '../shared/lib/telemetry/clientReporter'
 import './styles/App.css'
@@ -32,6 +33,9 @@ function App() {
   useEffect(() => {
     initBreadcrumbListeners()
     initGlobalCrashReporting()
+    if (getSessionToken()) {
+      getCurrentUser().catch(() => {})
+    }
   }, [])
 
   return (
@@ -47,6 +51,7 @@ function App() {
                 <Route path="/analytics" element={<AuthenticatedOnly><AnalyticsPage /></AuthenticatedOnly>} />
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/register" element={<RegisterPage />} />
+                <Route path="/inProcessNow" element={<Navigate to="/" replace />} />
                 <Route path="*" element={<NotFoundPage />} />
               </Routes>
             </Suspense>

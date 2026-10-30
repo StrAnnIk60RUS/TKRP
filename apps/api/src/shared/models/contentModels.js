@@ -61,9 +61,11 @@ function inferMetricsQualitySnapshot(post) {
 
 function inferPostFormat(post) {
   const attachments = post?.attachments || {};
+  if (attachments.has_carousel) return 'carousel';
   if (attachments.has_video) return 'video';
   if (attachments.has_photo) return 'image_post';
   if (attachments.has_document) return 'document_post';
+  if (attachments.has_poll) return 'poll_post';
   if (attachments.has_link) return 'link_post';
   return 'text_post';
 }

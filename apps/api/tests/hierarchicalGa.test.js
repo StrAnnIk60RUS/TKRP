@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 
 import {
   buildStage2LockedFields,
-  repairPlanConstraints
+  repairPlanConstraints,
+  runHierarchicalOptimization
 } from '../src/modules/planning/services/evolutionary/hierarchicalGa.js';
 
 test('buildStage2LockedFields omits null has_cta/targetToneIndex (bridge null bug fix)', () => {
@@ -62,4 +63,33 @@ test('repairPlanConstraints cannot pad an empty plan', () => {
   const repaired = repairPlanConstraints({ publications: [] }, { min_publications: 2 });
   assert.equal(repaired.unfixable.length, 1);
   assert.match(repaired.unfixable[0], /min_publications: 0 < 2/);
+});
+
+test('runHierarchicalOptimization throws descriptive error when neither draft nor form_input provided', async () => {
+  await assert.rejects(
+    async () => {
+      await runHierarchicalOptimization({});
+    },
+    /Отсутствует draft_content_plan или form_input для оптимизации/
+  );
+});
+
+test('runHierarchicalOptimization accepts nested draft_content_plan envelope', async () => {
+  process.env.TEST_MODE = 'true';
+  const innerDraft = {
+    plan_id: 'nested_plan_001',
+    planning_horizon: { start_date: '2026-05-01', end_date: '2026-05-15', duration_days: 14, posts_per_week: 2 },
+    platforms: ['telegram'],
+    publications: [
+      { publication_id: 'pub_001', planned_date: '2026-05-03', platform: 'telegram', topic: 'Topic 1', format: 'text', objective: 'inform', tone: 'expert' },
+      { publication_id: 'pub_002', planned_date: '2026-05-10', platform: 'telegram', topic: 'Topic 2', format: 'text', objective: 'educate', tone: 'expert' }
+    ]
+  };
+  const result = await runHierarchicalOptimization({
+    draft_content_plan: { draft_content_plan: innerDraft },
+    stage1: { ga: { maxGenerations: 1, populationSize: 4 } },
+    stage2: { ga: { maxGenerations: 1, populationSize: 4 } }
+  });
+  assert.ok(result.optimized_content_plan);
+  assert.equal(result.draft_content_plan.plan_id, 'nested_plan_001');
 });

@@ -312,7 +312,15 @@ ${JSON.stringify(avoidTopics)}
 ${JSON.stringify(avoidOpenings)}
 
 key_message — один тезис до 200 символов, с терминами этой темы.
-summary — текст поста от ${minSummary} символов. ${lengthInstruction(length)} Для instagram короче и визуальнее, для linkedin экспертнее, для vk понятнее.
+summary — текст поста от ${minSummary} символов. ${lengthInstruction(length)} ${
+  platform.toLowerCase() === 'telegram'
+    ? 'Для Telegram: ёмкий авторский стиль без воды, конкретные факты и списки, призыв к подписке/обсуждению.'
+    : platform.toLowerCase() === 'instagram'
+    ? 'Для Instagram: визуальный сторителлинг, интригующий хук в первых 120 символах, короткие абзацы, CTA к bio/сохранению.'
+    : platform.toLowerCase() === 'linkedin'
+    ? 'Для LinkedIn: экспертная подача, B2B-контекст, цифры и выводы.'
+    : 'Для VK: понятная подача для сообщества, открытый диалог в комментариях.'
+}
 cta — короткая фраза под эту тему или пустая строка.
 ${visualKind ? `media_prompt — промпт на английском для генерации ${visualKind === 'video' ? 'короткого видео' : 'изображения'} к этому посту. Конкретная сцена: объект, свет, ракурс${visualKind === 'video' ? ', одно движение камеры и одно действие' : ''}. Без текста в кадре, без логотипов и водяных знаков. 2–4 предложения.` : ''}
 `;
@@ -388,7 +396,7 @@ ${visualKind ? `media_prompt — промпт на английском для �
     format,
     fallbackSummary: baseSummary
   });
-  const cta = hasCta ? buildObjectiveCta(objective || '', '', resolvedTopic, index) : '';
+  const cta = hasCta ? buildObjectiveCta(objective || '', '', resolvedTopic, index, platform) : '';
   return {
     key_message: keyMessage,
     summary,

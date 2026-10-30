@@ -1712,7 +1712,8 @@ export async function generateDraftPlanBatched({
   form_input,
   query,
   ragResults,
-  ragLimit
+  ragLimit,
+  fastSkeleton: argFastSkeleton
 }) {
   const formInput = rawFormInput || form_input || {};
   const compactRagContext = buildCompactRagContext(ragResults);
@@ -1741,7 +1742,18 @@ export async function generateDraftPlanBatched({
   const generatedPublications = [];
   let coherenceRepairs = 0;
 
-  for (let monthIndex = 0; monthIndex < monthlyGroups.length; monthIndex += 1) {
+  const shouldSkipMonthlyLlm = Boolean(
+    argFastSkeleton ??
+    formInput?.fastSkeleton ??
+    formInput?.fast_skeleton ??
+    formInput?.skipMonthlyLlm ??
+    (process.env.FAST_DRAFT_SKELETON_MODE !== undefined
+      ? process.env.FAST_DRAFT_SKELETON_MODE !== 'false' && process.env.FAST_DRAFT_SKELETON_MODE !== '0'
+      : true)
+  );
+
+  if (!shouldSkipMonthlyLlm) {
+    for (let monthIndex = 0; monthIndex < monthlyGroups.length; monthIndex += 1) {
     const { monthKey, slots } = monthlyGroups[monthIndex];
     const batchResult = await generateMonthlyPublications({
       formInput,
@@ -1766,6 +1778,7 @@ export async function generateDraftPlanBatched({
         generatedPublications.push(buildGeneratedPublicationContextItem(slot, resolved));
       }
     });
+    }
   }
 
   const mergedPlan = {
@@ -1908,7 +1921,8 @@ export async function generateDraftPlanBatched({
     },
     usage: usageItems.length ? mergeUsageStats(usageItems) : null,
     generation_metadata: {
-      mode: 'skeleton_monthly_merge',
+      mode: shouldSkipMonthlyLlm ? 'skeleton_fast_draft' : 'skeleton_monthly_merge',
+      fast_skeleton: shouldSkipMonthlyLlm,
       rag_limit: ragLimit,
       requested_publications: requestedPublicationCount,
       target_publications: targetPublicationCount,
@@ -1948,5 +1962,6 @@ export const DRAFT_PLAN_PIPELINE_TEST_UTILS = {
   choosePreferredSummary,
   repairSkeleton,
   buildSummaryRepairFromTopic,
-  repairPublicationSemanticCoherence
+  repairPublicationSemanticCoherence,
+  normalizeBatchPublication
 };

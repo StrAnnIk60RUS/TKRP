@@ -21,7 +21,7 @@ const buildFetchErrorMessage = async (response) => {
   return errorMessage
 }
 
-import { authHeaders, getSessionToken } from './authService.js';
+import { authHeaders, getSessionToken, setSessionToken } from './authService.js';
 import { addBreadcrumb } from '../lib/telemetry/breadcrumbs.js';
 
 function createTraceId() {
@@ -82,6 +82,9 @@ const fetchJsonOrThrow = async (endpoint, options = {}) => {
     traceId;
 
   if (!response.ok) {
+    if (response.status === 401) {
+      setSessionToken(null);
+    }
     addBreadcrumb({
       category: 'http.response',
       level: 'warn',

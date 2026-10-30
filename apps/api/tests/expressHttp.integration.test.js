@@ -60,3 +60,20 @@ test('uncaught error in /api handler returns 500 JSON with request_id', async ()
     await new Promise((r) => srv.once('close', r));
   }
 });
+
+
+test('legacy session routes return multi-user owner response', async () => {
+  const app = buildTestApp();
+  const { srv, port } = await listen(app);
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/api/session/status`);
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.locked, false);
+    assert.equal(body.isOwner, true);
+    assert.equal(body.role, 'owner');
+  } finally {
+    srv.close();
+    await new Promise((r) => srv.once('close', r));
+  }
+});

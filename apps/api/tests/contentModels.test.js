@@ -134,3 +134,22 @@ test('normalizeCompetitorsContentData keeps non-object input unchanged shape', (
   assert.equal(normalizeCompetitorsContentData(undefined), undefined);
   assert.equal(normalizeCompetitorsContentData('x'), 'x');
 });
+
+test('normalizePublicationModel supports carousel and poll formats for multiplatform posts', () => {
+  const competitor = { competitor_id: 'c2', platform: 'instagram' };
+  const carouselPost = {
+    content: 'Смотрите все 5 слайдов! 🔥',
+    attachments: { has_carousel: true, has_photo: true }
+  };
+  const model = normalizePublicationModel(carouselPost, competitor, 0);
+  assert.equal(model.format, 'carousel');
+  assert.equal(model.platform, 'instagram');
+
+  const pollPost = {
+    content: 'Какой фреймворк вы используете?',
+    attachments: { has_poll: true }
+  };
+  const pollModel = normalizePublicationModel(pollPost, { competitor_id: 'c3', platform: 'telegram' }, 1);
+  assert.equal(pollModel.format, 'poll_post');
+  assert.equal(pollModel.platform, 'telegram');
+});

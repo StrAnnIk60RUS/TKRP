@@ -16,6 +16,16 @@ router.use('/ml', mlRoutes);
 router.use('/telemetry', telemetryRoutes);
 router.use(enrichmentRoutes);
 
+// Compatibility fallback for legacy single-user lock requests: system is multi-user
+router.all(['/session', '/session/*'], (_req, res) => {
+  res.json({
+    locked: false,
+    isOwner: true,
+    role: 'owner',
+    multiUser: true
+  });
+});
+
 export default router;
 
 

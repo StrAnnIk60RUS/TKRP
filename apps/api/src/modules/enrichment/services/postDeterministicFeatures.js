@@ -82,6 +82,45 @@ function detectHashtags(content) {
  * @param {Object} post
  * @returns {Object} post с дополненным analysis
  */
+/**
+ * Подсчитывает количество эмодзи в тексте и их плотность к количеству слов.
+ * @param {string} content
+ * @returns {{ count: number, density: number }}
+ */
+function detectEmojis(content) {
+  if (!content || typeof content !== 'string') return { count: 0, density: 0 };
+  const matches = content.match(/\p{Extended_Pictographic}/gu) || [];
+  const count = matches.length;
+  const words = countWords(content);
+  const density = words > 0 ? Number((count / words).toFixed(3)) : 0;
+  return { count, density };
+}
+
+/**
+ * Определяет наличие призыва к действию (CTA) с учетом специфики соцсетей:
+ * Telegram, Instagram, VK, LinkedIn.
+ * @param {string} content
+ * @returns {{ has_cta: number, cta_type: string | null }}
+ */
+function detectCta(content) {
+  if (!content || typeof content !== 'string') return { has_cta: 0, cta_type: null };
+  const lower = content.toLowerCase();
+
+  // Telegram-специфичные CTA
+  if (/(?:подписывай(?:тесь|ся)|перешли(?:те)?|канал[еау]?|t\.me\/|ссылк[аеу] в (?:посте|описании))/u.test(lower)) {
+    return { has_cta: 1, cta_type: 'telegram' };
+  }
+  // Instagram-специфичные CTA
+  if (/(?:ссылк[аеу] в (?:шапке|био|профиле)|link in bio|пиши(?:те)? в (?:директ|direct|лс|dm)|сохраняй|отправь другу)/u.test(lower)) {
+    return { has_cta: 1, cta_type: 'instagram' };
+  }
+  // Общие / VK / LinkedIn CTA
+  if (/(?:подробнее|купить|заказать|переходи(?:те)? по ссылке|остав(?:ьте|ляйте) заявку|делитесь в комментариях|пишите в комментар|вступайте в группу|подпишись на рассылку)/u.test(lower)) {
+    return { has_cta: 1, cta_type: 'generic' };
+  }
+  return { has_cta: 0, cta_type: null };
+}
+
 function enrichPostWithDeterministicFeatures(post) {
   if (!post || typeof post !== 'object') return post;
 
@@ -150,6 +189,18 @@ function enrichPostWithDeterministicFeatures(post) {
   literacy.hashtags_count = hashtagsBucket;
 
   analysis.literacy = literacy;
+
+  // --- 7. Призыв к действию (CTA) под специфику мультиплатформенности ---
+  const cta = detectCta(content);
+  analysis.cta = cta;
+  if (!analysis.content_meaning) {
+    analysis.content_meaning = { has_cta: cta.has_cta };
+  } else if (analysis.content_meaning.has_cta == null) {
+    analysis.content_meaning.has_cta = cta.has_cta;
+  }
+
+  // --- 8. Эмодзи-анализ (плотность и визуальные сигналы) ---
+  analysis.emojis = detectEmojis(content);
 
   // --- Метрика вовлеченности уже считается в openrouter.js, но на всякий случай обновим, если нет ---
   if (!post.engagement_rate && post.metrics) {

@@ -38,6 +38,15 @@ echo "[TKRP Deploy] Resetting working tree to origin/$BRANCH..."
 git checkout -B "$BRANCH" -f "origin/$BRANCH"
 git reset --hard "origin/$BRANCH"
 
+# Remove legacy untracked single-user session files if still lingering on disk
+rm -rf apps/web/src/pages/in-process \
+       apps/web/src/app/SessionGate.jsx \
+       apps/web/src/app/providers/SingleUserSessionContext.jsx \
+       apps/web/src/shared/api/sessionService.js \
+       apps/api/src/modules/session \
+       apps/api/tests/singleUserSession.test.js \
+       tools/cloudflared
+
 COMMIT_HASH=$(git rev-parse --short HEAD)
 echo "[TKRP Deploy] Deployed commit: $COMMIT_HASH"
 

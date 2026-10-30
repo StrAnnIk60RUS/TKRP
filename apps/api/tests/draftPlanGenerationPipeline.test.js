@@ -28,7 +28,8 @@ const {
   choosePreferredSummary,
   repairSkeleton,
   buildSummaryRepairFromTopic,
-  repairPublicationSemanticCoherence
+  repairPublicationSemanticCoherence,
+  normalizeBatchPublication
 } = DRAFT_PLAN_PIPELINE_TEST_UTILS;
 
 test('hasSemanticOverlap keeps long summary matched to short topic', () => {
@@ -68,6 +69,17 @@ test('buildObjectiveCta varies CTA by objective', () => {
   assert.notEqual(convertCta, retainCta);
   assert.ok(convertCta.length > 0);
   assert.ok(retainCta.length > 0);
+});
+
+test('buildObjectiveCta supports platform-specific CTAs for Telegram and Instagram', () => {
+  const tgCta = buildObjectiveCta('convert', 'TKRP', 'AI', 0, 'telegram');
+  const igCta = buildObjectiveCta('convert', 'TKRP', 'AI', 0, 'instagram');
+  const defaultCta = buildObjectiveCta('convert', 'TKRP', 'AI', 0);
+
+  assert.match(tgCta, /канал|бот|контакт/iu);
+  assert.match(igCta, /Direct|шапк|bio|профил/iu);
+  assert.notEqual(tgCta, igCta);
+  assert.notEqual(tgCta, defaultCta);
 });
 
 test('calibrateExpectedKpi returns bounded relative scores and bands', () => {
@@ -484,4 +496,35 @@ test('buildSummaryRepairFromTopic and sanitizeUserFacingSummary do not emit Ау
   assert.doesNotMatch(sanitized, /Отдельно стоит назвать ограничение/i);
 });
 
+test('fastSkeleton mode: normalizeBatchPublication handles empty monthly batch item gracefully', () => {
+  const slot = {
+    slot_id: 'slot_001',
+    planned_date: '2026-06-01',
+    platform: 'telegram',
+    format: 'text',
+    objective: 'inform',
+    tone: 'expert'
+  };
+  const formInput = {
+    projectName: 'TKRP Cloud',
+    projectDescription: 'Облачная платформа для аналитики данных в реальном времени',
+    consumerCategory: 'B2B IT'
+  };
+  const skeleton = {
+    plan_id: 'skeleton_001',
+    planning_horizon: { start_date: '2026-06-01', end_date: '2026-06-30' },
+    platforms: ['telegram']
+  };
+  const result = normalizeBatchPublication({}, slot, formInput, { summary: {} }, skeleton, 0, new Set());
 
+  assert.ok(result.publication);
+  assert.equal(result.publication.publication_id, 'plan_pub_001');
+  assert.equal(result.publication.platform, 'telegram');
+  assert.equal(result.publication.planned_date, '2026-06-01');
+  assert.equal(result.publication.format, 'text');
+  assert.equal(result.publication.objective, 'inform');
+  assert.ok(result.publication.topic.length > 0);
+  assert.ok(result.publication.key_message.length > 0);
+  assert.ok(result.publication.summary.length > 0);
+  assert.ok(result.publication.expected_kpi);
+});

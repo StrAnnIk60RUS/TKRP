@@ -82,3 +82,37 @@ test('predictPostMetricsByFeatureVectors returns valid predictions array and met
 });
 
 
+
+test('applyDeterministicPostProcessing extracts multi-platform CTA and emoji metrics', async () => {
+  const { applyDeterministicPostProcessing } = await import(
+    '../src/modules/enrichment/services/postDeterministicFeatures.js'
+  );
+  const data = {
+    competitors: [
+      {
+        posts: [
+          {
+            content: '🚀 Новый релиз! Подписывайтесь на наш канал https://t.me/tech_channel чтобы не пропустить.',
+            metrics: { likes: 100, comments: 5, views: 1500 }
+          },
+          {
+            content: 'Ссылка в шапке профиля! Сохраняй пост и отправь другу 🔥✨',
+            metrics: { likes: 250, comments: 12 }
+          }
+        ]
+      }
+    ]
+  };
+  const processed = applyDeterministicPostProcessing(data);
+  const post1 = processed.competitors[0].posts[0];
+  const post2 = processed.competitors[0].posts[1];
+
+  assert.equal(post1.analysis.cta.has_cta, 1);
+  assert.equal(post1.analysis.cta.cta_type, 'telegram');
+  assert.equal(post1.analysis.emojis.count, 1);
+  assert.ok(post1.analysis.emojis.density > 0);
+
+  assert.equal(post2.analysis.cta.has_cta, 1);
+  assert.equal(post2.analysis.cta.cta_type, 'instagram');
+  assert.equal(post2.analysis.emojis.count, 2);
+});

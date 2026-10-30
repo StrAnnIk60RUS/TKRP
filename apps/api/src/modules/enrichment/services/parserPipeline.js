@@ -15,6 +15,54 @@ const PROJECT_ROOT = path.join(APP_ROOT, '..', '..');
 const PARSER_DIR = path.join(PROJECT_ROOT, 'tools', 'parser');
 const PYTHON_SCRIPT_PATH = path.join(PARSER_DIR, 'main.py');
 const PARSER_RUNTIME_DIR = path.join(PROJECT_ROOT, 'data', 'runtime', 'parser-jobs');
+const PARSER_CACHE_DIR = path.join(PROJECT_ROOT, 'data', 'runtime', 'competitors-cache');
+const PARSER_CACHE_TTL_MS = Number(process.env.PARSER_CACHE_TTL_MS || 24 * 60 * 60 * 1000);
+
+function ensureParserCacheDir() {
+  if (!fs.existsSync(PARSER_CACHE_DIR)) {
+    fs.mkdirSync(PARSER_CACHE_DIR, { recursive: true });
+  }
+}
+
+function getCacheFilePath(url) {
+  const normalized = String(url || '').trim().toLowerCase();
+  const hash = createHash('sha1').update(normalized).digest('hex');
+  return path.join(PARSER_CACHE_DIR, `${hash}.json`);
+}
+
+function readFromParserCache(url) {
+  try {
+    const cacheFile = getCacheFilePath(url);
+    if (!fs.existsSync(cacheFile)) return null;
+    const stat = fs.statSync(cacheFile);
+    if (Date.now() - stat.mtimeMs > PARSER_CACHE_TTL_MS) return null;
+    return JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function writeToParserCache(url, competitorsData) {
+  try {
+    ensureParserCacheDir();
+    const cacheFile = getCacheFilePath(url);
+    fs.writeFileSync(
+      cacheFile,
+      JSON.stringify(
+        {
+          cached_at: new Date().toISOString(),
+          competitors_data: competitorsData
+        },
+        null,
+        2
+      ),
+      'utf8'
+    );
+  } catch (err) {
+    parserLog.warn('Не удалось записать в кэш парсера', { error: err.message, url });
+  }
+}
+
 const PARSER_TIMEOUT_MS = Number(process.env.PARSER_TIMEOUT_MS || 120000);
 
 // Each job writes its own PARSER_OUTPUT_PATH, so parses can overlap.
@@ -52,6 +100,7 @@ function detectPlatform(url) {
   if (value.includes('vk.com')) return 'vk';
   if (value.includes('linkedin.com')) return 'linkedin';
   if (value.includes('instagram.com') || value.includes('instagr.am')) return 'instagram';
+  if (value.includes('t.me') || value.includes('telegram.me') || value.startsWith('@')) return 'telegram';
   return 'unknown';
 }
 
@@ -63,6 +112,7 @@ function missingCookieEnvName(url) {
   if (platform === 'vk' && !String(process.env.VK_API_TOKEN || '').trim()) return 'VK_API_TOKEN';
   if (platform === 'linkedin' && !String(process.env.LINKEDIN_COOKIE || '').trim()) return 'LINKEDIN_COOKIE';
   if (platform === 'instagram' && !String(process.env.INSTAGRAM_COOKIE || '').trim() && !String(process.env.APIFY_API_TOKEN || '').trim()) return 'INSTAGRAM_COOKIE or APIFY_API_TOKEN';
+  if (platform === 'telegram') return null;
   return null;
 }
 
@@ -152,10 +202,12 @@ function mapPostsToCompetitorsData(url, posts) {
     const types = Array.from(typesSet);
 
     return {
-      has_photo: types.includes('photo'),
+      has_photo: types.includes('photo') || types.includes('carousel'),
       has_video: types.includes('video'),
       has_link: types.includes('link'),
-      has_document: types.includes('doc') || types.includes('document')
+      has_document: types.includes('doc') || types.includes('document'),
+      has_carousel: types.includes('carousel'),
+      has_poll: types.includes('poll')
     };
   };
 
@@ -343,7 +395,21 @@ export async function parseAndEnrichByUrl(url, limit) {
   }
 }
 
-export async function parseOnlyByUrl(url, limit) {
+export async function parseOnlyByUrl(url, limit, options = {}) {
+  if (!options?.forceRefresh) {
+    const cached = readFromParserCache(url);
+    if (cached?.competitors_data) {
+      parserLog.info('Returning parsed competitors from cache', { url, cached_at: cached.cached_at });
+      return {
+        success: true,
+        pipeline: 'parse_only',
+        cached: true,
+        cached_at: cached.cached_at,
+        parsed_competitors_data: cached.competitors_data
+      };
+    }
+  }
+
   const missingCookie = missingCookieEnvName(url);
   if (missingCookie) {
     parserLog.warn(`Missing cookie for URL: ${missingCookie}`, { url });
@@ -423,6 +489,7 @@ export async function parseOnlyByUrl(url, limit) {
       duration_ms: Date.now() - parseStart
     });
     const competitorsData = mapPostsToCompetitorsData(url, posts);
+    writeToParserCache(url, competitorsData);
 
     return {
       success: true,

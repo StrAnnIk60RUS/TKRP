@@ -2,8 +2,10 @@ import os
 
 from parser import (
     InstagramParserError,
+    TelegramParserError,
     VKParserError,
     parse_instagram_account,
+    parse_telegram_channel,
     parse_vk_account,
     save_post_to_json,
     save_posts_to_json,
@@ -48,6 +50,7 @@ def main() -> None:
     lowered = url.lower()
     is_instagram = "instagram.com" in lowered or "instagr.am" in lowered
     is_vk = "vk.com" in lowered or "vkontakte.ru" in lowered
+    is_telegram = "t.me" in lowered or "telegram.me" in lowered or url.startswith("@")
     is_linkedin = "linkedin.com" in lowered
 
     try:
@@ -57,6 +60,9 @@ def main() -> None:
         elif is_vk:
             print("Parsing posts from VK account...")
             posts = parse_vk_account(url)
+        elif is_telegram:
+            print("Parsing posts from Telegram channel...")
+            posts = parse_telegram_channel(url)
         elif is_linkedin:
             print("LinkedIn parsing via direct CLI is not supported.")
             raise SystemExit(1)
@@ -83,6 +89,9 @@ def main() -> None:
         print(f"\nAll posts saved to '{output_path}'")
     except InstagramParserError as exc:
         print(f"Instagram parsing error: {exc}")
+        raise SystemExit(1)
+    except TelegramParserError as exc:
+        print(f"Telegram parsing error: {exc}")
         raise SystemExit(1)
     except VKParserError as exc:
         print(f"VK parsing error: {exc}")
