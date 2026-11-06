@@ -266,14 +266,51 @@ export async function searchPrecedents(payload, requestOptions = {}) {
  */
 export async function getAggregatedOntology(requestOptions = {}) {
   try {
+    if (requestOptions?.competitorsData) {
+      return await fetchJsonOrThrow(`${API_URL}/api/precedents/ontology`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ competitors_data: requestOptions.competitorsData }),
+        signal: requestOptions.signal
+      });
+    }
     return await fetchJsonOrThrow(`${API_URL}/api/precedents/ontology`, {
       method: 'GET',
+      headers: authHeaders(),
       signal: requestOptions.signal
     })
   } catch (error) {
     console.error('Ошибка в getAggregatedOntology:', error);
     throw error;
   }
+}
+
+/**
+ * Скачивает JSON-файл с онтологией из базы прецедентов
+ * @returns {Promise<void>}
+ */
+export async function exportOntologyToJson(requestOptions = {}) {
+  const response = await safeFetch(`${API_URL}/api/precedents/ontology`, {
+    method: 'GET',
+    headers: authHeaders(),
+    signal: requestOptions.signal
+  });
+  if (!response.ok) {
+    const err = await buildFetchErrorMessage(response);
+    throw new Error(err);
+  }
+  const payload = await response.json();
+  const jsonBlob = new Blob([JSON.stringify(payload.ontology || payload, null, 2)], {
+    type: 'application/json;charset=utf-8'
+  });
+  const url = URL.createObjectURL(jsonBlob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `ontology_${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
 
 /**
@@ -613,7 +650,10 @@ export async function savePlanSnapshotToServer(payload, requestOptions = {}) {
 }
 
 export async function getPlanSnapshotFromServer(token, requestOptions = {}) {
-  if (typeof token === 'string' && token.startsWith('local_')) {
+  if (
+    typeof token === 'string' &&
+    (token.startsWith('local_') || token.startsWith('token_demo_') || token.startsWith('demo_'))
+  ) {
     const error = new Error('Локальный снимок плана (сохранён только в браузере)')
     error.status = 404
     error.isLocal = true
@@ -625,7 +665,11 @@ export async function getPlanSnapshotFromServer(token, requestOptions = {}) {
       signal: requestOptions.signal
     })
   } catch (error) {
-    console.error('Ошибка в getPlanSnapshotFromServer:', error)
+    if (error?.status === 404) {
+      console.warn('Снимок плана не найден на сервере (404):', token)
+    } else {
+      console.error('Ошибка в getPlanSnapshotFromServer:', error)
+    }
     throw error
   }
 }
@@ -693,6 +737,12 @@ export async function fetchPlanMediaBlob(urlPath, requestOptions = {}) {
 }
 
 export async function deletePlanSnapshotOnServer(token, requestOptions = {}) {
+  if (
+    typeof token === 'string' &&
+    (token.startsWith('local_') || token.startsWith('token_demo_') || token.startsWith('demo_'))
+  ) {
+    return { success: true, is_local: true }
+  }
   try {
     return await fetchJsonOrThrow(`${API_URL}/api/plan/snapshots/${encodeURIComponent(token)}`, {
       method: 'DELETE',

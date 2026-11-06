@@ -10,6 +10,7 @@ import {
 test('instagram access is limited to the preview username', () => {
   assert.equal(INSTAGRAM_PREVIEW_USERNAME, 'admin123');
   assert.equal(canUseInstagram({ username: 'admin123' }), true);
+  assert.equal(canUseInstagram({ username: 'admin1234' }), true);
   assert.equal(canUseInstagram({ username: 'Admin123' }), false);
   assert.equal(canUseInstagram({ username: 'other' }), false);
   assert.equal(canUseInstagram(null), false);

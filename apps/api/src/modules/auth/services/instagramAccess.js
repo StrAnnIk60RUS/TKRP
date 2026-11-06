@@ -5,11 +5,12 @@
 import { getCurrentUser } from './authStore.js';
 
 export const INSTAGRAM_PREVIEW_USERNAME = 'admin123';
+export const ADMIN_USERNAME = 'admin1234';
 
 const INSTAGRAM_HOSTS = new Set(['instagram.com', 'instagr.am']);
 
 export function canUseInstagram(user) {
-  return user?.username === INSTAGRAM_PREVIEW_USERNAME;
+  return user?.username === 'admin1234' || user?.username === INSTAGRAM_PREVIEW_USERNAME;
 }
 
 export function isInstagramUrl(value) {

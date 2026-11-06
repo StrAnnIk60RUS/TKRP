@@ -353,3 +353,36 @@ test('demo_session_token is rejected when ALLOW_DEMO_AUTH is not enabled', async
   }
 });
 
+test('admin1234 login succeeds and reports admin privileges in /me', async () => {
+  const app = buildTestApp();
+  const { srv, port } = await listen(app);
+  const base = `http://127.0.0.1:${port}/api/auth`;
+  try {
+    const login = await fetch(`${base}/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'admin1234', password: 'admin1234' })
+    });
+    assert.equal(login.status, 200);
+    const loginBody = await login.json();
+    assert.equal(loginBody.success, true);
+    assert.equal(loginBody.user.username, 'admin1234');
+    assert.equal(loginBody.user.isAdmin, true);
+
+    const me = await fetch(`${base}/me`, {
+      headers: { Authorization: `Bearer ${loginBody.token}` }
+    });
+    assert.equal(me.status, 200);
+    const meBody = await me.json();
+    assert.equal(meBody.user.isAdmin, true);
+    assert.equal(meBody.user.features.admin, true);
+    assert.equal(meBody.user.features.diagnostics, true);
+    assert.equal(meBody.user.features.instagram, true);
+  } finally {
+    srv.close();
+    await new Promise((r) => srv.once('close', r));
+    const { closePool } = await import('../src/shared/db/client.js');
+    await closePool();
+  }
+});
+

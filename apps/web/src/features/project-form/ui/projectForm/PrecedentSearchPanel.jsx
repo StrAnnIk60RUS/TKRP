@@ -13,6 +13,7 @@ const formatOntologyClassLabel = (value) =>
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (match) => match.toUpperCase())
 
+
 const buildOntologyPreview = (ontology) => {
   const global = ontology?.global || {}
   const entities = Array.isArray(global.entities) ? global.entities : []
@@ -56,6 +57,7 @@ const PrecedentSearchPanel = ({
   onLoadHorizonExample,
   onSeedDemoPrecedents,
   onExportOntologyToExcel,
+  onExportOntologyToJson,
   onLoadOntology,
   onSearchPrecedents,
   showDemoButtons = true,
@@ -76,7 +78,19 @@ const PrecedentSearchPanel = ({
   hideSearchAction = false,
   isFlatSmmFlow = false
 }) => {
-  const [isOntologyVisible, setIsOntologyVisible] = React.useState(false)
+  const isMinimalSmmFlow = isCompactSmm && isEmbedded && isFlatSmmFlow
+  const shouldShowOntologyActions = !isCompactSmm
+  const shouldShowDetailedResults = !isCompactSmm
+  const [isOntologyVisible, setIsOntologyVisible] = React.useState(shouldShowOntologyActions)
+
+  const hasOntology = Boolean(aggregatedOntology?.global)
+
+  React.useEffect(() => {
+    if (shouldShowOntologyActions && !hasOntology && !isLoadingOntology && onLoadOntology && isEnrichmentServerAvailable !== false) {
+      onLoadOntology()
+    }
+  }, [shouldShowOntologyActions, hasOntology, isLoadingOntology, onLoadOntology, isEnrichmentServerAvailable])
+
   const precedentActiveProcessId = isSearchingPrecedents
     ? 'searchingPrecedents'
     : isSeedingPrecedents
@@ -89,20 +103,14 @@ const PrecedentSearchPanel = ({
   const hasResults = Boolean(precedentSearchResults)
   const hasPublicationResults = (precedentSearchResults?.publications?.length || 0) > 0
   const hasPlanResults = (precedentSearchResults?.content_plans?.length || 0) > 0
-  const hasOntology = Boolean(aggregatedOntology?.global)
-  const isMinimalSmmFlow = isCompactSmm && isEmbedded && isFlatSmmFlow
-  const shouldShowOntologyActions = !isCompactSmm
-  const shouldShowDetailedResults = !isCompactSmm
   const ontologyPreview = React.useMemo(
     () => (hasOntology ? buildOntologyPreview(aggregatedOntology) : null),
     [aggregatedOntology, hasOntology]
   )
 
   const handleOpenOntology = async () => {
-    if (!hasOntology) {
-      await onLoadOntology?.()
-      setIsOntologyVisible(true)
-      return
+    if (!hasOntology && onLoadOntology) {
+      await onLoadOntology()
     }
     setIsOntologyVisible((prev) => !prev)
   }
@@ -112,13 +120,13 @@ const PrecedentSearchPanel = ({
       <div className="workflow-section-heading">
         <div>
           {isMinimalSmmFlow ? null : isEmbedded ? (
-            <h3 className="smm-unified-step-title">Подбор прецедентов</h3>
+            <h3 className="smm-unified-step-title">Шаг 1. Подбор прецедентов</h3>
           ) : (
-            <h2 className="section-title">Подбор прецедентов</h2>
+            <h2 className="section-title">Шаг 1. Подбор прецедентов</h2>
           )}
           {!isMinimalSmmFlow && (
             <p className="workflow-section-subtitle">
-              Предварительный просмотр базы. Сборка черновика сама обращается к прецедентам, даже если этот поиск не запускали.
+              Найдите релевантные публикации и планы по данным формы, чтобы черновик опирался на накопленную базу, а не на «пустой» запрос.
             </p>
           )}
         </div>
@@ -147,6 +155,50 @@ const PrecedentSearchPanel = ({
         contextual
       />
 
+      {shouldShowOntologyActions && (
+        <div className="workflow-action-row ontology-toolbar-row">
+          <button
+            type="button"
+            className="submit-button secondary"
+            onClick={handleOpenOntology}
+            disabled={isProcessing || isGeneratingDraftPlan || isEnrichmentServerAvailable === false}
+            title="Показать или скрыть агрегированную JSON-онтологию"
+          >
+            <span>
+              {isOntologyVisible ? 'СКРЫТЬ JSON-ОНТОЛОГИЮ' : 'ПОКАЗАТЬ JSON-ОНТОЛОГИЮ'}
+            </span>
+          </button>
+          <button
+            type="button"
+            className="submit-button secondary"
+            onClick={onExportOntologyToJson}
+            disabled={
+              isProcessing ||
+              isGeneratingDraftPlan ||
+              isExportingOntology ||
+              isEnrichmentServerAvailable === false
+            }
+            title="Скачать онтологию в формате JSON"
+          >
+            <span>ЭКСПОРТ ОНТОЛОГИИ В JSON</span>
+          </button>
+          <button
+            type="button"
+            className="submit-button secondary"
+            onClick={onExportOntologyToExcel}
+            disabled={
+              isProcessing ||
+              isGeneratingDraftPlan ||
+              isExportingOntology ||
+              isEnrichmentServerAvailable === false
+            }
+            title="Скачать онтологию (классы, сущности, отношения) в Excel"
+          >
+            <span>{isExportingOntology ? 'ЭКСПОРТ...' : 'ЭКСПОРТ ОНТОЛОГИИ В EXCEL'}</span>
+          </button>
+        </div>
+      )}
+
       {!hideSearchAction && (
         <div className="workflow-action-row">
           <button
@@ -171,82 +223,43 @@ const PrecedentSearchPanel = ({
         </div>
       )}
 
-      {(showDemoButtons || shouldShowOntologyActions) && (
+      {showDemoButtons && (
         <details className="ui-details">
-          <summary className="ui-details-summary">Дополнительно: демо-пример и онтология</summary>
+          <summary className="ui-details-summary">Дополнительно: демо-пример</summary>
           <div className="ui-details-body">
             <div className="workflow-action-row">
-              {showDemoButtons && (
-                <>
-                  <select
-                    id="demoHorizonExample"
-                    name="demoHorizonExample"
-                    value={demoHorizonExample}
-                    onChange={(e) => onLoadHorizonExample(e.target.value)}
-                    disabled={isProcessing || isGeneratingDraftPlan || isEnrichmentServerAvailable === false}
-                    className="form-select demo-horizon-select"
-                    title="Загрузить демо-пример для выбранного горизонта"
-                  >
-                    <option value="example_month_plan">1 месяц</option>
-                    <option value="example_three_month_plan">3 месяца</option>
-                    <option value="example_six_month_plan">6 месяцев</option>
-                    <option value="example_year_plan">12 месяцев</option>
-                    <option value="example_dev_project_saas_unfamiliar_1m">DEV: SaaS (1 месяц)</option>
-                    <option value="example_dev_project_edtech_unfamiliar_3m">DEV: EdTech (3 месяца)</option>
-                    <option value="example_dev_project_fintech_b2g_unfamiliar_6m">DEV: FinTech/B2G (6 месяцев)</option>
-                    <option value="example_dev_project_outsourcing_unfamiliar_1m_daily">DEV: Аутсорс/delivery (1 месяц)</option>
-                  </select>
-                  <button
-                    type="button"
-                    className="submit-button secondary"
-                    onClick={onSeedDemoPrecedents}
-                    disabled={
-                      isProcessing ||
-                      isGeneratingDraftPlan ||
-                      isSeedingPrecedents ||
-                      isEnrichmentServerAvailable === false
-                    }
-                    title="Загрузить демо-базу прецедентов"
-                  >
-                    <span>{isSeedingPrecedents ? 'ЗАГРУЗКА ДЕМО...' : 'ЗАГРУЗИТЬ ДЕМО-ПРЕЦЕДЕНТЫ'}</span>
-                  </button>
-                </>
-              )}
-              {shouldShowOntologyActions && (
-                <>
-                  <button
-                    type="button"
-                    className="submit-button secondary"
-                    onClick={handleOpenOntology}
-                    disabled={isProcessing || isGeneratingDraftPlan || isLoadingOntology || isEnrichmentServerAvailable === false}
-                    title="Показать агрегированную JSON-онтологию: сущности, классы, триплеты и иерархию"
-                  >
-                    <span>
-                      {isLoadingOntology
-                        ? 'ЗАГРУЗКА ОНТОЛОГИИ...'
-                        : hasOntology
-                          ? isOntologyVisible
-                            ? 'СКРЫТЬ JSON-ОНТОЛОГИЮ'
-                            : 'ПОКАЗАТЬ JSON-ОНТОЛОГИЮ'
-                          : 'ЗАГРУЗИТЬ JSON-ОНТОЛОГИЮ'}
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    className="submit-button secondary"
-                    onClick={onExportOntologyToExcel}
-                    disabled={
-                      isProcessing ||
-                      isGeneratingDraftPlan ||
-                      isExportingOntology ||
-                      isEnrichmentServerAvailable === false
-                    }
-                    title="Скачать онтологию (классы, сущности, отношения) в Excel"
-                  >
-                    <span>{isExportingOntology ? 'ЭКСПОРТ...' : 'ЭКСПОРТ ОНТОЛОГИИ В EXCEL'}</span>
-                  </button>
-                </>
-              )}
+              <select
+                id="demoHorizonExample"
+                name="demoHorizonExample"
+                value={demoHorizonExample}
+                onChange={(e) => onLoadHorizonExample(e.target.value)}
+                disabled={isProcessing || isGeneratingDraftPlan || isEnrichmentServerAvailable === false}
+                className="form-select demo-horizon-select"
+                title="Загрузить демо-пример для выбранного горизонта"
+              >
+                <option value="example_month_plan">1 месяц</option>
+                <option value="example_three_month_plan">3 месяца</option>
+                <option value="example_six_month_plan">6 месяцев</option>
+                <option value="example_year_plan">12 месяцев</option>
+                <option value="example_dev_project_saas_unfamiliar_1m">DEV: SaaS (1 месяц)</option>
+                <option value="example_dev_project_edtech_unfamiliar_3m">DEV: EdTech (3 месяца)</option>
+                <option value="example_dev_project_fintech_b2g_unfamiliar_6m">DEV: FinTech/B2G (6 месяцев)</option>
+                <option value="example_dev_project_outsourcing_unfamiliar_1m_daily">DEV: Аутсорс/delivery (1 месяц)</option>
+              </select>
+              <button
+                type="button"
+                className="submit-button secondary"
+                onClick={onSeedDemoPrecedents}
+                disabled={
+                  isProcessing ||
+                  isGeneratingDraftPlan ||
+                  isSeedingPrecedents ||
+                  isEnrichmentServerAvailable === false
+                }
+                title="Загрузить демо-базу прецедентов"
+              >
+                <span>{isSeedingPrecedents ? 'ЗАГРУЗКА ДЕМО...' : 'ЗАГРУЗИТЬ ДЕМО-ПРЕЦЕДЕНТЫ'}</span>
+              </button>
             </div>
           </div>
         </details>
@@ -259,9 +272,16 @@ const PrecedentSearchPanel = ({
 
       {isOntologyVisible && shouldShowOntologyActions && (
         <div className="ontology-preview-panel">
+          {isLoadingOntology && !hasOntology && (
+            <div className="ontology-preview-empty" style={{ padding: '28px 16px', textAlign: 'center', color: '#64748b' }}>
+              <div style={{ fontWeight: 700, marginBottom: '6px' }}>Загрузка онтологического слоя прецедентов...</div>
+              <div style={{ fontSize: '0.85rem' }}>Анализируются накопленные прецеденты и мета-сущности системы.</div>
+            </div>
+          )}
+
           {!hasOntology && !isLoadingOntology && (
             <div className="precedent-empty-state precedent-empty-state-light">
-              Онтология пока не загружена. Нажмите «Загрузить JSON-онтологию».
+              Онтология формируется по базе прецедентов.
             </div>
           )}
 
@@ -269,36 +289,36 @@ const PrecedentSearchPanel = ({
             <>
               <div className="ontology-preview-header">
                 <div>
-                  <h3 className="precedent-section-title precedent-section-title-light">Онтология прецедентов</h3>
+                  <h3 className="precedent-section-title precedent-section-title-light">Шаг 3-6. Онтологический слой</h3>
                   <p className="ontology-preview-subtitle">
-                    Ниже показана агрегированная онтология по всем контекстам: явная типизация `entity -&gt; class`,
-                    триплеты `subject - predicate - object`, relation templates и иерархия терминов.
+                    Ниже показана агрегированная онтология по всем контекстам: явная типизация &apos;entity -&gt; class&apos;,
+                    триплеты &apos;subject predicate object&apos;, relation templates и иерархия терминов.
                   </p>
                 </div>
               </div>
 
               <div className="ontology-preview-metrics">
                 <div className="ontology-preview-metric">
-                  <span className="ontology-preview-metric-label">Контексты</span>
+                  <span className="ontology-preview-metric-label">КОНТЕКСТЫ</span>
                   <strong className="ontology-preview-metric-value">{ontologyPreview.summary.contexts}</strong>
                 </div>
                 <div className="ontology-preview-metric">
-                  <span className="ontology-preview-metric-label">Классы</span>
+                  <span className="ontology-preview-metric-label">КЛАССЫ</span>
                   <strong className="ontology-preview-metric-value">{ontologyPreview.summary.classes}</strong>
                 </div>
                 <div className="ontology-preview-metric">
-                  <span className="ontology-preview-metric-label">Сущности</span>
+                  <span className="ontology-preview-metric-label">СУЩНОСТИ</span>
                   <strong className="ontology-preview-metric-value">{ontologyPreview.summary.entities}</strong>
                 </div>
                 <div className="ontology-preview-metric">
-                  <span className="ontology-preview-metric-label">Триплеты</span>
+                  <span className="ontology-preview-metric-label">ТРИПЛЕТЫ</span>
                   <strong className="ontology-preview-metric-value">{ontologyPreview.summary.triples}</strong>
                 </div>
               </div>
 
               <div className="ontology-preview-grid">
                 <div className="ontology-preview-card">
-                  <h4 className="ontology-preview-card-title">Сущность → класс</h4>
+                  <h4 className="ontology-preview-card-title">Entity -&gt; Class</h4>
                   <div className="ontology-preview-list">
                     {ontologyPreview.entityClassRows.slice(0, ONTOLOGY_PREVIEW_LIMIT).map((item) => (
                       <div key={item.id} className="ontology-preview-item">
@@ -316,7 +336,7 @@ const PrecedentSearchPanel = ({
                 </div>
 
                 <div className="ontology-preview-card">
-                  <h4 className="ontology-preview-card-title">Триплеты</h4>
+                  <h4 className="ontology-preview-card-title">Triples</h4>
                   <div className="ontology-preview-list">
                     {ontologyPreview.triples.slice(0, ONTOLOGY_PREVIEW_LIMIT).map((item) => (
                       <div key={item.id} className="ontology-preview-item ontology-preview-item-triple">
@@ -335,7 +355,7 @@ const PrecedentSearchPanel = ({
                 </div>
 
                 <div className="ontology-preview-card">
-                  <h4 className="ontology-preview-card-title">Иерархия</h4>
+                  <h4 className="ontology-preview-card-title">Hierarchy</h4>
                   <div className="ontology-preview-list">
                     {ontologyPreview.hierarchy.slice(0, ONTOLOGY_PREVIEW_LIMIT).map((item) => (
                       <div key={item.id} className="ontology-preview-item ontology-preview-item-triple">
@@ -353,7 +373,7 @@ const PrecedentSearchPanel = ({
                 </div>
 
                 <div className="ontology-preview-card">
-                  <h4 className="ontology-preview-card-title">Шаблоны связей</h4>
+                  <h4 className="ontology-preview-card-title">Relation Templates</h4>
                   <div className="ontology-preview-list">
                     {ontologyPreview.templates.slice(0, ONTOLOGY_PREVIEW_LIMIT).map((item) => (
                       <div key={item.id} className="ontology-preview-item ontology-preview-item-triple">
@@ -374,7 +394,7 @@ const PrecedentSearchPanel = ({
 
               {ontologyPreview.metaEntities.length > 0 && (
                 <div className="ontology-preview-card ontology-preview-card-wide">
-                  <h4 className="ontology-preview-card-title">Метасущности</h4>
+                  <h4 className="ontology-preview-card-title">Meta-entities</h4>
                   <div className="ontology-preview-tags">
                     {ontologyPreview.metaEntities.slice(0, ONTOLOGY_PREVIEW_LIMIT).map((item) => (
                       <span key={item.id} className="ontology-preview-tag">

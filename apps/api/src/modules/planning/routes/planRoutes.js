@@ -396,7 +396,13 @@ router.post('/snapshots', requireSessionOrAdminApiKey, async (req, res) => {
     }
 
     const userId = await resolveUserId(req);
-    const requestedToken = payload.token || null;
+    const requestedToken =
+      typeof payload.token === 'string' &&
+      (payload.token.startsWith('local_') ||
+        payload.token.startsWith('token_demo_') ||
+        payload.token.startsWith('demo_'))
+        ? null
+        : payload.token || null;
     if (requestedToken) {
       const existing = await loadSnapshot(requestedToken);
       if (existing && existing.owner !== userId) {
@@ -421,7 +427,7 @@ router.post('/snapshots', requireSessionOrAdminApiKey, async (req, res) => {
 router.get('/snapshots/:token', requireSessionOrAdminApiKey, async (req, res) => {
   try {
     const token = req.params?.token;
-    if (typeof token === 'string' && token.startsWith('local_')) {
+    if (typeof token === 'string' && (token.startsWith('local_') || token.startsWith('token_demo_') || token.startsWith('demo_'))) {
       return res.status(404).json({
         success: false,
         error: 'Локальный снимок плана сохраняется только в браузере клиента',
@@ -458,7 +464,7 @@ router.get('/snapshots/:token', requireSessionOrAdminApiKey, async (req, res) =>
 router.delete('/snapshots/:token', requireSessionOrAdminApiKey, async (req, res) => {
   try {
     const token = req.params?.token;
-    if (typeof token === 'string' && token.startsWith('local_')) {
+    if (typeof token === 'string' && (token.startsWith('local_') || token.startsWith('token_demo_') || token.startsWith('demo_'))) {
       return res.status(404).json({
         success: false,
         error: 'Локальный снимок плана сохраняется только в браузере клиента',

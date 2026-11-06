@@ -583,14 +583,38 @@ export async function searchPrecedents(query, options = {}) {
   }
 }
 
-export async function getAggregatedOntology() {
+export async function getAggregatedOntology(options = {}) {
   const snapshot = readStorage();
-  const baseOntology = buildOntologyFromSnapshot(snapshot);
+  const nonDemoPublications = (snapshot.publications || []).filter(
+    (p) => p.source !== 'demo_seed' && !String(p.competitor_id || '').startsWith('demo_')
+  );
+  const nonDemoPlans = (snapshot.content_plans || []).filter(
+    (p) => p.source !== 'demo_seed' && !String(p.competitor_id || '').startsWith('demo_')
+  );
+
+  const effectiveSnapshot = {
+    ...snapshot,
+    publications: nonDemoPublications.length > 0 ? nonDemoPublications : snapshot.publications || [],
+    content_plans: nonDemoPlans.length > 0 ? nonDemoPlans : snapshot.content_plans || []
+  };
+
+  if (Array.isArray(options?.competitors_data?.competitors) && options.competitors_data.competitors.length > 0) {
+    const localPubs = collectPublicationsFromCompetitors(options.competitors_data.competitors);
+    const localPlans = collectContentPlansFromCompetitors(options.competitors_data.competitors);
+    if (localPubs.length > 0) {
+      effectiveSnapshot.publications = [...localPubs, ...effectiveSnapshot.publications];
+    }
+    if (localPlans.length > 0) {
+      effectiveSnapshot.content_plans = [...localPlans, ...effectiveSnapshot.content_plans];
+    }
+  }
+
+  const baseOntology = buildOntologyFromSnapshot(effectiveSnapshot);
   const config = getOntologyLlmEnrichmentConfig();
   const llmEnrichment = await buildOntologyLlmEnrichment(baseOntology.contexts, baseOntology);
 
   if (config.mode === 'active') {
-    return mergeOntologyWithTrustedLlmAdditions(snapshot, baseOntology, llmEnrichment, {
+    return mergeOntologyWithTrustedLlmAdditions(effectiveSnapshot, baseOntology, llmEnrichment, {
       highConfidenceThreshold: config.highConfidenceThreshold
     });
   }
@@ -606,12 +630,12 @@ export async function getAggregatedOntology() {
   };
 }
 
-export async function getOntologyExportData() {
-  const ontology = await getAggregatedOntology();
+export async function getOntologyExportData(options = {}) {
+  const ontology = await getAggregatedOntology(options);
   return buildOntologyExportSheets(ontology);
 }
 
-export async function getOntologyTurtleData() {
-  const ontology = await getAggregatedOntology();
+export async function getOntologyTurtleData(options = {}) {
+  const ontology = await getAggregatedOntology(options);
   return serializeOntologyToTurtle(ontology);
 }

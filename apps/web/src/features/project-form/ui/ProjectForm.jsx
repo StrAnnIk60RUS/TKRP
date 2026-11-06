@@ -19,13 +19,14 @@ import {
   planMarketerCombinedWorkflow,
   isGenerationBlockedByBackend
 } from '../lib/workflowUiUtils'
-import { getCurrentUserId } from '../../../shared/api/authService'
+import { getCurrentUserId, isCurrentUserAdmin } from '../../../shared/api/authService'
 import {
   getAggregatedOntology,
   getPrecedentsSummary,
   searchPrecedents,
   seedDemoPrecedents,
   exportOntologyToExcel,
+  exportOntologyToJson,
   generateDraftContentPlan,
   optimizeDraftContentPlan,
   getActiveOptimizationJobId,
@@ -598,17 +599,25 @@ const ProjectForm = () => {
   useEffect(() => {
     if (isEnrichmentServerAvailable !== true) return
 
-    const loadPrecedentsSummary = async () => {
+    const loadInitialPrecedentData = async () => {
       try {
-        const response = await getPrecedentsSummary()
-        setPrecedentsSummary(response.summary || null)
+        const [summaryRes, ontologyRes] = await Promise.allSettled([
+          getPrecedentsSummary(),
+          getAggregatedOntology({ competitorsData })
+        ])
+        if (summaryRes.status === 'fulfilled' && summaryRes.value?.summary) {
+          setPrecedentsSummary(summaryRes.value.summary)
+        }
+        if (ontologyRes.status === 'fulfilled' && ontologyRes.value?.ontology) {
+          setAggregatedOntology(ontologyRes.value.ontology)
+        }
       } catch (error) {
-        console.error('Ошибка загрузки сводки прецедентов:', error)
+        console.error('Ошибка загрузки данных прецедентов:', error)
       }
     }
 
-    loadPrecedentsSummary()
-  }, [isEnrichmentServerAvailable])
+    loadInitialPrecedentData()
+  }, [isEnrichmentServerAvailable, competitorsData])
 
   useEffect(() => {
     dispatch({ type: 'SET_CURRENT_STEP', payload: Math.min(currentStep, wizardSteps.length) })
@@ -872,22 +881,47 @@ const ProjectForm = () => {
     }
   }
 
-  const handleLoadOntology = async () => {
+  const handleExportOntologyToJson = async () => {
     if (isGenerationBlockedByBackend(isEnrichmentServerAvailable)) {
       addToast('Сервер недоступен. Убедитесь, что он запущен.', 'error')
       return
     }
     setOperationTelemetry({ backend: 'running', python: 'idle', llm: 'idle' })
     try {
+      await runTrackedOperation('exportingOntology', async (signal) => {
+        await exportOntologyToJson({ signal })
+      })
+      addToast('Онтология экспортирована в JSON', 'success')
+      setOperationTelemetry({ backend: 'success', python: 'idle', llm: 'idle' })
+    } catch (error) {
+      console.error('Ошибка экспорта онтологии в JSON:', error)
+      addToast(`Ошибка: ${error.message}`, 'error', { traceId: error?.traceId })
+      setOperationTelemetry({ backend: 'error', python: 'idle', llm: 'idle' })
+    }
+  }
+
+  const handleLoadOntology = async (options = {}) => {
+    if (isGenerationBlockedByBackend(isEnrichmentServerAvailable)) {
+      if (options.userTriggered) {
+        addToast('Сервер недоступен. Убедитесь, что он запущен.', 'error')
+      }
+      return
+    }
+    setOperationTelemetry({ backend: 'running', python: 'idle', llm: 'idle' })
+    try {
       await runTrackedOperation('loadingOntology', async (signal) => {
-        const response = await getAggregatedOntology({ signal })
+        const response = await getAggregatedOntology({ signal, competitorsData })
         setAggregatedOntology(response.ontology || null)
       })
-      addToast('Онтология загружена', 'success')
+      if (options.userTriggered) {
+        addToast('Онтология загружена', 'success')
+      }
       setOperationTelemetry({ backend: 'success', python: 'idle', llm: 'idle' })
     } catch (error) {
       console.error('Ошибка загрузки онтологии:', error)
-      addToast(`Ошибка загрузки онтологии: ${error.message}`, 'error', { traceId: error?.traceId })
+      if (options.userTriggered) {
+        addToast(`Ошибка загрузки онтологии: ${error.message}`, 'error', { traceId: error?.traceId })
+      }
       setOperationTelemetry({ backend: 'error', python: 'idle', llm: 'idle' })
     }
   }
@@ -2287,8 +2321,9 @@ const ProjectForm = () => {
               demoHorizonExample={demoHorizonExample}
               onLoadHorizonExample={handleLoadHorizonExample}
               onSeedDemoPrecedents={handleSeedDemoPrecedents}
-              showDemoButtons={true}
+              showDemoButtons={!isAnalyst}
               onExportOntologyToExcel={handleExportOntologyToExcel}
+              onExportOntologyToJson={handleExportOntologyToJson}
               onLoadOntology={handleLoadOntology}
               onSearchPrecedents={handleSearchPrecedents}
               isProcessing={isProcessing}
@@ -2303,6 +2338,7 @@ const ProjectForm = () => {
               retrievalBadge={retrievalBadge}
               precedentRetrieval={precedentRetrieval}
               onSelectPrecedent={setSelectedPrecedentItem}
+              isAnalyst={isAnalyst}
             />
           </>
         )}
@@ -2416,7 +2452,7 @@ const ProjectForm = () => {
               publicationDayMode={formData.publicationDayMode}
               isAnalyst={isAnalyst}
             />
-            {isAnalyst && (
+            {isCurrentUserAdmin() && (
               <TechnicalDetailsPanel
                 precedentSearchQuery={precedentSearchQuery}
                 precedentSearchResults={precedentSearchResults}

@@ -1,6 +1,7 @@
 import React from 'react';
 import { reportIncident } from '../lib/telemetry/clientReporter.js';
 import { addBreadcrumb } from '../lib/telemetry/breadcrumbs.js';
+import { isCurrentUserAdmin } from '../api/authService.js';
 import './ErrorBoundary.css';
 
 function generateTraceId() {
@@ -85,10 +86,12 @@ export class ErrorBoundary extends React.Component {
               В приложении произошла непредвиденная ошибка. Мы уже зафиксировали детали инцидента в системе аудита.
             </p>
 
-            <div className="error-boundary-meta">
-              <span className="trace-label">Идентификатор инцидента:</span>
-              <span className="trace-value">{traceId}</span>
-            </div>
+            {isCurrentUserAdmin() && (
+              <div className="error-boundary-meta">
+                <span className="trace-label">Идентификатор инцидента:</span>
+                <span className="trace-value">{traceId}</span>
+              </div>
+            )}
 
             <div className="error-boundary-actions">
               <button
@@ -98,18 +101,20 @@ export class ErrorBoundary extends React.Component {
               >
                 Перезагрузить страницу
               </button>
-              <button
-                type="button"
-                className="error-boundary-btn error-boundary-btn-secondary"
-                onClick={this.handleCopyReport}
-              >
-                {copied ? '✓ Отчет скопирован!' : 'Скопировать технический отчет'}
-              </button>
+              {isCurrentUserAdmin() && (
+                <button
+                  type="button"
+                  className="error-boundary-btn error-boundary-btn-secondary"
+                  onClick={this.handleCopyReport}
+                >
+                  {copied ? '✓ Отчет скопирован!' : 'Скопировать технический отчет'}
+                </button>
+              )}
             </div>
 
-            {process.env.NODE_ENV !== 'production' && error && (
+            {isCurrentUserAdmin() && process.env.NODE_ENV !== 'production' && error && (
               <details className="error-boundary-details">
-                <summary>Технические подробности (для разработчика)</summary>
+                <summary>Технические подробности (для администратора)</summary>
                 <div className="error-boundary-stack">
                   <strong>{error.name}: {error.message}</strong>
                   {error.stack && <div>{error.stack}</div>}

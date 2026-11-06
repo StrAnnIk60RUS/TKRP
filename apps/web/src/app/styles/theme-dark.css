@@ -804,3 +804,72 @@ body.theme-dark .wizard-step-tab.is-attention:not(.active) {
   color: #e6c57a;
 }
 
+/* Онтологический слой прецедентов и блок мета-сущностей */
+body.theme-dark .ontology-preview-panel {
+  background: var(--bg-raised);
+  border-color: var(--line);
+}
+
+body.theme-dark .ontology-preview-metric {
+  background: var(--bg-control);
+  border-color: var(--line);
+}
+
+body.theme-dark .ontology-preview-metric-value {
+  color: #f8fafc;
+}
+
+body.theme-dark .ontology-preview-card {
+  background: var(--bg-inset);
+  border-color: var(--line);
+}
+
+body.theme-dark .ontology-preview-card-title {
+  color: #f8fafc;
+}
+
+body.theme-dark .ontology-preview-item {
+  background: var(--bg-control);
+  border-color: var(--line);
+}
+
+body.theme-dark .ontology-preview-item-main {
+  color: #f1f5f9;
+}
+
+body.theme-dark .ontology-preview-item-meta {
+  color: var(--ink-muted);
+}
+
+body.theme-dark .ontology-preview-node {
+  color: #f1f5f9;
+}
+
+body.theme-dark .ontology-preview-edge {
+  border-color: #ec4899;
+  background: rgba(236, 72, 153, 0.15);
+  color: #f472b6;
+}
+
+body.theme-dark .ontology-preview-empty {
+  color: var(--ink-muted);
+}
+
+body.theme-dark .ontology-preview-tags {
+  gap: 8px;
+}
+
+body.theme-dark .ontology-preview-tag {
+  background: var(--bg-control);
+  border-color: var(--line);
+  color: var(--ink);
+  transition: all 0.2s ease;
+}
+
+body.theme-dark .ontology-preview-tag:hover {
+  background: #222533;
+  border-color: #ff6b9d;
+  color: #f8fafc;
+}
+
+

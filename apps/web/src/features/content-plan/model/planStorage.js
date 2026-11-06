@@ -103,7 +103,13 @@ function getCurrentSnapshotToken() {
 }
 
 export function isLocalSnapshotToken(token) {
-  return typeof token === 'string' && token.startsWith('local_')
+  if (typeof token !== 'string') return false
+  const trimmed = token.trim()
+  return (
+    trimmed.startsWith('local_') ||
+    trimmed.startsWith('token_demo_') ||
+    trimmed.startsWith('demo_')
+  )
 }
 
 function clearCurrentPlanPointers() {
@@ -231,6 +237,24 @@ export async function getCurrentPlanState() {
       }
     } catch (e) {
       console.warn('Ошибка чтения локального demoPlanSnapshot:', e)
+    }
+    try {
+      if (token === 'token_demo_snapshot_2026' || token === 'local_demo_snapshot_2026') {
+        const altToken = token === 'token_demo_snapshot_2026' ? 'local_demo_snapshot_2026' : 'token_demo_snapshot_2026'
+        const altRaw = localStorage.getItem(`demoPlanSnapshot:${altToken}`)
+        if (altRaw) {
+          const parsed = JSON.parse(altRaw)
+          if (parsed?.plan) {
+            return {
+              plan: parsed.plan,
+              optimization: parsed.optimization || null,
+              token
+            }
+          }
+        }
+      }
+    } catch (_) {
+      /* ignore */
     }
     clearCurrentPlanPointers()
     const synced = await syncPlanHistoryWithServer()
@@ -400,7 +424,11 @@ export async function loadPlanFromHistory(entryId, entryType = null, savedAt = n
 
   if (isLocalSnapshotToken(entry.snapshot_token)) {
     try {
-      const localRaw = localStorage.getItem(`demoPlanSnapshot:${entry.snapshot_token}`)
+      let localRaw = localStorage.getItem(`demoPlanSnapshot:${entry.snapshot_token}`)
+      if (!localRaw && (entry.snapshot_token === 'token_demo_snapshot_2026' || entry.snapshot_token === 'local_demo_snapshot_2026')) {
+        const altToken = entry.snapshot_token === 'token_demo_snapshot_2026' ? 'local_demo_snapshot_2026' : 'token_demo_snapshot_2026'
+        localRaw = localStorage.getItem(`demoPlanSnapshot:${altToken}`)
+      }
       if (localRaw) {
         const parsed = JSON.parse(localRaw)
         if (parsed?.plan) {
@@ -471,10 +499,12 @@ export async function removePlanFromHistory(entryId, entryType, savedAt) {
 
   removeLocalDemoSnapshot(entry.snapshot_token)
 
-  try {
-    await deletePlanSnapshotOnServer(entry.snapshot_token)
-  } catch (error) {
-    console.warn('Не удалось удалить snapshot на сервере, запись убрана из истории локально:', error)
+  if (!isLocalSnapshotToken(entry.snapshot_token)) {
+    try {
+      await deletePlanSnapshotOnServer(entry.snapshot_token)
+    } catch (error) {
+      console.warn('Не удалось удалить snapshot на сервере, запись убрана из истории локально:', error)
+    }
   }
 
   const nextHistory = history.filter(

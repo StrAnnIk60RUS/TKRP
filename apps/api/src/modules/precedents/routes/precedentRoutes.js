@@ -126,6 +126,19 @@ router.get('/ontology', requireSessionOrAdminApiKey, async (req, res) => {
   }
 });
 
+router.post('/ontology', requireSessionOrAdminApiKey, async (req, res) => {
+  try {
+    const { competitors_data } = req.body || {};
+    return res.json({
+      success: true,
+      ontology: await getAggregatedOntology({ competitors_data }),
+      request_id: req.requestId
+    });
+  } catch (error) {
+    return sendRouteError(res, req, 500, 'Внутренняя ошибка сервера в /api/precedents/ontology', error);
+  }
+});
+
 router.get('/ontology/export', requireSessionOrAdminApiKey, async (req, res) => {
   try {
     const {

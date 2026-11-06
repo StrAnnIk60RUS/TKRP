@@ -65,9 +65,10 @@ router.post('/login', authRateLimiter, async (req, res) => {
         request_id: req.requestId
       });
     }
+    const isAdmin = result.username === 'admin1234';
     return res.json({
       success: true,
-      user: { user_id: result.user_id, username: result.username },
+      user: { user_id: result.user_id, username: result.username, isAdmin },
       token: result.token,
       request_id: req.requestId
     });
@@ -116,11 +117,17 @@ router.get('/me', async (req, res) => {
         request_id: req.requestId
       });
     }
+    const isAdmin = user.username === 'admin1234';
     return res.json({
       success: true,
       user: {
         ...user,
-        features: instagramFeatures(user)
+        isAdmin,
+        features: {
+          ...instagramFeatures(user),
+          admin: isAdmin,
+          diagnostics: isAdmin
+        }
       },
       request_id: req.requestId
     });

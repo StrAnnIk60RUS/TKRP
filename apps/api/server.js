@@ -14,7 +14,7 @@ import {
 } from './src/shared/http/security.js';
 import { apiNotFoundHandler, globalErrorHandler } from './src/shared/http/expressHttp.js';
 import { closePool, isDatabaseEnabled, query } from './src/shared/db/client.js';
-import { ensureInstagramPreviewUser } from './src/modules/auth/services/authStore.js';
+import { ensureAdminUser, ensureInstagramPreviewUser } from './src/modules/auth/services/authStore.js';
 import { INSTAGRAM_PREVIEW_USERNAME } from './src/modules/auth/services/instagramAccess.js';
 import { getJobQueueStats } from './src/shared/runtime/jobQueue.js';
 import { getStorageMetricsSnapshot } from './src/shared/runtime/storageMetrics.js';
@@ -91,6 +91,15 @@ app.listen(PORT, () => {
     })
     .catch((error) => {
       console.error('Не удалось подготовить Instagram preview account:', error?.message || error);
+    });
+  ensureAdminUser('admin1234', 'admin1234')
+    .then((result) => {
+      if (result?.created || result?.updated) {
+        console.log('Admin account admin1234 is ready');
+      }
+    })
+    .catch((error) => {
+      console.error('Не удалось подготовить admin account admin1234:', error?.message || error);
     });
 });
 

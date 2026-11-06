@@ -20,6 +20,8 @@ function createTraceId() {
 
 const SESSION_KEY = 'tkrp_session';
 const USER_ID_KEY = 'tkrp_user_id';
+const USERNAME_KEY = 'tkrp_username';
+const IS_ADMIN_KEY = 'tkrp_is_admin';
 const authListeners = new Set();
 
 export function subscribeAuth(listener) {
@@ -40,7 +42,7 @@ export function setSessionToken(token) {
     localStorage.setItem(SESSION_KEY, token);
   } else {
     localStorage.removeItem(SESSION_KEY);
-    setCurrentUserId(null);
+    setCurrentUserData(null);
   }
   notifyAuth();
 }
@@ -49,11 +51,27 @@ export function getCurrentUserId() {
   return localStorage.getItem(USER_ID_KEY) || null;
 }
 
-function setCurrentUserId(userId) {
-  if (userId) {
-    localStorage.setItem(USER_ID_KEY, String(userId));
+export function getCurrentUsername() {
+  if (typeof localStorage === 'undefined') return null;
+  return localStorage.getItem(USERNAME_KEY) || null;
+}
+
+export function isCurrentUserAdmin() {
+  if (typeof localStorage === 'undefined') return false;
+  return localStorage.getItem(IS_ADMIN_KEY) === 'true' || localStorage.getItem(USERNAME_KEY) === 'admin1234';
+}
+
+function setCurrentUserData(user) {
+  if (typeof localStorage === 'undefined') return;
+  if (user) {
+    if (user.user_id) localStorage.setItem(USER_ID_KEY, String(user.user_id));
+    if (user.username) localStorage.setItem(USERNAME_KEY, String(user.username));
+    const isAdmin = Boolean(user.isAdmin || user.username === 'admin1234');
+    localStorage.setItem(IS_ADMIN_KEY, isAdmin ? 'true' : 'false');
   } else {
     localStorage.removeItem(USER_ID_KEY);
+    localStorage.removeItem(USERNAME_KEY);
+    localStorage.removeItem(IS_ADMIN_KEY);
   }
 }
 
@@ -162,7 +180,7 @@ const postAuthJson = async (endpoint, payload) => {
 export async function registerUser(username, password) {
   const result = await postAuthJson(`${API_URL}/api/auth/register`, { username, password });
   setSessionToken(result.token);
-  setCurrentUserId(result.user?.user_id);
+  setCurrentUserData(result.user);
   return result;
 }
 
@@ -175,7 +193,7 @@ export async function registerUser(username, password) {
 export async function loginUser(username, password) {
   const result = await postAuthJson(`${API_URL}/api/auth/login`, { username, password });
   setSessionToken(result.token);
-  setCurrentUserId(result.user?.user_id);
+  setCurrentUserData(result.user);
   return result;
 }
 
@@ -193,7 +211,7 @@ export async function logoutUser() {
     }
   }
   setSessionToken(null);
-  setCurrentUserId(null);
+  setCurrentUserData(null);
   try {
     if (typeof localStorage !== 'undefined') {
       localStorage.removeItem('projectFormDraft');
@@ -229,7 +247,11 @@ export async function getCurrentUser() {
       return null;
     }
     const result = await response.json();
-    return result.success ? result.user : null;
+    if (result.success && result.user) {
+      setCurrentUserData(result.user);
+      return result.user;
+    }
+    return null;
   } catch (error) {
     console.error('Ошибка в getCurrentUser:', error);
     return null;

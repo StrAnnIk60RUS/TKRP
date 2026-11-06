@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { isCurrentUserAdmin } from '../api/authService'
 import './Toast.css'
 
 const Toast = ({ message, type = 'success', onClose, duration = 3000, traceId }) => {
@@ -32,7 +33,7 @@ const Toast = ({ message, type = 'success', onClose, duration = 3000, traceId })
       </div>
       <div className="toast-body">
         <div className="toast-message">{message}</div>
-        {traceId && (
+        {traceId && isCurrentUserAdmin() && (
           <div className="toast-trace-badge">
             <span className="toast-trace-label">ID:</span>
             <span className="toast-trace-val" title={traceId}>

@@ -2845,4 +2845,67 @@ body.theme-light .ui-badge-neutral {
   .ux-step-guide-next-hint {
     text-align: left;
   }
+}
+
+/* Dark theme overrides for ontology preview & meta-entities */
+body.theme-dark .ontology-preview-panel {
+  background: #14161e;
+  border-color: #2a2c38;
+}
+
+body.theme-dark .ontology-preview-metric {
+  background: #161822;
+  border-color: #2a2c38;
+}
+
+body.theme-dark .ontology-preview-metric-value {
+  color: #f8fafc;
+}
+
+body.theme-dark .ontology-preview-card {
+  background: #101218;
+  border-color: #2a2c38;
+}
+
+body.theme-dark .ontology-preview-card-title {
+  color: #f8fafc;
+}
+
+body.theme-dark .ontology-preview-item {
+  background: #161822;
+  border-color: #2a2c38;
+}
+
+body.theme-dark .ontology-preview-item-main {
+  color: #f1f5f9;
+}
+
+body.theme-dark .ontology-preview-item-meta {
+  color: #8e8ca0;
+}
+
+body.theme-dark .ontology-preview-node {
+  color: #f1f5f9;
+}
+
+body.theme-dark .ontology-preview-edge {
+  border-color: #ec4899;
+  background: rgba(236, 72, 153, 0.15);
+  color: #f472b6;
+}
+
+body.theme-dark .ontology-preview-empty {
+  color: #8e8ca0;
+}
+
+body.theme-dark .ontology-preview-tag {
+  background: #161822;
+  border-color: #2a2c38;
+  color: #d4d2de;
+}
+
+body.theme-dark .ontology-preview-tag:hover {
+  background: #222533;
+  border-color: #ff6b9d;
+  color: #f8fafc;
 }

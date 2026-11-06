@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useUserRole } from '../../app/providers/UserRoleContext'
 import { ROLES, ROLE_MODE_LABELS } from '../../app/providers/UserRoleContext'
 import { useIsAuthenticated } from './AuthGate'
-import { logoutUser } from '../api/authService'
+import { isCurrentUserAdmin, logoutUser } from '../api/authService'
 import DiagnosticsModal from './DiagnosticsModal'
 import './Layout.css'
 
@@ -86,14 +86,16 @@ const Layout = ({ children }) => {
               >
                 {theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}
               </button>
-              <button
-                type="button"
-                className="theme-toggle-btn diagnostics-btn"
-                onClick={() => setIsDiagnosticsOpen(true)}
-                title="Диагностика системы и журнал инцидентов"
-              >
-                🩺 Диагностика
-              </button>
+              {isCurrentUserAdmin() ? (
+                <button
+                  type="button"
+                  className="theme-toggle-btn diagnostics-btn"
+                  onClick={() => setIsDiagnosticsOpen(true)}
+                  title="Диагностика системы и журнал инцидентов"
+                >
+                  🩺 Диагностика
+                </button>
+              ) : null}
             </div>
           </div>
           <nav className="main-nav">
@@ -126,10 +128,12 @@ const Layout = ({ children }) => {
         </main>
       </div>
 
-      <DiagnosticsModal
-        isOpen={isDiagnosticsOpen}
-        onClose={() => setIsDiagnosticsOpen(false)}
-      />
+      {isCurrentUserAdmin() ? (
+        <DiagnosticsModal
+          isOpen={isDiagnosticsOpen}
+          onClose={() => setIsDiagnosticsOpen(false)}
+        />
+      ) : null}
     </div>
   )
 }
