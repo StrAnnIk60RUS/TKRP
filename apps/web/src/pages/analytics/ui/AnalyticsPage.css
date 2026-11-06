@@ -190,7 +190,7 @@
 }
 
 .channel-card-tg {
-  border-left: 8px solid #06b6d4;
+  border-left: 8px solid #5355ee;
 }
 
 .channel-header {
@@ -219,7 +219,10 @@
 }
 
 .tg-icon {
-  background: #06b6d4;
+  background: transparent;
+  padding: 0;
+  border-radius: 11px;
+  overflow: hidden;
 }
 
 .channel-info h3 {
@@ -313,7 +316,7 @@
 }
 
 .legend-vk { background: #0284c7; }
-.legend-tg { background: #06b6d4; }
+.legend-tg { background: #5355ee; }
 .legend-total { background: #10b981; }
 
 .svg-chart-wrapper {
@@ -449,8 +452,13 @@
 }
 
 .platform-pill-telegram {
-  background: #cffafe;
-  color: #0891b2;
+  background: #ede9fe;
+  color: #5355ee;
+}
+
+.platform-pill-linkedin {
+  background: #ffedd5;
+  color: #ea580c;
 }
 
 .metric-compare-cell {
@@ -712,8 +720,13 @@ body.theme-dark .platform-pill-vk {
 }
 
 body.theme-dark .platform-pill-telegram {
-  background: #164e63;
-  color: #67e8f9;
+  background: #1e1b4b;
+  color: #a5b4fc;
+}
+
+body.theme-dark .platform-pill-linkedin {
+  background: #431407;
+  color: #fdba74;
 }
 
 body.theme-dark .accuracy-val {

@@ -31,8 +31,8 @@ const FORMAT_ALIASES = {
 
 const PLATFORM_LABELS = {
   vk: 'ВКонтакте',
-  telegram: 'Telegram',
-  linkedin: 'LinkedIn',
+  telegram: 'Макс',
+  linkedin: 'Одноклассники',
   instagram: 'Instagram'
 }
 

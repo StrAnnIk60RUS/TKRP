@@ -5,6 +5,7 @@ import { DEMO_ANALYTICS_DATA } from '../../../features/demo/demoData'
 import { sanitizeExternalHttpUrl } from '../../../features/content-plan/lib/publicationPresentation'
 import { fetchMlModelsMetadata, triggerMlRetrain } from '../../../shared/api/enrichmentService'
 import { isCurrentUserAdmin } from '../../../shared/api/authService'
+import { MaxMessengerIcon } from '../../../shared/ui/MaxMessengerIcon'
 import './AnalyticsPage.css'
 
 export const AnalyticsPage = () => {
@@ -148,7 +149,7 @@ export const AnalyticsPage = () => {
           <div className="analytics-badge">Аналитика и Автопостинг</div>
           <h1>Статистика и рост соцсетей</h1>
           <p className="analytics-subtitle">
-            Сквозной мониторинг каналов ВКонтакте и Telegram, отслеживание динамики аудитории
+            Сквозной мониторинг каналов ВКонтакте и Макс, отслеживание динамики аудитории
             и сопоставление прогнозов аналитической модели с фактическими результатами.
           </p>
         </div>
@@ -274,7 +275,9 @@ export const AnalyticsPage = () => {
 
           <div className="channel-card channel-card-tg">
             <div className="channel-header">
-              <div className="channel-icon tg-icon">TG</div>
+              <div className="channel-icon tg-icon" title="Макс" aria-label="Макс">
+                <MaxMessengerIcon size={44} />
+              </div>
               <div className="channel-info">
                 <h3>{platforms.telegram.account_name}</h3>
                 <a href={platforms.telegram.account_url} target="_blank" rel="noopener noreferrer">
@@ -311,11 +314,11 @@ export const AnalyticsPage = () => {
           <div className="chart-header">
             <div>
               <h2 className="section-title">Динамика прироста подписчиков</h2>
-              <p className="chart-subtitle">Еженедельный рост сообщества VK и Telegram-канала</p>
+              <p className="chart-subtitle">Еженедельный рост сообщества VK и канала Макс</p>
             </div>
             <div className="chart-legend">
               <span className="legend-item"><span className="legend-color legend-vk"></span> VK</span>
-              <span className="legend-item"><span className="legend-color legend-tg"></span> Telegram</span>
+              <span className="legend-item"><span className="legend-color legend-tg"></span> Макс</span>
               <span className="legend-item"><span className="legend-color legend-total"></span> Всего</span>
             </div>
           </div>
@@ -351,7 +354,7 @@ export const AnalyticsPage = () => {
                 strokeWidth="3"
               />
 
-              {/* Линия Telegram */}
+              {/* Линия Макс */}
               <path
                 d="M 80 195 Q 220 185, 360 175 T 640 162"
                 fill="none"
@@ -466,7 +469,16 @@ export const AnalyticsPage = () => {
                     </td>
                     <td>
                       <span className={`platform-pill platform-pill-${post.platform}`}>
-                        {post.platform === 'vk' ? 'VK' : 'Telegram'}
+                        {post.platform === 'vk' ? (
+                          'VK'
+                        ) : post.platform === 'linkedin' ? (
+                          'Одноклассники'
+                        ) : (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            <MaxMessengerIcon size={13} />
+                            <span>Макс</span>
+                          </span>
+                        )}
                       </span>
                     </td>
                     <td>

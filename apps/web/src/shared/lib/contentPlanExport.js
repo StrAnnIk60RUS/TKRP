@@ -437,9 +437,9 @@ function buildPdfDayCell(day, monthKey, options = {}) {
 
   const lanes = [
     buildPdfLane(vkPosts, 'VK', { maxPostsPerLane, maxTopicLen, compact }),
-    buildPdfLane(linkedInPosts, 'LinkedIn', { maxPostsPerLane, maxTopicLen, compact }),
+    buildPdfLane(linkedInPosts, 'Одноклассники', { maxPostsPerLane, maxTopicLen, compact }),
     ...(telegramPosts.length
-      ? [buildPdfLane(telegramPosts, 'Telegram', { maxPostsPerLane, maxTopicLen, compact })]
+      ? [buildPdfLane(telegramPosts, 'Макс', { maxPostsPerLane, maxTopicLen, compact })]
       : []),
     ...(instagramPosts.length
       ? [buildPdfLane(instagramPosts, 'Instagram', { maxPostsPerLane, maxTopicLen, compact })]
@@ -733,8 +733,11 @@ function buildPublicationDetailCard(pub, index, imageMap, stage2Match = null) {
   let platformColor = '#1e40af'
   if (platform === 'VK') platformColor = '#0077ff'
   else if (platform === 'TELEGRAM') platformColor = '#0284c7'
-  else if (platform === 'LINKEDIN') platformColor = '#0369a1'
+  else if (platform === 'LINKEDIN') platformColor = '#ea580c'
   else if (platform === 'INSTAGRAM') platformColor = '#b91c1c'
+
+  const platformDisplayLabel =
+    platform === 'TELEGRAM' ? 'МАКС' : platform === 'LINKEDIN' ? 'ОДНОКЛАССНИКИ' : platform
 
   let mediaBlock
   if (isImage) {
@@ -994,7 +997,7 @@ function buildPublicationDetailCard(pub, index, imageMap, stage2Match = null) {
               {
                 text: [
                   { text: `№ ${index + 1}  `, bold: true, color: platformColor, fontSize: 9.5 },
-                  { text: `[${platform}] `, bold: true, color: platformColor, fontSize: 8.5 },
+                  { text: `[${platformDisplayLabel}] `, bold: true, color: platformColor, fontSize: 8.5 },
                   { text: topic, bold: true, fontSize: 9, color: '#0f172a' }
                 ]
               },

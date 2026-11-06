@@ -177,7 +177,8 @@ export const contentFormatOptions = [
 
 export const platformOptions = [
   { value: 'vk', label: 'VK (ВКонтакте)' },
-  { value: 'linkedin', label: 'LinkedIn' }
+  { value: 'telegram', label: 'Макс' },
+  { value: 'linkedin', label: 'Одноклассники' }
 ]
 
 export const instagramPlatformOption = { value: 'instagram', label: 'Instagram' }
@@ -225,7 +226,7 @@ export const demoExampleFormData = {
   consumerPurchaseGoal:
     'Автоматизация процессов аналитики, повышение скорости принятия решений, снижение операционных затрат на подготовку отчетов, улучшение качества прогнозирования.',
   consumerLifestyle:
-    'Профессионалы, ценящие эффективность и технологичность. Активно используют LinkedIn для профессионального развития, посещают отраслевые конференции, читают специализированные издания по бизнес-аналитике и IT.',
+    'Профессионалы, ценящие эффективность и технологичность. Активно используют Одноклассники для профессионального развития, посещают отраслевые конференции, читают специализированные издания по бизнес-аналитике и IT.',
   contentPlanStartDate: defaultDemoRange.startDate,
   contentPlanEndDate: defaultDemoRange.endDate,
   publicationFrequency: '3-4_per_week',

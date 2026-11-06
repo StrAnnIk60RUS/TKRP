@@ -67,7 +67,7 @@ const PrecedentSearchStep = ({
             className="form-textarea precedent-search-textarea"
             value={searchQuery}
             onChange={(e) => onSearchQueryChange(e.target.value)}
-            placeholder="Например: LinkedIn B2B посты про интеллектуальные датчики, экспертный тон, кейсы внедрения"
+            placeholder="Например: Одноклассники B2B посты про интеллектуальные датчики, экспертный тон, кейсы внедрения"
             rows="3"
             disabled={isSearching || isServerAvailable === false}
           />

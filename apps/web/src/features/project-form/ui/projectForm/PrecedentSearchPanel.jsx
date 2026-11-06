@@ -13,6 +13,13 @@ const formatOntologyClassLabel = (value) =>
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (match) => match.toUpperCase())
 
+const formatPlatformLabel = (value) => {
+  const p = String(value || '').toLowerCase()
+  if (p === 'telegram') return 'Макс'
+  if (p === 'linkedin') return 'Одноклассники'
+  if (p === 'vk') return 'VK'
+  return value || 'не указано'
+}
 
 const buildOntologyPreview = (ontology) => {
   const global = ontology?.global || {}
@@ -504,7 +511,7 @@ const PrecedentSearchPanel = ({
                       </div>
                       <div className="precedent-card-meta">
                         <span>{item.data.competitor_name || 'Неизвестный конкурент'}</span>
-                        <span>{item.data.platform || 'не указано'}</span>
+                        <span>{formatPlatformLabel(item.data.platform)}</span>
                         <span>{item.data.publication_model?.format || 'не указано'}</span>
                       </div>
                       <div className="precedent-card-body">
@@ -550,7 +557,7 @@ const PrecedentSearchPanel = ({
                         )}
                       </div>
                       <div className="precedent-card-meta">
-                        <span>{item.data.platform || 'не указано'}</span>
+                        <span>{formatPlatformLabel(item.data.platform)}</span>
                         <span>{item.data.content_plan_model?.posting_frequency_per_week || 0} постов/неделю</span>
                         <span>{item.data.content_plan_model?.total_publications || 0} публикаций</span>
                       </div>

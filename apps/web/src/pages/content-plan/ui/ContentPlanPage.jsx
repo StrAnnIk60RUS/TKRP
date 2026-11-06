@@ -31,6 +31,7 @@ import {
   getCurrentPlanState,
   getPlanHistory,
   getPlanSnapshotToken,
+  isLocalSnapshotToken,
   loadPlanFromHistory,
   removePlanFromHistory,
   savePlanSnapshot
@@ -46,7 +47,7 @@ import AuthGate from '../../../shared/ui/AuthGate'
 import { isUserAuthenticated } from '../../../shared/ui/AuthGate'
 import './ContentPlanPage.css'
 
-const PLATFORM_UI_LABELS = { vk: 'VK', telegram: 'Telegram', linkedin: 'LinkedIn', instagram: 'Instagram' }
+const PLATFORM_UI_LABELS = { vk: 'VK', telegram: 'Макс', linkedin: 'Одноклассники', instagram: 'Instagram' }
 const METRICS_NORMALIZATION_TOLERANCE_RATIO = 0.05
 
 const toFiniteNumberOrNull = (value) => {
@@ -484,7 +485,7 @@ const ContentPlanPage = () => {
     const isTg = platform === 'telegram'
     const postNum = Math.floor(100 + Math.random() * 900)
     const simulatedUrl = isTg
-      ? `https://t.me/devflow_ai/${postNum}`
+      ? `https://max.ru/channel/devflow_ai/${postNum}`
       : `https://vk.com/wall-21984201_${postNum}`
 
     const predictedLikes = Number(
@@ -690,8 +691,12 @@ const ContentPlanPage = () => {
     if (!extracted) return
     setOpeningToken(true)
     try {
-      if (typeof extracted === 'string' && extracted.startsWith('local_')) {
-        const localRaw = localStorage.getItem(`demoPlanSnapshot:${extracted}`)
+      if (isLocalSnapshotToken(extracted)) {
+        let localRaw = localStorage.getItem(`demoPlanSnapshot:${extracted}`)
+        if (!localRaw && (extracted === 'token_demo_snapshot_2026' || extracted === 'local_demo_snapshot_2026')) {
+          const altToken = extracted === 'token_demo_snapshot_2026' ? 'local_demo_snapshot_2026' : 'token_demo_snapshot_2026'
+          localRaw = localStorage.getItem(`demoPlanSnapshot:${altToken}`)
+        }
         if (localRaw) {
           try {
             const parsed = JSON.parse(localRaw)

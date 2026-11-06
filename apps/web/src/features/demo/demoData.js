@@ -2,7 +2,7 @@
  * Предустановленные демонстрационные данные для аккаунта:
  * Проект "DevFlow AI" (SaaS / AI-ассистент разработчика).
  * Содержит контент-план со статусами автопостинга (опубликован, запланирован, черновик)
- * и историческую аналитику роста каналов VK и Telegram.
+ * и историческую аналитику роста каналов VK и канала Макс.
  */
 
 export const DEMO_USER = {
@@ -14,7 +14,7 @@ export const DEMO_USER = {
 
 export const DEMO_CONTENT_PLAN = {
   plan_id: 'plan_demo_devflow_2026',
-  display_name: 'DevFlow AI — План продвижения (VK + Telegram)',
+  display_name: 'DevFlow AI — План продвижения (VK + Макс)',
   platforms: ['vk', 'telegram'],
   planning_horizon: {
     start_date: '2026-10-10',
@@ -296,8 +296,8 @@ export const DEMO_ANALYTICS_DATA = {
       posts_published_count: 14
     },
     telegram: {
-      account_name: '@devflow_ai (Канал инженеров)',
-      account_url: 'https://t.me/devflow_ai',
+      account_name: 'Канал Макс @devflow_ai',
+      account_url: 'https://max.ru/channel/devflow_ai',
       subscribers: 9420,
       subscribers_growth: 1650,
       growth_percent: 21.2,
@@ -388,7 +388,7 @@ export function setupDemoSession() {
   const entryKey = `currentContentPlanHistoryEntry:${DEMO_USER.user_id}`
   const historyKey = `contentPlanHistory:${DEMO_USER.user_id}`
 
-  const snapshotToken = 'token_demo_snapshot_2026'
+  const snapshotToken = 'local_demo_snapshot_2026'
   localStorage.setItem(tokenKey, JSON.stringify(snapshotToken))
 
   const entry = {
@@ -408,6 +408,10 @@ export function setupDemoSession() {
   localStorage.setItem(historyKey, JSON.stringify([entry]))
   localStorage.setItem(
     `demoPlanSnapshot:${snapshotToken}`,
+    JSON.stringify({ plan: DEMO_CONTENT_PLAN, optimization: null })
+  )
+  localStorage.setItem(
+    'demoPlanSnapshot:token_demo_snapshot_2026',
     JSON.stringify({ plan: DEMO_CONTENT_PLAN, optimization: null })
   )
 

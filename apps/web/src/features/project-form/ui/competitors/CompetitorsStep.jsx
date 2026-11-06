@@ -165,7 +165,7 @@ const CompetitorsStep = ({
           <div className="ui-callout" style={{ marginBottom: '12px' }}>
             <div className="ui-callout-title">Как добавить своих конкурентов</div>
             <div className="ui-callout-text">
-              Вставьте ссылку на публичную группу или страницу конкурента в VK или LinkedIn
+              Вставьте ссылку на публичную группу или страницу конкурента в VK, Макс или Одноклассники
               {allowInstagram ? ' или Instagram' : ''} и нажмите <strong>«Спарсить по ссылкам»</strong>.
             </div>
           </div>
@@ -183,8 +183,8 @@ const CompetitorsStep = ({
                   onChange={(e) => onUrlChange(index, e.target.value)}
                   placeholder={
                     allowInstagram
-                      ? 'Например: https://vk.com/company, https://t.me/channel, https://www.instagram.com/... или https://www.linkedin.com/company/...'
-                      : 'Например: https://vk.com/company, https://t.me/channel или https://www.linkedin.com/company/...'
+                      ? 'Например: https://vk.com/company, https://max.ru/channel, https://ok.ru/group или https://www.instagram.com/...'
+                      : 'Например: https://vk.com/company, https://max.ru/channel или https://ok.ru/group'
                   }
                   className="form-input competitor-url-input"
                 />
